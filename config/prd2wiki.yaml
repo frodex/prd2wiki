@@ -1,0 +1,12 @@
+# config/prd2wiki.yaml
+server:
+  addr: ":8080"
+
+data:
+  dir: "./data"
+
+projects:
+  - default
+
+logging:
+  level: "info"
