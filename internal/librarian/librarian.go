@@ -156,6 +156,30 @@ func (l *Librarian) FindSimilar(ctx context.Context, project, pageID string, lim
 	return out, nil
 }
 
+// RebuildVectorIndex re-embeds all pages from a branch into the vector store.
+func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch string) (int, error) {
+	pages, err := l.repo.ListPages(branch)
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for _, path := range pages {
+		if !strings.HasSuffix(path, ".md") {
+			continue
+		}
+		fm, body, err := l.repo.ReadPageWithMeta(branch, path)
+		if err != nil || fm == nil {
+			continue
+		}
+		if err := l.indexInVectorStore(ctx, project, fm, body); err != nil {
+			continue
+		}
+		count++
+	}
+	return count, nil
+}
+
 // pagePath returns the canonical git path for a page.
 func pagePath(id string) string {
 	return "pages/" + id + ".md"

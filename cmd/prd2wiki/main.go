@@ -162,6 +162,22 @@ func main() {
 		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab)
 	}
 
+	// Rebuild vector index from repos on startup.
+	for _, project := range cfg.Projects {
+		lib := librarians[project]
+		repo := repos[project]
+		branches, _ := repo.ListBranches()
+		for _, branch := range branches {
+			ctx := context.Background()
+			n, err := lib.RebuildVectorIndex(ctx, project, branch)
+			if err != nil {
+				log.Printf("warning: vector rebuild %s/%s: %v", project, branch, err)
+			} else if n > 0 {
+				log.Printf("vector index: embedded %d pages from %s/%s", n, project, branch)
+			}
+		}
+	}
+
 	// Create API server and web handler.
 	srv := api.NewServer(cfg.Server.Addr, repos, db, librarians)
 	webHandler := web.NewHandler(repos, db, librarians)
