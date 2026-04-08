@@ -17,6 +17,9 @@ async function initMilkdown() {
             const ok = await window.prd2wikiEditor.initEditor('milkdown-editor', 'editor-fallback', project, pageId);
             if (ok) {
                 getMarkdownFn = () => window.prd2wikiEditor.getEditorContent();
+                // Prevent browser default drag behavior on the whole editor area
+                container.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
+                container.addEventListener('drop', (e) => { e.stopPropagation(); });
                 console.log('Milkdown editor initialized (bundled)');
                 return;
             }
@@ -31,6 +34,35 @@ async function initMilkdown() {
     container.style.display = 'none';
     if (fallback) {
         fallback.style.display = '';
+        // Prevent browser default drag — handle file drops for upload
+        fallback.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); fallback.classList.add('drag-over'); });
+        fallback.addEventListener('dragleave', () => { fallback.classList.remove('drag-over'); });
+        fallback.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            fallback.classList.remove('drag-over');
+            const files = e.dataTransfer?.files;
+            if (!files || files.length === 0) return;
+            const form = document.getElementById('page-form');
+            const project = form ? form.dataset.project : '';
+            const pageId = document.getElementById('field-id') ? document.getElementById('field-id').value : '';
+            if (!project || !pageId) { alert('Save the page first before uploading images.'); return; }
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (!file.type.startsWith('image/')) continue;
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                    const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/pages/${encodeURIComponent(pageId)}/attachments`, { method: 'POST', body: formData });
+                    if (!resp.ok) { alert('Upload failed: ' + resp.status); return; }
+                    const { url } = await resp.json();
+                    const pos = fallback.selectionStart;
+                    const md = `![${file.name}](${url})`;
+                    fallback.value = fallback.value.slice(0, pos) + md + fallback.value.slice(pos);
+                    fallback.selectionStart = fallback.selectionEnd = pos + md.length;
+                } catch (err) { alert('Upload error: ' + err.message); }
+            }
+        });
         // Add clipboard paste handler for images in textarea mode
         fallback.addEventListener('paste', async (e) => {
             const items = e.clipboardData?.items;

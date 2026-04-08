@@ -676,3 +676,18 @@ h1 {
     line-height: 1;
     box-sizing: border-box;
 }
+
+/* Drag-and-drop indicator */
+.drag-over {
+    outline: 3px dashed #2563eb !important;
+    outline-offset: -3px;
+    background: #eff6ff !important;
+}
+.upload-placeholder {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    background: #e0f2fe;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    color: #0369a1;
+}
