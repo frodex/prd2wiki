@@ -294,6 +294,82 @@ func TestLibrarianVerbatimEmptyID(t *testing.T) {
 	}
 }
 
+func TestLibrarianSubdirectoryPath(t *testing.T) {
+	lib, repo := setupLibrarian(t)
+	ctx := context.Background()
+
+	fm := &schema.Frontmatter{
+		ID:       "mechlab-design",
+		Title:    "MechLab Design",
+		Type:     "concept",
+		Status:   "draft",
+		Module:   "docs",
+		Category: "research",
+	}
+	body := []byte("# MechLab Design\n\nDesign document.\n")
+
+	result, err := lib.Submit(ctx, librarian.SubmitRequest{
+		Project:     "testproject",
+		Branch:      "main",
+		Frontmatter: fm,
+		Body:        body,
+		Intent:      librarian.IntentVerbatim,
+		Author:      "test-author",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if !result.Saved {
+		t.Fatalf("expected saved=true, got false; issues: %v", result.Issues)
+	}
+
+	// Path should include module/category subdirectories.
+	wantPath := "pages/docs/research/mechlab-design.md"
+	if result.Path != wantPath {
+		t.Errorf("path: got %q, want %q", result.Path, wantPath)
+	}
+
+	// Should be readable from git at that path.
+	readFM, _, err := repo.ReadPageWithMeta("main", wantPath)
+	if err != nil {
+		t.Fatalf("ReadPageWithMeta(%q): %v", wantPath, err)
+	}
+	if readFM.ID != "mechlab-design" {
+		t.Errorf("ID: got %q, want %q", readFM.ID, "mechlab-design")
+	}
+}
+
+func TestLibrarianFlatPathNoModule(t *testing.T) {
+	lib, _ := setupLibrarian(t)
+	ctx := context.Background()
+
+	fm := &schema.Frontmatter{
+		ID:     "DESIGN-003",
+		Title:  "Design Three",
+		Type:   "concept",
+		Status: "draft",
+		// No Module or Category set — should stay flat.
+	}
+	body := []byte("# Design Three\n\nFlat page.\n")
+
+	result, err := lib.Submit(ctx, librarian.SubmitRequest{
+		Project:     "testproject",
+		Branch:      "main",
+		Frontmatter: fm,
+		Body:        body,
+		Intent:      librarian.IntentVerbatim,
+		Author:      "test-author",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	wantPath := "pages/DESIGN-003.md"
+	if result.Path != wantPath {
+		t.Errorf("path: got %q, want %q", result.Path, wantPath)
+	}
+}
+
 func TestLibrarianIntegrate(t *testing.T) {
 	lib, _ := setupLibrarian(t)
 	ctx := context.Background()

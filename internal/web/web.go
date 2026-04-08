@@ -305,35 +305,16 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	// Build tree from all items (before filtering).
 	tree := buildTree(allItems, treeFilter)
 
-	// Filter items by tree selection.
+	// Filter items by tree selection (directory prefix match on path).
 	var filtered []PageListItem
 	if treeFilter == "" {
 		filtered = allItems
 	} else {
-		parts := strings.SplitN(treeFilter, "/", 2)
-		filterMod := parts[0]
-		filterCat := ""
-		if len(parts) > 1 {
-			filterCat = parts[1]
-		}
+		prefix := "pages/" + treeFilter + "/"
 		for _, item := range allItems {
-			mod := item.Module
-			if mod == "" {
-				mod = "ungrouped"
+			if strings.HasPrefix(item.Path, prefix) {
+				filtered = append(filtered, item)
 			}
-			if mod != filterMod {
-				continue
-			}
-			if filterCat != "" {
-				cat := item.Category
-				if cat == "" {
-					cat = "uncategorized"
-				}
-				if cat != filterCat {
-					continue
-				}
-			}
-			filtered = append(filtered, item)
 		}
 	}
 
@@ -378,50 +359,46 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// buildTree constructs a module/category tree from page items.
-func buildTree(items []PageListItem, activeFilter string) []TreeNode {
-	// Count pages per module and per module/category.
-	type modCat struct {
-		mod string
-		cat string
+// pathToTree splits a page path into directory segments and a filename.
+// "pages/docs/research/mechlab.md" → (["docs","research"], "mechlab.md")
+// "pages/DESIGN-003.md" → (nil, "DESIGN-003.md")
+func pathToTree(path string) (dirs []string, filename string) {
+	path = strings.TrimPrefix(path, "pages/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 1 {
+		return nil, parts[0]
 	}
-	modCount := make(map[string]int)
-	catCount := make(map[modCat]int)
-	catSet := make(map[string][]string) // module -> ordered categories
+	return parts[:len(parts)-1], parts[len(parts)-1]
+}
+
+// buildTree constructs a directory-based tree from page paths.
+func buildTree(items []PageListItem, activeFilter string) []TreeNode {
+	// Count pages per directory path.
+	dirCounts := map[string]int{}
+	dirChildren := map[string]map[string]bool{} // parent → set of immediate child dir names
 
 	for _, item := range items {
-		mod := item.Module
-		if mod == "" {
-			mod = "ungrouped"
+		dirs, _ := pathToTree(item.Path)
+		if len(dirs) == 0 {
+			// Root-level page — no directory node needed, counted in "All".
+			continue
 		}
-		cat := item.Category
-		if cat == "" {
-			cat = "uncategorized"
+		// Count this page at every ancestor directory level.
+		for i := range dirs {
+			dirPath := strings.Join(dirs[:i+1], "/")
+			dirCounts[dirPath]++
+			// Track parent→child relationships.
+			parentPath := ""
+			if i > 0 {
+				parentPath = strings.Join(dirs[:i], "/")
+			}
+			if dirChildren[parentPath] == nil {
+				dirChildren[parentPath] = map[string]bool{}
+			}
+			dirChildren[parentPath][dirs[i]] = true
 		}
-		modCount[mod]++
-		mc := modCat{mod, cat}
-		if catCount[mc] == 0 {
-			catSet[mod] = append(catSet[mod], cat)
-		}
-		catCount[mc]++
 	}
 
-	// Sort module names, but put "ungrouped" last.
-	modNames := make([]string, 0, len(modCount))
-	for m := range modCount {
-		modNames = append(modNames, m)
-	}
-	sort.Slice(modNames, func(i, j int) bool {
-		if modNames[i] == "ungrouped" {
-			return false
-		}
-		if modNames[j] == "ungrouped" {
-			return true
-		}
-		return modNames[i] < modNames[j]
-	})
-
-	// Build tree: "All" root + module nodes with category children.
 	tree := []TreeNode{{
 		Name:   "All",
 		Path:   "",
@@ -429,34 +406,52 @@ func buildTree(items []PageListItem, activeFilter string) []TreeNode {
 		Active: activeFilter == "",
 	}}
 
-	for _, mod := range modNames {
-		modNode := TreeNode{
-			Name:   mod,
-			Path:   mod,
-			Count:  modCount[mod],
-			Active: activeFilter == mod,
+	// Recursively build tree nodes from the root level.
+	var buildNodes func(parentPath string) []TreeNode
+	buildNodes = func(parentPath string) []TreeNode {
+		children, ok := dirChildren[parentPath]
+		if !ok {
+			return nil
 		}
+		// Sorted child names.
+		names := make([]string, 0, len(children))
+		for name := range children {
+			names = append(names, name)
+		}
+		sort.Strings(names)
 
-		cats := catSet[mod]
-		sort.Strings(cats)
-		// Only add category children if there's more than one category.
-		if len(cats) > 1 {
-			for _, cat := range cats {
-				mc := modCat{mod, cat}
-				catPath := mod + "/" + cat
-				modNode.Children = append(modNode.Children, TreeNode{
-					Name:   cat,
-					Path:   catPath,
-					Count:  catCount[mc],
-					Active: activeFilter == catPath,
-				})
+		var nodes []TreeNode
+		for _, name := range names {
+			var nodePath string
+			if parentPath == "" {
+				nodePath = name
+			} else {
+				nodePath = parentPath + "/" + name
 			}
+			node := TreeNode{
+				Name:     name,
+				Path:     nodePath,
+				Count:    dirCounts[nodePath],
+				Active:   activeFilter == nodePath,
+				Children: buildNodes(nodePath),
+			}
+			nodes = append(nodes, node)
 		}
-
-		tree = append(tree, modNode)
+		return nodes
 	}
 
+	tree = append(tree, buildNodes("")...)
 	return tree
+}
+
+// resolvePagePath looks up the stored path for a page ID from the SQLite index.
+// Falls back to the flat "pages/{id}.md" path if not found in the index.
+func (h *Handler) resolvePagePath(project, id string) string {
+	results, err := h.search.ByID(project, id)
+	if err == nil && len(results) > 0 && results[0].Path != "" {
+		return results[0].Path
+	}
+	return "pages/" + id + ".md"
 }
 
 // readPageNewest finds the most recently modified version of a page across all branches.
@@ -510,8 +505,8 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine the page path from the id.
-	path := "pages/" + id + ".md"
+	// Determine the page path from the index (supports subdirectories).
+	path := h.resolvePagePath(project, id)
 
 	fm, body, pageBranch, err := readPageNewest(repo, path)
 	if err != nil {
@@ -580,7 +575,7 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := "pages/" + id + ".md"
+	path := h.resolvePagePath(project, id)
 
 	fm, body, _, err := readPageNewest(repo, path)
 	if err != nil {
@@ -735,7 +730,7 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := "pages/" + id + ".md"
+	path := h.resolvePagePath(project, id)
 
 	commits, err := repo.PageHistoryAllBranches(path, 50)
 	if err != nil || len(commits) == 0 {
@@ -796,7 +791,7 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := "pages/" + id + ".md"
+	path := h.resolvePagePath(project, id)
 	data, err := repo.ReadPageAtCommit(hash, path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -875,7 +870,7 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := "pages/" + id + ".md"
+	path := h.resolvePagePath(project, id)
 
 	fromData, _ := repo.ReadPageAtCommit(from, path) // empty if file didn't exist yet
 	toData, _ := repo.ReadPageAtCommit(to, path)     // empty if file was deleted

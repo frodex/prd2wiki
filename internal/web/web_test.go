@@ -146,6 +146,92 @@ func TestViewPageOnNonDefaultBranch(t *testing.T) {
 	}
 }
 
+func TestPathToTree(t *testing.T) {
+	tests := []struct {
+		path     string
+		wantDirs []string
+		wantFile string
+	}{
+		{"pages/DESIGN-003.md", nil, "DESIGN-003.md"},
+		{"pages/docs/research/mechlab.md", []string{"docs", "research"}, "mechlab.md"},
+		{"pages/docs/plans/roadmap.md", []string{"docs", "plans"}, "roadmap.md"},
+		{"pages/core/auth.md", []string{"core"}, "auth.md"},
+	}
+	for _, tt := range tests {
+		dirs, file := pathToTree(tt.path)
+		if file != tt.wantFile {
+			t.Errorf("pathToTree(%q) file = %q, want %q", tt.path, file, tt.wantFile)
+		}
+		if len(dirs) != len(tt.wantDirs) {
+			t.Errorf("pathToTree(%q) dirs = %v, want %v", tt.path, dirs, tt.wantDirs)
+			continue
+		}
+		for i := range dirs {
+			if dirs[i] != tt.wantDirs[i] {
+				t.Errorf("pathToTree(%q) dirs[%d] = %q, want %q", tt.path, i, dirs[i], tt.wantDirs[i])
+			}
+		}
+	}
+}
+
+func TestBuildTreeFromPaths(t *testing.T) {
+	items := []PageListItem{
+		{ID: "flat-1", Path: "pages/flat-1.md"},
+		{ID: "flat-2", Path: "pages/flat-2.md"},
+		{ID: "mechlab", Path: "pages/docs/research/mechlab.md"},
+		{ID: "roadmap", Path: "pages/docs/plans/roadmap.md"},
+		{ID: "auth", Path: "pages/core/auth.md"},
+		{ID: "login", Path: "pages/core/login.md"},
+	}
+
+	tree := buildTree(items, "")
+
+	// First node is always "All" with total count.
+	if tree[0].Name != "All" || tree[0].Count != 6 {
+		t.Errorf("All node: got name=%q count=%d, want name=All count=6", tree[0].Name, tree[0].Count)
+	}
+
+	// Should have "core" and "docs" top-level directories (flat pages don't create nodes).
+	dirNames := map[string]bool{}
+	for _, node := range tree[1:] {
+		dirNames[node.Name] = true
+	}
+	if !dirNames["core"] {
+		t.Error("expected 'core' directory node")
+	}
+	if !dirNames["docs"] {
+		t.Error("expected 'docs' directory node")
+	}
+
+	// "core" should have count 2.
+	for _, node := range tree[1:] {
+		if node.Name == "core" && node.Count != 2 {
+			t.Errorf("core count: got %d, want 2", node.Count)
+		}
+		if node.Name == "docs" {
+			if node.Count != 2 {
+				t.Errorf("docs count: got %d, want 2", node.Count)
+			}
+			// "docs" should have children "plans" and "research".
+			childNames := map[string]bool{}
+			for _, child := range node.Children {
+				childNames[child.Name] = true
+			}
+			if !childNames["research"] || !childNames["plans"] {
+				t.Errorf("docs children: got %v, want research and plans", childNames)
+			}
+		}
+	}
+
+	// Test active filter.
+	tree2 := buildTree(items, "core")
+	for _, node := range tree2[1:] {
+		if node.Name == "core" && !node.Active {
+			t.Error("core should be active when filter is 'core'")
+		}
+	}
+}
+
 func TestStaticFiles(t *testing.T) {
 	_, mux := setupTestHandler(t)
 

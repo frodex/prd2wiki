@@ -181,8 +181,19 @@ func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch stri
 }
 
 // pagePath returns the canonical git path for a page.
-func pagePath(id string) string {
-	return "pages/" + id + ".md"
+// If the frontmatter has Module and/or Category set, the page is stored
+// in a subdirectory: pages/{module}/{category}/{id}.md
+// Flat pages (no module/category) stay at pages/{id}.md.
+func pagePath(fm *schema.Frontmatter) string {
+	parts := []string{"pages"}
+	if fm.Module != "" {
+		parts = append(parts, fm.Module)
+	}
+	if fm.Category != "" {
+		parts = append(parts, fm.Category)
+	}
+	parts = append(parts, fm.ID+".md")
+	return strings.Join(parts, "/")
 }
 
 // commitMessage builds the commit message for a submission.
@@ -221,7 +232,7 @@ func (l *Librarian) submitVerbatim(ctx context.Context, req SubmitRequest) (*Sub
 		req.Frontmatter.Conformance = "valid"
 	}
 
-	path := pagePath(req.Frontmatter.ID)
+	path := pagePath(req.Frontmatter)
 	msg := commitMessage(IntentVerbatim, req.Frontmatter.Title)
 
 	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, req.Body, msg, req.Author); err != nil {
@@ -268,7 +279,7 @@ func (l *Librarian) submitConform(ctx context.Context, req SubmitRequest) (*Subm
 	normalizedBody := NormalizeMarkdown(string(req.Body))
 	req.Frontmatter.Conformance = "valid"
 
-	path := pagePath(req.Frontmatter.ID)
+	path := pagePath(req.Frontmatter)
 	msg := commitMessage(IntentConform, req.Frontmatter.Title)
 
 	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, []byte(normalizedBody), msg, req.Author); err != nil {
@@ -314,7 +325,7 @@ func (l *Librarian) submitIntegrate(ctx context.Context, req SubmitRequest) (*Su
 	normalizedBody := NormalizeMarkdown(string(req.Body))
 	req.Frontmatter.Conformance = "valid"
 
-	path := pagePath(req.Frontmatter.ID)
+	path := pagePath(req.Frontmatter)
 	msg := commitMessage(IntentIntegrate, req.Frontmatter.Title)
 
 	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, []byte(normalizedBody), msg, req.Author); err != nil {
