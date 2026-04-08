@@ -37,6 +37,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/projects/{project}/pages/{id...}", s.updatePage)
 	mux.HandleFunc("DELETE /api/projects/{project}/pages/{id...}", s.deletePage)
 	mux.HandleFunc("GET /api/projects/{project}/pages", s.listPages)
+	mux.HandleFunc("GET /api/projects/{project}/search", s.searchPages)
+	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/references", s.getReferences)
 
 	return mux
 }
