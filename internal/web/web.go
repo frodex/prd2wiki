@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"embed"
+	"fmt"
 	"html/template"
 	"net/http"
 	"strings"
@@ -166,22 +167,9 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 }
 
 // viewPage renders a single wiki page.
-func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
-	id := r.PathValue("id")
-
-	repo, ok := h.repos[project]
-	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
-		return
-	}
-
-	// Determine the page path from the id.
-	path := "pages/" + id + ".md"
-
-	// Try branches in priority order: truth, then any branch where this page exists.
+// readPageAnyBranch tries to read a page from truth first, then all other branches.
+func readPageAnyBranch(repo *wgit.Repo, path string) (*schema.Frontmatter, []byte, error) {
 	branches := []string{"truth", "draft/incoming", "draft/agent", "draft/test"}
-	// Also try all branches from the repo
 	if allBranches, err := repo.ListBranches(); err == nil {
 		for _, b := range allBranches {
 			found := false
@@ -197,17 +185,31 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var fm *schema.Frontmatter
-	var body []byte
-	var readErr error
 	for _, branch := range branches {
-		fm, body, readErr = repo.ReadPageWithMeta(branch, path)
-		if readErr == nil {
-			break
+		fm, body, err := repo.ReadPageWithMeta(branch, path)
+		if err == nil {
+			return fm, body, nil
 		}
 	}
-	if readErr != nil {
-		http.Error(w, "page not found on any branch", http.StatusNotFound)
+	return nil, nil, fmt.Errorf("page not found on any branch")
+}
+
+func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
+	project := r.PathValue("project")
+	id := r.PathValue("id")
+
+	repo, ok := h.repos[project]
+	if !ok {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	// Determine the page path from the id.
+	path := "pages/" + id + ".md"
+
+	fm, body, err := readPageAnyBranch(repo, path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -262,13 +264,10 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 
 	path := "pages/" + id + ".md"
 
-	fm, body, err := repo.ReadPageWithMeta("truth", path)
+	fm, body, err := readPageAnyBranch(repo, path)
 	if err != nil {
-		fm, body, err = repo.ReadPageWithMeta("draft/incoming", path)
-		if err != nil {
-			http.Error(w, "page not found: "+err.Error(), http.StatusNotFound)
-			return
-		}
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
 	}
 
 	ped := PageEditData{
