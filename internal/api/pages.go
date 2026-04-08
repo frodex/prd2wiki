@@ -120,12 +120,23 @@ func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
 
 	id := r.PathValue("id")
 	branch := r.URL.Query().Get("branch")
-	if branch == "" {
-		branch = "truth"
+	path := "pages/" + id + ".md"
+
+	var fm *schema.Frontmatter
+	var body []byte
+	var err error
+
+	if branch != "" {
+		// Specific branch requested
+		fm, body, err = repo.ReadPageWithMeta(branch, path)
+	} else {
+		// Search all branches, newest first
+		branch, err = repo.FindBranchForPage(path)
+		if err == nil {
+			fm, body, err = repo.ReadPageWithMeta(branch, path)
+		}
 	}
 
-	path := "pages/" + id + ".md"
-	fm, body, err := repo.ReadPageWithMeta(branch, path)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			http.Error(w, "page not found", http.StatusNotFound)
