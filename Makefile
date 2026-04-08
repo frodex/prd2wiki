@@ -18,7 +18,10 @@ build-ingest:
 build-keygen:
 	go build -o bin/prd2wiki-keygen ./cmd/prd2wiki-keygen
 
-build-all: build build-mcp build-scan build-ingest build-keygen
+build-chain:
+	go build -o bin/prd2wiki-chain ./cmd/prd2wiki-chain
+
+build-all: build build-mcp build-scan build-ingest build-keygen build-chain
 
 test:
 	go test ./... -v -count=1
