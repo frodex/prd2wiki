@@ -598,3 +598,22 @@ h1 {
 .meta-bar-secondary .meta-item {
     margin-right: 1rem;
 }
+
+.list-action-link {
+    font-size: 0.75rem;
+    color: #888;
+    text-decoration: none;
+    margin-left: 0.5rem;
+}
+.list-action-link:hover {
+    color: #2563eb;
+    text-decoration: underline;
+}
+.status-select {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.3rem;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    cursor: pointer;
+    background: transparent;
+}
