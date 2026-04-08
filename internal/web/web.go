@@ -564,7 +564,7 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 		TrustLevel:   fm.TrustLevel,
 		Creator:      fm.DCCreator,
 		Tags:         fm.Tags,
-		BodyHTML:      template.HTML(htmlBuf.String()),
+		BodyHTML:      template.HTML(sanitizeHTML(htmlBuf.String())),
 		Sources:      fm.Provenance.Sources,
 		Branch:       pageBranch,
 		LastEditBy:   lastEditBy,
@@ -855,7 +855,7 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 		TrustLevel: fm.TrustLevel,
 		Creator:    fm.DCCreator,
 		Tags:       fm.Tags,
-		BodyHTML:   template.HTML(htmlBuf.String()),
+		BodyHTML:   template.HTML(sanitizeHTML(htmlBuf.String())),
 		Sources:    fm.Provenance.Sources,
 	}
 	if !fm.DCCreated.IsZero() {

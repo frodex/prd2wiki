@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 )
@@ -106,13 +107,13 @@ func (s *MCPServer) Serve(r io.Reader, w io.Writer) {
 		msg, err := readMessage(br)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Fprintf(os.Stderr, "mcp: stdin EOF, shutting down\n")
+				slog.Info("mcp: stdin EOF, shutting down")
 				return
 			}
-			fmt.Fprintf(os.Stderr, "mcp: read error: %v\n", err)
+			slog.Error("mcp: read error", "error", err)
 			continue
 		}
-		fmt.Fprintf(os.Stderr, "mcp: received %d bytes: %s\n", len(msg), string(msg))
+		slog.Debug("mcp: received message", "bytes", len(msg), "body", string(msg))
 
 		var req JSONRPCRequest
 		if err := json.Unmarshal(msg, &req); err != nil {
@@ -452,7 +453,7 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) JSONRPCResponse {
 
 func writeResponse(w io.Writer, resp JSONRPCResponse) {
 	data, _ := json.Marshal(resp)
-	fmt.Fprintf(os.Stderr, "mcp: sending %d bytes: %.200s\n", len(data), string(data))
+	slog.Debug("mcp: sending response", "bytes", len(data))
 	msg := fmt.Sprintf("Content-Length: %d\r\n\r\n%s\n", len(data), data)
 	w.Write([]byte(msg))
 	// Flush if possible

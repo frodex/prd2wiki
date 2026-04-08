@@ -4,10 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -44,10 +47,13 @@ func main() {
 	configPath := flag.String("config", "config/prd2wiki.yaml", "path to config file")
 	flag.Parse()
 
+	slog.Info("prd2wiki starting", "config", *configPath)
+
 	// Load config.
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		slog.Error("load config failed", "error", err)
+		os.Exit(1)
 	}
 
 	// Apply defaults.
@@ -63,7 +69,8 @@ func main() {
 
 	// Create data directory if needed.
 	if err := os.MkdirAll(cfg.Data.Dir, 0o755); err != nil {
-		log.Fatalf("create data dir %q: %v", cfg.Data.Dir, err)
+		slog.Error("create data dir failed", "dir", cfg.Data.Dir, "error", err)
+		os.Exit(1)
 	}
 
 	// Open or initialize git bare repos for each project.
@@ -74,11 +81,12 @@ func main() {
 			// Repo doesn't exist yet — initialize it.
 			repo, err = wgit.InitRepo(cfg.Data.Dir, project)
 			if err != nil {
-				log.Fatalf("init repo for project %q: %v", project, err)
+				slog.Error("init repo failed", "project", project, "error", err)
+				os.Exit(1)
 			}
-			log.Printf("initialized new repo for project %q", project)
+			slog.Info("initialized new repo", "project", project)
 		} else {
-			log.Printf("opened existing repo for project %q", project)
+			slog.Info("opened repo", "project", project)
 		}
 		repos[project] = repo
 	}
@@ -87,7 +95,8 @@ func main() {
 	dbPath := fmt.Sprintf("%s/index.db", cfg.Data.Dir)
 	db, err := index.OpenDatabase(dbPath)
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		slog.Error("open database failed", "path", dbPath, "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -97,13 +106,13 @@ func main() {
 		repo := repos[project]
 		branches, err := repo.ListBranches()
 		if err != nil {
-			log.Printf("warning: list branches for %q: %v (skipping rebuild)", project, err)
+			slog.Warn("list branches failed, skipping rebuild", "project", project, "error", err)
 			continue
 		}
 		for _, branch := range branches {
-			log.Printf("rebuilding index for %s/%s", project, branch)
+			slog.Info("rebuilding index", "project", project, "branch", branch)
 			if err := indexer.RebuildFromRepo(project, repo, branch); err != nil {
-				log.Printf("warning: rebuild %s/%s: %v", project, branch, err)
+				slog.Warn("rebuild failed", "project", project, "branch", branch, "error", err)
 			}
 		}
 	}
@@ -137,19 +146,19 @@ func main() {
 	llamaEmb := embedder.NewLlamaCppEmbedder(embCfg)
 	if err := llamaEmb.HealthCheck(context.Background()); err == nil {
 		emb = llamaEmb
-		log.Printf("embedder: connected to LlamaCpp at %s (dims=%d)", embCfg.Endpoint, embCfg.Dimensions)
+		slog.Info("embedder connected", "type", "llama_cpp", "endpoint", embCfg.Endpoint, "dims", embCfg.Dimensions)
 	} else {
 		emb = embedder.NoopEmbedder{}
-		log.Printf("embedder: LlamaCpp not available at %s — using noop (lexical search only)", embCfg.Endpoint)
+		slog.Warn("embedder unavailable, using noop", "endpoint", embCfg.Endpoint, "error", err)
 	}
 	vstore := vectordb.NewStore(emb)
 
 	// Load persisted vector index from disk (avoids re-embedding on restart).
 	vectorPath := filepath.Join(cfg.Data.Dir, "vectors", "pages.json")
 	if err := vstore.LoadFromDisk(vectorPath); err != nil {
-		log.Printf("vector index: no persisted data at %s, will embed on first write", vectorPath)
+		slog.Info("vector index: no persisted data, will embed on first write", "path", vectorPath)
 	} else {
-		log.Printf("vector index: loaded %d entries from disk", vstore.Count())
+		slog.Info("vector index loaded from disk", "entries", vstore.Count(), "path", vectorPath)
 	}
 	// Enable auto-save so every IndexPage/RemovePage persists to disk.
 	vstore.SetPersistPath(vectorPath)
@@ -157,12 +166,13 @@ func main() {
 	// Create embedding profile store.
 	profileStore, err := embedder.NewEmbeddingProfileStore(db)
 	if err != nil {
-		log.Fatalf("create embedding profile store: %v", err)
+		slog.Error("create embedding profile store failed", "error", err)
+		os.Exit(1)
 	}
 	profile := embedder.ProfileFromConfig(embCfg)
 	if existing, err := profileStore.Get(context.Background(), profile.ProfileID); err != nil || existing == nil {
 		if regErr := profileStore.Register(context.Background(), profile); regErr != nil {
-			log.Printf("warning: register embedding profile: %v", regErr)
+			slog.Warn("register embedding profile failed", "error", regErr)
 		}
 	}
 	_ = profileStore // available for future use
@@ -175,7 +185,7 @@ func main() {
 
 	// Rebuild vector index only if nothing was loaded from disk.
 	if vstore.Count() == 0 {
-		log.Printf("vector index: empty after disk load, rebuilding from git...")
+		slog.Info("vector index empty, rebuilding from git")
 		for _, project := range cfg.Projects {
 			lib := librarians[project]
 			repo := repos[project]
@@ -184,35 +194,58 @@ func main() {
 				ctx := context.Background()
 				n, err := lib.RebuildVectorIndex(ctx, project, branch)
 				if err != nil {
-					log.Printf("warning: vector rebuild %s/%s: %v", project, branch, err)
+					slog.Warn("vector rebuild failed", "project", project, "branch", branch, "error", err)
 				} else if n > 0 {
-					log.Printf("vector index: embedded %d pages from %s/%s", n, project, branch)
+					slog.Info("vector index rebuilt", "project", project, "branch", branch, "pages", n)
 				}
 			}
 		}
 		if vstore.Count() > 0 {
-			log.Printf("vector index: rebuild complete, %d entries persisted to disk", vstore.Count())
+			slog.Info("vector index rebuild complete", "entries", vstore.Count())
 		}
 	} else {
-		log.Printf("vector index: %d entries loaded, skipping rebuild", vstore.Count())
+		slog.Info("vector index loaded, skipping rebuild", "entries", vstore.Count())
 	}
 
 	// Create API server and web handler.
-	srv := api.NewServer(cfg.Server.Addr, repos, db, librarians)
+	apiSrv := api.NewServer(cfg.Server.Addr, repos, db, librarians)
 	webHandler := web.NewHandler(repos, db, librarians)
 
 	// Compose both into a single root mux.
 	mux := http.NewServeMux()
-	mux.Handle("/api/", srv.Handler())
+	mux.Handle("/api/", apiSrv.Handler())
 	webHandler.Register(mux)
 
-	// Start server.
-	log.Printf("prd2wiki listening on %s", cfg.Server.Addr)
-	log.Printf("  Web UI: http://localhost%s/", cfg.Server.Addr)
-	log.Printf("  API:    http://localhost%s/api/", cfg.Server.Addr)
-	if err := http.ListenAndServe(cfg.Server.Addr, mux); err != nil {
-		log.Fatalf("server: %v", err)
+	// Create HTTP server with timeouts.
+	httpSrv := &http.Server{
+		Addr:         cfg.Server.Addr,
+		Handler:      mux,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
+
+	// Graceful shutdown on SIGINT/SIGTERM.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		<-ctx.Done()
+		slog.Info("shutting down gracefully...")
+		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpSrv.Shutdown(shutCtx); err != nil {
+			slog.Error("shutdown error", "error", err)
+		}
+	}()
+
+	slog.Info("prd2wiki listening", "addr", cfg.Server.Addr)
+	slog.Info("endpoints ready", "web", "http://localhost"+cfg.Server.Addr+"/", "api", "http://localhost"+cfg.Server.Addr+"/api/")
+	if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
+		slog.Error("server failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("server stopped cleanly")
 }
 
 func runSteward(args []string) {
