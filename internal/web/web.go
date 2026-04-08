@@ -38,6 +38,7 @@ type PageListItem struct {
 	Path         string
 	LastEditBy   string
 	LastEditDate string
+	Score        string // similarity score for search results
 }
 
 // PageViewData holds data for the page view template.
@@ -437,6 +438,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 							items = append(items, PageListItem{
 								ID: pr.ID, Title: pr.Title, Type: pr.Type,
 								Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
+								Score: fmt.Sprintf("%.0f%%", vr.Similarity*100),
 							})
 						}
 					}

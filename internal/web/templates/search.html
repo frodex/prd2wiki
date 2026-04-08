@@ -11,18 +11,25 @@
     <div class="search-filters">
         <select name="type">
             <option value="">All types</option>
+            <option value="requirement" {{if eq $s.Type "requirement"}}selected{{end}}>requirement</option>
             <option value="concept" {{if eq $s.Type "concept"}}selected{{end}}>concept</option>
-            <option value="guide" {{if eq $s.Type "guide"}}selected{{end}}>guide</option>
+            <option value="task" {{if eq $s.Type "task"}}selected{{end}}>task</option>
             <option value="reference" {{if eq $s.Type "reference"}}selected{{end}}>reference</option>
-            <option value="tutorial" {{if eq $s.Type "tutorial"}}selected{{end}}>tutorial</option>
+            <option value="decision" {{if eq $s.Type "decision"}}selected{{end}}>decision</option>
+            <option value="source" {{if eq $s.Type "source"}}selected{{end}}>source</option>
+            <option value="config" {{if eq $s.Type "config"}}selected{{end}}>config</option>
         </select>
         <select name="status">
             <option value="">All statuses</option>
             <option value="draft" {{if eq $s.Status "draft"}}selected{{end}}>draft</option>
             <option value="review" {{if eq $s.Status "review"}}selected{{end}}>review</option>
-            <option value="published" {{if eq $s.Status "published"}}selected{{end}}>published</option>
+            <option value="approved" {{if eq $s.Status "approved"}}selected{{end}}>approved</option>
+            <option value="rejected" {{if eq $s.Status "rejected"}}selected{{end}}>rejected</option>
+            <option value="active" {{if eq $s.Status "active"}}selected{{end}}>active</option>
             <option value="contested" {{if eq $s.Status "contested"}}selected{{end}}>contested</option>
             <option value="stale" {{if eq $s.Status "stale"}}selected{{end}}>stale</option>
+            <option value="superseded" {{if eq $s.Status "superseded"}}selected{{end}}>superseded</option>
+            <option value="deprecated" {{if eq $s.Status "deprecated"}}selected{{end}}>deprecated</option>
         </select>
         <input type="text" name="tag" placeholder="Tag filter" value="{{$s.Tag}}" class="search-tag-input">
     </div>
@@ -35,21 +42,24 @@
     <table class="page-table">
         <thead>
             <tr>
-                <th>ID</th>
                 <th>Title</th>
                 <th>Type</th>
                 <th>Status</th>
                 <th>Trust</th>
+                {{if $s.Query}}<th>Relevance</th>{{end}}
             </tr>
         </thead>
         <tbody>
             {{range $s.Results}}
             <tr>
-                <td><a href="/projects/{{$.Project}}/pages/{{.ID}}">{{.ID}}</a></td>
-                <td>{{.Title}}</td>
+                <td>
+                    <a href="/projects/{{$.Project}}/pages/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
+                    <span class="page-id-annotation">{{.ID}}</span>
+                </td>
                 <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
                 <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
                 <td>L{{.TrustLevel}}</td>
+                {{if $s.Query}}<td class="score-cell">{{.Score}}</td>{{end}}
             </tr>
             {{end}}
         </tbody>
