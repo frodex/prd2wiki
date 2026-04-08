@@ -12,6 +12,7 @@ embedder:
 
 projects:
   - default
+  - battletech
 
 logging:
   level: "info"

@@ -93,11 +93,9 @@ func New(cfg Config) (*App, error) {
 		return nil, fmt.Errorf("open database %q: %w", dbPath, err)
 	}
 
-	// Rebuild index from repos on startup (parallel via errgroup).
+	// Rebuild index from repos on startup (sequential — SQLite only allows one writer).
 	indexer := index.NewIndexer(db)
-	g, _ := errgroup.WithContext(context.Background())
 	for _, project := range cfg.Projects {
-		project := project // capture
 		repo := repos[project]
 		branches, err := repo.ListBranches()
 		if err != nil {
@@ -105,15 +103,11 @@ func New(cfg Config) (*App, error) {
 			continue
 		}
 		for _, branch := range branches {
-			branch := branch
-			g.Go(func() error {
-				slog.Info("rebuilding index", "project", project, "branch", branch)
-				return indexer.RebuildFromRepo(project, repo, branch)
-			})
+			slog.Info("rebuilding index", "project", project, "branch", branch)
+			if err := indexer.RebuildFromRepo(project, repo, branch); err != nil {
+				slog.Warn("index rebuild error", "project", project, "branch", branch, "error", err)
+			}
 		}
-	}
-	if err := g.Wait(); err != nil {
-		slog.Warn("index rebuild had errors", "error", err)
 	}
 
 	// Apply embedder config defaults.
