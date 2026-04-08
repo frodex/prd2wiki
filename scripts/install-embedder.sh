@@ -32,7 +32,7 @@ LLAMA_BIN="${BIN_DIR}/llama-server"
 
 HF_MODEL_URL="https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/${MODEL_FILENAME}"
 
-LLAMA_CPP_GITHUB_API="https://api.github.com/repos/ggerganov/llama.cpp/releases/latest"
+LLAMA_CPP_GITHUB_API="https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -65,9 +65,8 @@ detect_platform() {
         *)        die "Unsupported architecture: ${arch}. Supported: x86_64, aarch64." ;;
     esac
 
-    # llama.cpp release asset pattern: llama-<version>-bin-ubuntu-x64.zip
-    # or llama-<version>-bin-ubuntu-arm64.zip
-    LLAMA_ASSET_PATTERN="bin-ubuntu-${LLAMA_ARCH}.zip"
+    # llama.cpp release asset pattern: llama-<version>-bin-ubuntu-x64.tar.gz
+    LLAMA_ASSET_PATTERN="bin-ubuntu-${LLAMA_ARCH}.tar.gz"
     log "Platform: Linux/${arch} → asset pattern: *${LLAMA_ASSET_PATTERN}"
 }
 
@@ -178,10 +177,12 @@ Wants=network.target
 Type=simple
 Restart=on-failure
 RestartSec=5
+Environment=LD_LIBRARY_PATH=${BIN_DIR}
 ExecStart=${LLAMA_BIN} \\
     -m ${MODEL_PATH} \\
     --port ${PORT} \\
-    --embedding \\
+    --embeddings \\
+    --pooling mean \\
     --threads \${PRDWIKI_EMBEDDER_THREADS:-$(nproc)}
 
 # Limit blast radius
@@ -201,7 +202,7 @@ EOF
 do_install() {
     require_root
     require_cmd curl
-    require_cmd unzip
+    require_cmd tar
     require_cmd systemctl
 
     detect_platform
@@ -212,31 +213,32 @@ do_install() {
     mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
 
     # --- llama-server binary ------------------------------------------------
-    local tmp_zip
-    tmp_zip="$(mktemp --suffix=.zip)"
-    trap 'rm -f "${tmp_zip}"' EXIT
+    local tmp_archive
+    tmp_archive="$(mktemp --suffix=.tar.gz)"
+    trap 'rm -f "${tmp_archive}"' EXIT
 
-    download "${LLAMA_DOWNLOAD_URL}" "${tmp_zip}" "llama.cpp release archive"
+    download "${LLAMA_DOWNLOAD_URL}" "${tmp_archive}" "llama.cpp release archive"
 
     log "Extracting llama-server from archive..."
-    # The archive contains llama-server (or llama-server.exe on Windows).
-    # Try both the root and a subdirectory.
-    if unzip -p "${tmp_zip}" '*/llama-server' > "${LLAMA_BIN}" 2>/dev/null \
-       || unzip -p "${tmp_zip}" 'llama-server'  > "${LLAMA_BIN}" 2>/dev/null; then
-        chmod 755 "${LLAMA_BIN}"
-        ok "llama-server installed → ${LLAMA_BIN}"
-    else
-        # Fallback: extract everything and find the binary
-        local tmp_dir
-        tmp_dir="$(mktemp -d)"
-        unzip -q "${tmp_zip}" -d "${tmp_dir}"
-        local found
-        found="$(find "${tmp_dir}" -type f -name 'llama-server' | head -1)"
-        [[ -n "${found}" ]] || die "llama-server binary not found in release archive."
-        install -m 755 "${found}" "${LLAMA_BIN}"
-        rm -rf "${tmp_dir}"
-        ok "llama-server installed → ${LLAMA_BIN}"
-    fi
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    tar -xzf "${tmp_archive}" -C "${tmp_dir}"
+
+    local found
+    found="$(find "${tmp_dir}" -type f -name 'llama-server' | head -1)"
+    [[ -n "${found}" ]] || die "llama-server binary not found in release archive."
+
+    install -m 755 "${found}" "${LLAMA_BIN}"
+
+    # Copy ALL shared libraries from the archive — llama.cpp bundles many
+    local lib_count=0
+    while IFS= read -r lib; do
+        install -m 644 "${lib}" "${BIN_DIR}/"
+        lib_count=$((lib_count + 1))
+    done < <(find "${tmp_dir}" -name '*.so' -o -name '*.so.*' 2>/dev/null || true)
+
+    rm -rf "${tmp_dir}"
+    ok "llama-server installed → ${LLAMA_BIN} (${lib_count} shared libs)"
 
     # --- model --------------------------------------------------------------
     if [[ -f "${MODEL_PATH}" ]]; then
