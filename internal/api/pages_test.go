@@ -8,8 +8,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
+	"github.com/frodex/prd2wiki/internal/librarian"
+	"github.com/frodex/prd2wiki/internal/vectordb"
+	"github.com/frodex/prd2wiki/internal/vocabulary"
 )
 
 func setupTestServer(t *testing.T) *Server {
@@ -34,7 +38,14 @@ func setupTestServer(t *testing.T) *Server {
 		"test-project": repo,
 	}
 
-	return NewServer(":0", repos, db)
+	indexer := index.NewIndexer(db)
+	emb := embedder.NewNoopEmbedder(768)
+	vstore := vectordb.NewStore(emb)
+	vocab := vocabulary.NewStore(db)
+	lib := librarian.New(repo, indexer, vstore, vocab)
+	librarians := map[string]*librarian.Librarian{"test-project": lib}
+
+	return NewServer(":0", repos, db, librarians)
 }
 
 func TestCreateAndGetPage(t *testing.T) {
@@ -95,8 +106,10 @@ func TestCreatePageValidationError(t *testing.T) {
 	handler := srv.Handler()
 
 	// POST with missing required fields (no id, no title, no type).
+	// Use conform intent so the librarian blocks on validation errors.
 	body := CreatePageRequest{
-		Body: "some body",
+		Body:   "some body",
+		Intent: "conform",
 	}
 	bodyJSON, _ := json.Marshal(body)
 
@@ -229,5 +242,40 @@ func TestProjectNotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for unknown project, got %d", rec.Code)
+	}
+}
+
+func TestCreatePageWithIntents(t *testing.T) {
+	srv := setupTestServer(t)
+
+	// Test conform intent normalizes tags.
+	body := map[string]interface{}{
+		"id":     "INT-001",
+		"title":  "Intent Test",
+		"type":   "concept",
+		"tags":   []string{"AUTH", "Security"},
+		"body":   "# Content",
+		"intent": "conform",
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest("POST", "/api/projects/test-project/pages", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("conform POST status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	// Read back and verify tags are lowercase.
+	req = httptest.NewRequest("GET", "/api/projects/test-project/pages/INT-001?branch=draft/incoming", nil)
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	tags := resp["tags"].([]interface{})
+	if tags[0].(string) != "auth" {
+		t.Errorf("conform should normalize tags to lowercase, got %v", tags)
 	}
 }

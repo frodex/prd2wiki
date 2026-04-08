@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/schema"
 )
 
@@ -33,7 +34,8 @@ func (s *Server) updatePage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate bool) {
 	project := r.PathValue("project")
-	repo, ok := s.repos[project]
+
+	lib, ok := s.librarians[project]
 	if !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
@@ -56,6 +58,11 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 		req.Author = "anonymous@prd2wiki"
 	}
 
+	intent := req.Intent
+	if intent == "" {
+		intent = librarian.IntentVerbatim
+	}
+
 	// Build frontmatter.
 	fm := &schema.Frontmatter{
 		ID:        req.ID,
@@ -67,51 +74,39 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 		DCCreated: schema.Date{Time: time.Now().UTC()},
 	}
 
-	// Validate schema.
-	issues := schema.Validate(fm)
-	if schema.HasErrors(issues) {
+	result, err := lib.Submit(r.Context(), librarian.SubmitRequest{
+		Project:     project,
+		Branch:      req.Branch,
+		Frontmatter: fm,
+		Body:        []byte(req.Body),
+		Intent:      intent,
+		Author:      req.Author,
+	})
+
+	if err != nil {
+		http.Error(w, "submit failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !result.Saved {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"valid":  false,
-			"issues": issues,
+			"issues": result.Issues,
 		})
 		return
-	}
-
-	// Write page to git.
-	path := "pages/" + req.ID + ".md"
-	message := "create " + req.ID
-	if !isCreate {
-		message = "update " + req.ID
-	}
-	if err := repo.WritePageWithMeta(req.Branch, path, fm, []byte(req.Body), message, req.Author); err != nil {
-		http.Error(w, "write page: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Update index.
-	if err := s.indexer.IndexPage(project, req.Branch, path, fm, []byte(req.Body)); err != nil {
-		http.Error(w, "index page: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Collect warnings only.
-	var warnings []schema.Issue
-	for _, iss := range issues {
-		if iss.Severity != schema.SeverityError {
-			warnings = append(warnings, iss)
-		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":     fm.ID,
-		"title":  fm.Title,
-		"status": fm.Status,
-		"path":   path,
-		"issues": warnings,
+		"id":       fm.ID,
+		"title":    fm.Title,
+		"status":   fm.Status,
+		"path":     result.Path,
+		"issues":   result.Issues,
+		"warnings": result.Warnings,
 	})
 }
 

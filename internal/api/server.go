@@ -6,25 +6,28 @@ import (
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
+	"github.com/frodex/prd2wiki/internal/librarian"
 )
 
 // Server holds application state and serves the REST API.
 type Server struct {
-	addr    string
-	repos   map[string]*wgit.Repo
-	db      *sql.DB
-	indexer *index.Indexer
-	search  *index.Searcher
+	addr       string
+	repos      map[string]*wgit.Repo
+	db         *sql.DB
+	indexer    *index.Indexer
+	search     *index.Searcher
+	librarians map[string]*librarian.Librarian
 }
 
-// NewServer creates a Server with the given address, repos, and database.
-func NewServer(addr string, repos map[string]*wgit.Repo, db *sql.DB) *Server {
+// NewServer creates a Server with the given address, repos, database, and librarians.
+func NewServer(addr string, repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian) *Server {
 	return &Server{
-		addr:    addr,
-		repos:   repos,
-		db:      db,
-		indexer: index.NewIndexer(db),
-		search:  index.NewSearcher(db),
+		addr:       addr,
+		repos:      repos,
+		db:         db,
+		indexer:    index.NewIndexer(db),
+		search:     index.NewSearcher(db),
+		librarians: librarians,
 	}
 }
 

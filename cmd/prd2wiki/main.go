@@ -9,8 +9,12 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/frodex/prd2wiki/internal/api"
+	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
+	"github.com/frodex/prd2wiki/internal/librarian"
+	"github.com/frodex/prd2wiki/internal/vectordb"
+	"github.com/frodex/prd2wiki/internal/vocabulary"
 )
 
 // Config holds the application configuration loaded from YAML.
@@ -92,8 +96,18 @@ func main() {
 		}
 	}
 
+	// Create embedder, vector store, and librarians.
+	emb := embedder.NewNoopEmbedder(768)
+	vstore := vectordb.NewStore(emb)
+
+	librarians := make(map[string]*librarian.Librarian)
+	for _, project := range cfg.Projects {
+		vocab := vocabulary.NewStore(db)
+		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab)
+	}
+
 	// Start the API server.
-	srv := api.NewServer(cfg.Server.Addr, repos, db)
+	srv := api.NewServer(cfg.Server.Addr, repos, db, librarians)
 	log.Printf("prd2wiki listening on %s", cfg.Server.Addr)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server: %v", err)
