@@ -16,6 +16,7 @@ type PageResult struct {
 	TrustLevel int    `json:"trust_level"`
 	Tags       string `json:"tags"`
 	Module     string `json:"module"`
+	Category   string `json:"category"`
 }
 
 // Searcher queries the SQLite index for pages.
@@ -39,7 +40,7 @@ func (s *Searcher) query(sqlStr string, args ...interface{}) ([]PageResult, erro
 	var results []PageResult
 	for rows.Next() {
 		var r PageResult
-		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
 		results = append(results, r)
@@ -50,7 +51,7 @@ func (s *Searcher) query(sqlStr string, args ...interface{}) ([]PageResult, erro
 	return results, nil
 }
 
-const selectPages = `SELECT pages.id, pages.title, pages.type, pages.status, pages.path, pages.project, pages.trust_level, COALESCE(pages.tags, ''), COALESCE(pages.module, '') FROM pages`
+const selectPages = `SELECT pages.id, pages.title, pages.type, pages.status, pages.path, pages.project, pages.trust_level, COALESCE(pages.tags, ''), COALESCE(pages.module, ''), COALESCE(pages.category, '') FROM pages`
 
 // ListAll returns all pages for a given project.
 func (s *Searcher) ListAll(project string) ([]PageResult, error) {

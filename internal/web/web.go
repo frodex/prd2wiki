@@ -46,6 +46,7 @@ type PageListItem struct {
 	TrustLevel   int
 	Path         string
 	Module       string
+	Category     string
 	LastEditBy   string
 	LastEditDate string
 	Score        string // similarity score for search results
@@ -55,6 +56,22 @@ type PageListItem struct {
 type ModuleGroup struct {
 	Module string
 	Items  []PageListItem
+}
+
+// TreeNode represents a node in the sidebar navigation tree.
+type TreeNode struct {
+	Name     string
+	Path     string // filter path: "docs/plans"
+	Children []TreeNode
+	Count    int  // number of pages in this branch
+	Active   bool // currently selected
+}
+
+// PageListData holds tree + grouped items for the page list template.
+type PageListData struct {
+	Tree       []TreeNode
+	Groups     []ModuleGroup
+	TreeFilter string
 }
 
 // PageViewData holds data for the page view template.
@@ -254,6 +271,7 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 // listPages renders the page listing for a project.
 func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
+	treeFilter := r.URL.Query().Get("tree")
 
 	results, err := h.search.ListAll(project)
 	if err != nil {
@@ -263,9 +281,9 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 
 	repo := h.repos[project]
 
-	items := make([]PageListItem, len(results))
+	allItems := make([]PageListItem, len(results))
 	for i, pr := range results {
-		items[i] = PageListItem{
+		allItems[i] = PageListItem{
 			ID:         pr.ID,
 			Title:      pr.Title,
 			Type:       pr.Type,
@@ -273,24 +291,60 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 			TrustLevel: pr.TrustLevel,
 			Path:       pr.Path,
 			Module:     pr.Module,
+			Category:   pr.Category,
 		}
 		if repo != nil {
 			commits, _ := repo.PageHistoryAllBranches(pr.Path, 1)
 			if len(commits) > 0 {
-				items[i].LastEditBy = commits[0].Author
-				items[i].LastEditDate = commits[0].Date.Format("2006-01-02 15:04")
+				allItems[i].LastEditBy = commits[0].Author
+				allItems[i].LastEditDate = commits[0].Date.Format("2006-01-02 15:04")
 			}
 		}
 	}
 
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].LastEditDate > items[j].LastEditDate
+	// Build tree from all items (before filtering).
+	tree := buildTree(allItems, treeFilter)
+
+	// Filter items by tree selection.
+	var filtered []PageListItem
+	if treeFilter == "" {
+		filtered = allItems
+	} else {
+		parts := strings.SplitN(treeFilter, "/", 2)
+		filterMod := parts[0]
+		filterCat := ""
+		if len(parts) > 1 {
+			filterCat = parts[1]
+		}
+		for _, item := range allItems {
+			mod := item.Module
+			if mod == "" {
+				mod = "ungrouped"
+			}
+			if mod != filterMod {
+				continue
+			}
+			if filterCat != "" {
+				cat := item.Category
+				if cat == "" {
+					cat = "uncategorized"
+				}
+				if cat != filterCat {
+					continue
+				}
+			}
+			filtered = append(filtered, item)
+		}
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].LastEditDate > filtered[j].LastEditDate
 	})
 
-	// Group items by module.
+	// Group filtered items by module.
 	moduleOrder := []string{}
 	moduleMap := make(map[string][]PageListItem)
-	for _, item := range items {
+	for _, item := range filtered {
 		mod := item.Module
 		if mod == "" {
 			mod = "Other"
@@ -305,10 +359,16 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 		groups[i] = ModuleGroup{Module: mod, Items: moduleMap[mod]}
 	}
 
+	pld := PageListData{
+		Tree:       tree,
+		Groups:     groups,
+		TreeFilter: treeFilter,
+	}
+
 	data := PageData{
 		Project:  project,
 		Title:    project + " — Pages",
-		Content:  groups,
+		Content:  pld,
 		Projects: h.projects(),
 	}
 
@@ -316,6 +376,87 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// buildTree constructs a module/category tree from page items.
+func buildTree(items []PageListItem, activeFilter string) []TreeNode {
+	// Count pages per module and per module/category.
+	type modCat struct {
+		mod string
+		cat string
+	}
+	modCount := make(map[string]int)
+	catCount := make(map[modCat]int)
+	catSet := make(map[string][]string) // module -> ordered categories
+
+	for _, item := range items {
+		mod := item.Module
+		if mod == "" {
+			mod = "ungrouped"
+		}
+		cat := item.Category
+		if cat == "" {
+			cat = "uncategorized"
+		}
+		modCount[mod]++
+		mc := modCat{mod, cat}
+		if catCount[mc] == 0 {
+			catSet[mod] = append(catSet[mod], cat)
+		}
+		catCount[mc]++
+	}
+
+	// Sort module names, but put "ungrouped" last.
+	modNames := make([]string, 0, len(modCount))
+	for m := range modCount {
+		modNames = append(modNames, m)
+	}
+	sort.Slice(modNames, func(i, j int) bool {
+		if modNames[i] == "ungrouped" {
+			return false
+		}
+		if modNames[j] == "ungrouped" {
+			return true
+		}
+		return modNames[i] < modNames[j]
+	})
+
+	// Build tree: "All" root + module nodes with category children.
+	tree := []TreeNode{{
+		Name:   "All",
+		Path:   "",
+		Count:  len(items),
+		Active: activeFilter == "",
+	}}
+
+	for _, mod := range modNames {
+		modNode := TreeNode{
+			Name:   mod,
+			Path:   mod,
+			Count:  modCount[mod],
+			Active: activeFilter == mod,
+		}
+
+		cats := catSet[mod]
+		sort.Strings(cats)
+		// Only add category children if there's more than one category.
+		if len(cats) > 1 {
+			for _, cat := range cats {
+				mc := modCat{mod, cat}
+				catPath := mod + "/" + cat
+				modNode.Children = append(modNode.Children, TreeNode{
+					Name:   cat,
+					Path:   catPath,
+					Count:  catCount[mc],
+					Active: activeFilter == catPath,
+				})
+			}
+		}
+
+		tree = append(tree, modNode)
+	}
+
+	return tree
 }
 
 // readPageNewest finds the most recently modified version of a page across all branches.

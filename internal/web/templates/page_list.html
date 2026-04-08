@@ -1,50 +1,78 @@
+{{define "tree"}}
+<ul class="tree-list">
+    {{range .}}
+    <li class="tree-node {{if .Active}}tree-active{{end}}">
+        <a href="?tree={{.Path}}" class="tree-link">
+            {{if .Children}}&#9660;{{else}}&#9656;{{end}} {{.Name}}
+            <span class="tree-count">({{.Count}})</span>
+        </a>
+        {{if .Children}}
+        {{template "tree" .Children}}
+        {{end}}
+    </li>
+    {{end}}
+</ul>
+{{end}}
+
 {{define "content"}}
 <h1>{{.Project}} — Pages</h1>
-{{range .Content}}
-<h2 class="module-heading">{{.Module}}</h2>
-<table class="page-table sortable" id="page-table">
-    <thead>
-        <tr>
-            <th data-sort="text" class="sortable-th">Title <span class="sort-arrow"></span></th>
-            <th data-sort="text" class="sortable-th">Type <span class="sort-arrow"></span></th>
-            <th data-sort="text" class="sortable-th">Status <span class="sort-arrow"></span></th>
-            <th data-sort="num" class="sortable-th">Trust <span class="sort-arrow"></span></th>
-            <th data-sort="date" class="sortable-th">Last Edit <span class="sort-arrow"></span></th>
-        </tr>
-    </thead>
-    <tbody>
-        {{range .Items}}
-        <tr>
-            <td>
-                <a href="/projects/{{$.Project}}/pages/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
-                <span class="page-id-annotation">{{.ID}}</span>
-                {{if .Module}}<span class="badge badge-module">{{.Module}}</span>{{end}}
-                <a href="/projects/{{$.Project}}/pages/{{.ID}}/history" class="list-action-link">history</a>
-            </td>
-            <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
-            <td>
-                <select class="status-select" data-project="{{$.Project}}" data-id="{{.ID}}" onchange="changeStatus(this)">
-                    <option value="draft" {{if eq .Status "draft"}}selected{{end}}>draft</option>
-                    <option value="review" {{if eq .Status "review"}}selected{{end}}>review</option>
-                    <option value="approved" {{if eq .Status "approved"}}selected{{end}}>approved</option>
-                    <option value="rejected" {{if eq .Status "rejected"}}selected{{end}}>rejected</option>
-                    <option value="active" {{if eq .Status "active"}}selected{{end}}>active</option>
-                    <option value="contested" {{if eq .Status "contested"}}selected{{end}}>contested</option>
-                    <option value="deprecated" {{if eq .Status "deprecated"}}selected{{end}}>deprecated</option>
-                </select>
-            </td>
-            <td>L{{.TrustLevel}}</td>
-            <td class="last-edit-cell" data-sort-value="{{.LastEditDate}}">
-                {{if .LastEditBy}}<span class="last-edit-by">{{.LastEditBy}}</span>{{end}}
-                {{if .LastEditDate}}<span class="last-edit-date">{{.LastEditDate}}</span>{{end}}
-            </td>
-        </tr>
+<div class="page-layout">
+    <aside class="tree-sidebar">
+        {{template "tree" .Content.Tree}}
+    </aside>
+    <main class="page-content">
+        {{if .Content.TreeFilter}}
+        <p class="tree-filter-label">Filtered by: <strong>{{.Content.TreeFilter}}</strong>
+            <a href="?tree=" class="tree-clear-filter">clear</a>
+        </p>
         {{end}}
-    </tbody>
-</table>
-{{else}}
-<p>No pages yet. <a href="/projects/{{.Project}}/pages/new">Create one</a>.</p>
-{{end}}
+        {{range .Content.Groups}}
+        <h2 class="module-heading">{{.Module}}</h2>
+        <table class="page-table sortable" id="page-table">
+            <thead>
+                <tr>
+                    <th data-sort="text" class="sortable-th">Title <span class="sort-arrow"></span></th>
+                    <th data-sort="text" class="sortable-th">Type <span class="sort-arrow"></span></th>
+                    <th data-sort="text" class="sortable-th">Status <span class="sort-arrow"></span></th>
+                    <th data-sort="num" class="sortable-th">Trust <span class="sort-arrow"></span></th>
+                    <th data-sort="date" class="sortable-th">Last Edit <span class="sort-arrow"></span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Items}}
+                <tr>
+                    <td>
+                        <a href="/projects/{{$.Project}}/pages/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
+                        <span class="page-id-annotation">{{.ID}}</span>
+                        {{if .Module}}<span class="badge badge-module">{{.Module}}</span>{{end}}
+                        <a href="/projects/{{$.Project}}/pages/{{.ID}}/history" class="list-action-link">history</a>
+                    </td>
+                    <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
+                    <td>
+                        <select class="status-select" data-project="{{$.Project}}" data-id="{{.ID}}" onchange="changeStatus(this)">
+                            <option value="draft" {{if eq .Status "draft"}}selected{{end}}>draft</option>
+                            <option value="review" {{if eq .Status "review"}}selected{{end}}>review</option>
+                            <option value="approved" {{if eq .Status "approved"}}selected{{end}}>approved</option>
+                            <option value="rejected" {{if eq .Status "rejected"}}selected{{end}}>rejected</option>
+                            <option value="active" {{if eq .Status "active"}}selected{{end}}>active</option>
+                            <option value="contested" {{if eq .Status "contested"}}selected{{end}}>contested</option>
+                            <option value="deprecated" {{if eq .Status "deprecated"}}selected{{end}}>deprecated</option>
+                        </select>
+                    </td>
+                    <td>L{{.TrustLevel}}</td>
+                    <td class="last-edit-cell" data-sort-value="{{.LastEditDate}}">
+                        {{if .LastEditBy}}<span class="last-edit-by">{{.LastEditBy}}</span>{{end}}
+                        {{if .LastEditDate}}<span class="last-edit-date">{{.LastEditDate}}</span>{{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p>No pages yet. <a href="/projects/{{.Project}}/pages/new">Create one</a>.</p>
+        {{end}}
+    </main>
+</div>
 <script>
 async function changeStatus(select) {
     const project = select.dataset.project;
