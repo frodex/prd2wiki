@@ -20,7 +20,7 @@
             <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
             <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
             <td>L{{.TrustLevel}}</td>
-            <td class="last-edit-cell">
+            <td class="last-edit-cell" data-sort-value="{{.LastEditDate}}">
                 {{if .LastEditBy}}<span class="last-edit-by">{{.LastEditBy}}</span>{{end}}
                 {{if .LastEditDate}}<span class="last-edit-date">{{.LastEditDate}}</span>{{end}}
             </td>
@@ -55,8 +55,10 @@
             const sortType = th.dataset.sort;
 
             rows.sort((a, b) => {
-                const aCell = a.cells[colIdx]?.textContent.trim() || '';
-                const bCell = b.cells[colIdx]?.textContent.trim() || '';
+                const aEl = a.cells[colIdx];
+                const bEl = b.cells[colIdx];
+                const aCell = aEl?.dataset.sortValue || aEl?.textContent.trim() || '';
+                const bCell = bEl?.dataset.sortValue || bEl?.textContent.trim() || '';
                 let cmp = 0;
                 if (sortType === 'num') {
                     cmp = parseFloat(aCell.replace(/[^\d.-]/g, '') || '0') - parseFloat(bCell.replace(/[^\d.-]/g, '') || '0');
