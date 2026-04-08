@@ -66,6 +66,9 @@ type Frontmatter struct {
 	SourceMeta   *SourceMeta `yaml:"source_meta,omitempty"`
 	Access       *Access     `yaml:"access,omitempty"`
 	ContestedBy  string     `yaml:"contested_by,omitempty"`
+	Module       string     `yaml:"module,omitempty"`
+	Category     string     `yaml:"category,omitempty"`
+	ProjectRef   string     `yaml:"project_ref,omitempty"`
 }
 
 // Provenance captures the origin and contributor history of a page.

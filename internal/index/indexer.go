@@ -41,8 +41,8 @@ func (ix *Indexer) IndexPage(project, branch, path string, fm *schema.Frontmatte
 			trust_level, conformance,
 			dc_creator, dc_created, dc_modified,
 			supersedes, superseded_by, contested_by,
-			tags, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			tags, module, category, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET
 			title        = excluded.title,
 			type         = excluded.type,
@@ -59,13 +59,15 @@ func (ix *Indexer) IndexPage(project, branch, path string, fm *schema.Frontmatte
 			superseded_by = excluded.superseded_by,
 			contested_by = excluded.contested_by,
 			tags         = excluded.tags,
+			module       = excluded.module,
+			category     = excluded.category,
 			updated_at   = CURRENT_TIMESTAMP
 	`,
 		fm.ID, fm.Title, fm.Type, fm.Status, path, project, branch,
 		fm.TrustLevel, fm.Conformance,
 		fm.DCCreator, dcCreated, dcModified,
 		fm.Supersedes, fm.SupersededBy, fm.ContestedBy,
-		tags,
+		tags, fm.Module, fm.Category,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert page %q: %w", fm.ID, err)

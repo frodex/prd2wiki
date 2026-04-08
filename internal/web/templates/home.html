@@ -1,0 +1,17 @@
+{{define "content"}}
+<h1>Projects</h1>
+<div class="project-cards">
+    {{range .Content}}
+    <a href="/projects/{{.ID}}/pages" class="project-card">
+        <h2>{{.Title}}</h2>
+        {{if .Description}}<p class="project-desc">{{.Description}}</p>{{end}}
+        <div class="project-meta">
+            <span class="badge badge-{{.Status}}">{{.Status}}</span>
+            <span class="project-page-count">{{.PageCount}} pages</span>
+        </div>
+    </a>
+    {{else}}
+    <p>No projects found. Create a page with <code>type: project</code> to get started.</p>
+    {{end}}
+</div>
+{{end}}

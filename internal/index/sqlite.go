@@ -3,6 +3,7 @@ package index
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -48,6 +49,8 @@ func migrate(db *sql.DB) error {
 			superseded_by TEXT,
 			contested_by TEXT,
 			tags TEXT,
+			module TEXT,
+			category TEXT,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
@@ -78,6 +81,26 @@ func migrate(db *sql.DB) error {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("exec migration %q: %w", stmt[:40], err)
 		}
+	}
+
+	// Idempotent column additions for existing databases.
+	// These are already in the CREATE TABLE for new databases.
+	alterStmts := []string{
+		`ALTER TABLE pages ADD COLUMN module TEXT`,
+		`ALTER TABLE pages ADD COLUMN category TEXT`,
+	}
+	for _, stmt := range alterStmts {
+		if _, err := db.Exec(stmt); err != nil {
+			// Ignore "duplicate column" errors — column already exists.
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("exec migration %q: %w", stmt[:40], err)
+			}
+		}
+	}
+
+	// Index on module — must run after ALTER TABLE for existing databases.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_pages_module ON pages(module)`); err != nil {
+		return fmt.Errorf("create idx_pages_module: %w", err)
 	}
 
 	return nil

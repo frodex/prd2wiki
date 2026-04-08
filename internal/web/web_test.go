@@ -56,12 +56,12 @@ func TestHome(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusFound {
-		t.Fatalf("expected 302, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	loc := rec.Header().Get("Location")
-	if loc != "/projects/default/pages" {
-		t.Errorf("expected redirect to /projects/default/pages, got %s", loc)
+	body := rec.Body.String()
+	if !strings.Contains(body, "Projects") {
+		t.Errorf("expected home page to contain 'Projects', got: %s", body[:200])
 	}
 }
 

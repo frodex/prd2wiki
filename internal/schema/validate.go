@@ -22,6 +22,7 @@ var validTypes = map[string]bool{
 	"decision":    true,
 	"source":      true,
 	"config":      true,
+	"project":     true,
 }
 
 // validStatuses lists all recognised page statuses.
@@ -73,7 +74,7 @@ func Validate(fm *Frontmatter) []Issue {
 		issues = append(issues, Issue{
 			Severity: SeverityError,
 			Field:    "type",
-			Message:  "type " + fm.Type + " is not valid; must be one of requirement, concept, task, reference, decision, source, config",
+			Message:  "type " + fm.Type + " is not valid; must be one of requirement, concept, task, reference, decision, source, config, project",
 		})
 	}
 

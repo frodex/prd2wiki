@@ -45,9 +45,16 @@ type PageListItem struct {
 	Status       string
 	TrustLevel   int
 	Path         string
+	Module       string
 	LastEditBy   string
 	LastEditDate string
 	Score        string // similarity score for search results
+}
+
+// ModuleGroup groups page list items under a module heading.
+type ModuleGroup struct {
+	Module string
+	Items  []PageListItem
 }
 
 // PageViewData holds data for the page view template.
@@ -78,6 +85,15 @@ type PageEditData struct {
 	Status  string
 	TagsCSV string
 	Body    string
+}
+
+// ProjectCard represents a project on the home page.
+type ProjectCard struct {
+	ID          string
+	Title       string
+	Description string
+	Status      string
+	PageCount   int
 }
 
 // SearchData holds data for the search results template.
@@ -143,6 +159,7 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 
 	// Parse each page template together with the layout.
 	pageTemplates := []string{
+		"templates/home.html",
 		"templates/page_list.html",
 		"templates/page_view.html",
 		"templates/page_edit.html",
@@ -187,9 +204,51 @@ func (h *Handler) projects() []string {
 	return names
 }
 
-// home redirects to the default project's page list.
+// home renders the front page with project cards.
 func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/projects/default/pages", http.StatusFound)
+	// Query for project-type pages across all known projects.
+	var cards []ProjectCard
+	seen := make(map[string]bool)
+
+	for projName := range h.repos {
+		results, err := h.search.ByType(projName, "project")
+		if err != nil {
+			continue
+		}
+		for _, pr := range results {
+			if seen[pr.ID] {
+				continue
+			}
+			seen[pr.ID] = true
+
+			// Count total pages in this project.
+			allPages, _ := h.search.ListAll(pr.Project)
+
+			cards = append(cards, ProjectCard{
+				ID:          pr.ID,
+				Title:       pr.Title,
+				Description: pr.Tags, // use tags as a brief description
+				Status:      pr.Status,
+				PageCount:   len(allPages),
+			})
+		}
+	}
+
+	// Sort cards by title for stable ordering.
+	sort.Slice(cards, func(i, j int) bool {
+		return cards[i].Title < cards[j].Title
+	})
+
+	data := PageData{
+		Title:    "Projects",
+		Content:  cards,
+		Projects: h.projects(),
+	}
+
+	t := h.templates["templates/home.html"]
+	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // listPages renders the page listing for a project.
@@ -213,6 +272,7 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 			Status:     pr.Status,
 			TrustLevel: pr.TrustLevel,
 			Path:       pr.Path,
+			Module:     pr.Module,
 		}
 		if repo != nil {
 			commits, _ := repo.PageHistoryAllBranches(pr.Path, 1)
@@ -227,10 +287,28 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 		return items[i].LastEditDate > items[j].LastEditDate
 	})
 
+	// Group items by module.
+	moduleOrder := []string{}
+	moduleMap := make(map[string][]PageListItem)
+	for _, item := range items {
+		mod := item.Module
+		if mod == "" {
+			mod = "Other"
+		}
+		if _, exists := moduleMap[mod]; !exists {
+			moduleOrder = append(moduleOrder, mod)
+		}
+		moduleMap[mod] = append(moduleMap[mod], item)
+	}
+	groups := make([]ModuleGroup, len(moduleOrder))
+	for i, mod := range moduleOrder {
+		groups[i] = ModuleGroup{Module: mod, Items: moduleMap[mod]}
+	}
+
 	data := PageData{
 		Project:  project,
 		Title:    project + " — Pages",
-		Content:  items,
+		Content:  groups,
 		Projects: h.projects(),
 	}
 

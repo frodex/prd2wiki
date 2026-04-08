@@ -1,5 +1,7 @@
 {{define "content"}}
 <h1>{{.Project}} — Pages</h1>
+{{range .Content}}
+<h2 class="module-heading">{{.Module}}</h2>
 <table class="page-table sortable" id="page-table">
     <thead>
         <tr>
@@ -11,11 +13,12 @@
         </tr>
     </thead>
     <tbody>
-        {{range .Content}}
+        {{range .Items}}
         <tr>
             <td>
                 <a href="/projects/{{$.Project}}/pages/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
                 <span class="page-id-annotation">{{.ID}}</span>
+                {{if .Module}}<span class="badge badge-module">{{.Module}}</span>{{end}}
                 <a href="/projects/{{$.Project}}/pages/{{.ID}}/history" class="list-action-link">history</a>
             </td>
             <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
@@ -36,11 +39,12 @@
                 {{if .LastEditDate}}<span class="last-edit-date">{{.LastEditDate}}</span>{{end}}
             </td>
         </tr>
-        {{else}}
-        <tr><td colspan="5">No pages yet. <a href="/projects/{{.Project}}/pages/new">Create one</a>.</td></tr>
         {{end}}
     </tbody>
 </table>
+{{else}}
+<p>No pages yet. <a href="/projects/{{.Project}}/pages/new">Create one</a>.</p>
+{{end}}
 <script>
 async function changeStatus(select) {
     const project = select.dataset.project;
@@ -57,44 +61,45 @@ async function changeStatus(select) {
 }
 
 (function() {
-    const table = document.getElementById('page-table');
-    if (!table) return;
-    const headers = table.querySelectorAll('th.sortable-th');
-    let currentCol = -1;
-    let ascending = true;
+    const tables = document.querySelectorAll('.page-table.sortable');
+    tables.forEach(function(table) {
+        const headers = table.querySelectorAll('th.sortable-th');
+        let currentCol = -1;
+        let ascending = true;
 
-    headers.forEach((th, colIdx) => {
-        th.style.cursor = 'pointer';
-        th.addEventListener('click', () => {
-            if (currentCol === colIdx) {
-                ascending = !ascending;
-            } else {
-                currentCol = colIdx;
-                ascending = true;
-            }
-            headers.forEach(h => h.querySelector('.sort-arrow').textContent = '');
-            th.querySelector('.sort-arrow').textContent = ascending ? ' \u25B2' : ' \u25BC';
-
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            const sortType = th.dataset.sort;
-
-            rows.sort((a, b) => {
-                const aEl = a.cells[colIdx];
-                const bEl = b.cells[colIdx];
-                const aCell = aEl?.dataset.sortValue || aEl?.textContent.trim() || '';
-                const bCell = bEl?.dataset.sortValue || bEl?.textContent.trim() || '';
-                let cmp = 0;
-                if (sortType === 'num') {
-                    cmp = parseFloat(aCell.replace(/[^\d.-]/g, '') || '0') - parseFloat(bCell.replace(/[^\d.-]/g, '') || '0');
-                } else if (sortType === 'date') {
-                    cmp = (aCell || '0').localeCompare(bCell || '0');
+        headers.forEach((th, colIdx) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                if (currentCol === colIdx) {
+                    ascending = !ascending;
                 } else {
-                    cmp = aCell.localeCompare(bCell, undefined, { sensitivity: 'base' });
+                    currentCol = colIdx;
+                    ascending = true;
                 }
-                return ascending ? cmp : -cmp;
+                headers.forEach(h => h.querySelector('.sort-arrow').textContent = '');
+                th.querySelector('.sort-arrow').textContent = ascending ? ' \u25B2' : ' \u25BC';
+
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const sortType = th.dataset.sort;
+
+                rows.sort((a, b) => {
+                    const aEl = a.cells[colIdx];
+                    const bEl = b.cells[colIdx];
+                    const aCell = aEl?.dataset.sortValue || aEl?.textContent.trim() || '';
+                    const bCell = bEl?.dataset.sortValue || bEl?.textContent.trim() || '';
+                    let cmp = 0;
+                    if (sortType === 'num') {
+                        cmp = parseFloat(aCell.replace(/[^\d.-]/g, '') || '0') - parseFloat(bCell.replace(/[^\d.-]/g, '') || '0');
+                    } else if (sortType === 'date') {
+                        cmp = (aCell || '0').localeCompare(bCell || '0');
+                    } else {
+                        cmp = aCell.localeCompare(bCell, undefined, { sensitivity: 'base' });
+                    }
+                    return ascending ? cmp : -cmp;
+                });
+                rows.forEach(r => tbody.appendChild(r));
             });
-            rows.forEach(r => tbody.appendChild(r));
         });
     });
 })();
