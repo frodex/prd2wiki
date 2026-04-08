@@ -16,10 +16,18 @@ import (
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/schema"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 //go:embed templates/*.html static/*
 var content embed.FS
+
+// md is the goldmark instance with GFM extensions (tables, strikethrough, autolinks, task lists).
+var md = goldmark.New(
+	goldmark.WithExtensions(
+		extension.GFM,
+	),
+)
 
 // PageData is the top-level data passed to every template.
 type PageData struct {
@@ -302,7 +310,7 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 
 	// Render markdown body to HTML.
 	var htmlBuf bytes.Buffer
-	if err := goldmark.Convert(body, &htmlBuf); err != nil {
+	if err := md.Convert(body, &htmlBuf); err != nil {
 		http.Error(w, "markdown render error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -581,12 +589,12 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 
 	var htmlBuf bytes.Buffer
 	if parseErr == nil {
-		if err := goldmark.Convert(body, &htmlBuf); err != nil {
+		if err := md.Convert(body, &htmlBuf); err != nil {
 			http.Error(w, "markdown render error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		if err := goldmark.Convert(data, &htmlBuf); err != nil {
+		if err := md.Convert(data, &htmlBuf); err != nil {
 			http.Error(w, "markdown render error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
