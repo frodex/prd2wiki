@@ -235,7 +235,7 @@ func TestBuildTreeFromPaths(t *testing.T) {
 func TestStaticFiles(t *testing.T) {
 	_, mux := setupTestHandler(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/static/style.css", nil)
+	req := httptest.NewRequest(http.MethodGet, "/static/css/base.css", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -243,6 +243,6 @@ func TestStaticFiles(t *testing.T) {
 		t.Fatalf("expected 200 for static CSS, got %d", rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), "wiki-nav") {
-		t.Error("style.css should contain wiki-nav class")
+		t.Error("base.css should contain wiki-nav class")
 	}
 }

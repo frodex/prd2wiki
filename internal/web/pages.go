@@ -89,7 +89,7 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 
 	repo, ok := h.repos[project]
 	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "Project not found.")
 		return
 	}
 
@@ -98,7 +98,7 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 
 	fm, body, pageBranch, err := readPageNewest(repo, path)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "Page not found.")
 		return
 	}
 
@@ -159,7 +159,7 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 
 	repo, ok := h.repos[project]
 	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "Project not found.")
 		return
 	}
 
@@ -167,7 +167,7 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 
 	fm, body, _, err := readPageNewest(repo, path)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "Page not found.")
 		return
 	}
 
@@ -199,7 +199,7 @@ func (h *Handler) newPage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 
 	if _, ok := h.repos[project]; !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "Project not found.")
 		return
 	}
 

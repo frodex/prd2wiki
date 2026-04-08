@@ -15,7 +15,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 )
 
-//go:embed templates/*.html static/*
+//go:embed templates/*.html static/* static/css/*
 var content embed.FS
 
 // md is the goldmark instance with GFM extensions (tables, strikethrough, autolinks, task lists).
@@ -61,6 +61,7 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		"templates/search.html",
 		"templates/page_history.html",
 		"templates/page_diff.html",
+		"templates/error.html",
 	}
 	for _, pt := range pageTemplates {
 		// page_view needs the page_actions partial

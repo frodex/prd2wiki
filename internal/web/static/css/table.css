@@ -1,0 +1,130 @@
+/* prd2wiki — table: page table, sortable headers, search results */
+
+/* Tables */
+.page-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.page-table th,
+.page-table td {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.page-table th {
+    background: #f0f0f0;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #555;
+}
+
+.page-table tbody tr:hover {
+    background: #f5f5ff;
+}
+
+.page-table a {
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.page-table a:hover {
+    text-decoration: underline;
+}
+
+/* Page list annotations */
+.page-id-annotation {
+    display: block;
+    font-size: 0.75rem;
+    color: #999;
+    font-family: monospace;
+}
+.last-edit-cell {
+    font-size: 0.8rem;
+    color: #666;
+}
+.last-edit-by {
+    font-weight: 500;
+}
+.last-edit-date {
+    display: block;
+    font-size: 0.75rem;
+    color: #999;
+}
+
+.list-action-link {
+    font-size: 0.75rem;
+    color: #888;
+    text-decoration: none;
+    margin-left: 0.5rem;
+}
+.list-action-link:hover {
+    color: #2563eb;
+    text-decoration: underline;
+}
+
+/* Search page */
+.search-form {
+    margin-bottom: 1.5rem;
+}
+
+.search-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.search-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+
+.search-filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.search-filters select,
+.search-tag-input {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.search-tag-input {
+    width: 150px;
+}
+
+.search-results h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+.search-empty {
+    color: #666;
+    font-style: italic;
+    padding: 1rem 0;
+}
+
+/* Responsive table */
+@media (max-width: 600px) {
+    .page-table {
+        font-size: 0.8rem;
+    }
+
+    .page-table th,
+    .page-table td {
+        padding: 0.4rem;
+    }
+}

@@ -222,6 +222,13 @@ func New(cfg Config) (*App, error) {
 
 	// Compose both into a single root mux.
 	mux := http.NewServeMux()
+
+	// Health endpoint — registered first, fast, no middleware.
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
 	mux.Handle("/api/", apiSrv.Handler())
 	webHandler.Register(mux)
 

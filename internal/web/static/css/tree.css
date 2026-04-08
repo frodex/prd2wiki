@@ -1,0 +1,75 @@
+/* prd2wiki — tree: sidebar tree, page layout flex */
+
+/* Sidebar tree layout */
+.page-layout {
+    display: flex;
+    gap: 1.5rem;
+}
+.tree-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    border-right: 1px solid #e0e0e0;
+    padding-right: 1rem;
+}
+.page-content {
+    flex: 1;
+    min-width: 0;
+}
+.tree-list {
+    list-style: none;
+    padding-left: 1rem;
+    margin: 0;
+    font-size: 0.85rem;
+}
+.tree-sidebar > .tree-list {
+    padding-left: 0;
+}
+.tree-link {
+    display: block;
+    padding: 0.2rem 0.4rem;
+    color: #333;
+    text-decoration: none;
+    border-radius: 3px;
+}
+.tree-link:hover {
+    background: #f0f0f0;
+}
+.tree-active > .tree-link {
+    background: #e0edff;
+    font-weight: 600;
+}
+.tree-count {
+    color: #999;
+    font-size: 0.75rem;
+}
+.tree-filter-label {
+    font-size: 0.85rem;
+    color: #555;
+    margin-bottom: 1rem;
+}
+.tree-clear-filter {
+    font-size: 0.8rem;
+    color: #2563eb;
+    margin-left: 0.5rem;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .wiki-nav {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .page-layout {
+        flex-direction: column;
+    }
+    .tree-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #e0e0e0;
+        padding-right: 0;
+        padding-bottom: 1rem;
+        margin-bottom: 1rem;
+    }
+}

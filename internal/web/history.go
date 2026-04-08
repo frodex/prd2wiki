@@ -49,7 +49,7 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 
 	repo, ok := h.repos[project]
 	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "Project not found.")
 		return
 	}
 
@@ -57,7 +57,7 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 
 	commits, err := repo.PageHistoryAllBranches(path, 50)
 	if err != nil || len(commits) == 0 {
-		http.Error(w, "no history found for this page", http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "No history found for this page.")
 		return
 	}
 
@@ -110,14 +110,14 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 
 	repo, ok := h.repos[project]
 	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "Project not found.")
 		return
 	}
 
 	path := h.resolvePagePath(project, id)
 	data, err := repo.ReadPageAtCommit(hash, path)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "Page version not found.")
 		return
 	}
 
@@ -182,14 +182,14 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 
 	repo, ok := h.repos[project]
 	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
+		h.renderError(w, http.StatusNotFound, "Project not found.")
 		return
 	}
 
 	from := r.URL.Query().Get("from")
 	to := r.URL.Query().Get("to")
 	if from == "" || to == "" {
-		http.Error(w, "from and to query params required", http.StatusBadRequest)
+		h.renderError(w, http.StatusBadRequest, "Both 'from' and 'to' query parameters are required.")
 		return
 	}
 
