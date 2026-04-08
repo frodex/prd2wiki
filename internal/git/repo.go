@@ -133,6 +133,73 @@ func (r *Repo) WritePage(branch, path string, content []byte, message, author st
 	return r.repo.Storer.SetReference(newRef)
 }
 
+// WritePageWithDate writes a page with a specific author date (for backfilling).
+func (r *Repo) WritePageWithDate(branch, path string, content []byte, message, author string, date time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	refName := plumbing.NewBranchReferenceName(branch)
+	sig := &object.Signature{
+		Name:  author,
+		Email: author,
+		When:  date,
+	}
+
+	blobHash, err := r.storeBlob(content)
+	if err != nil {
+		return err
+	}
+
+	files := make(map[string]plumbing.Hash)
+	var parentCommit *object.Commit
+
+	ref, err := r.repo.Reference(refName, true)
+	if err == nil {
+		parentCommit, err = r.repo.CommitObject(ref.Hash())
+		if err != nil {
+			return fmt.Errorf("parent commit: %w", err)
+		}
+		tree, err := parentCommit.Tree()
+		if err != nil {
+			return fmt.Errorf("parent tree: %w", err)
+		}
+		if err := tree.Files().ForEach(func(f *object.File) error {
+			files[f.Name] = f.Hash
+			return nil
+		}); err != nil {
+			return fmt.Errorf("walk tree: %w", err)
+		}
+	}
+
+	files[path] = blobHash
+
+	rootTreeHash, err := r.buildTree(files)
+	if err != nil {
+		return fmt.Errorf("build tree: %w", err)
+	}
+
+	commit := &object.Commit{
+		Author:    *sig,
+		Committer: *sig,
+		Message:   message,
+		TreeHash:  rootTreeHash,
+	}
+	if parentCommit != nil {
+		commit.ParentHashes = []plumbing.Hash{parentCommit.Hash}
+	}
+	commitObj := &plumbing.MemoryObject{}
+	if err := commit.Encode(commitObj); err != nil {
+		return fmt.Errorf("encode commit: %w", err)
+	}
+	commitHash, err := r.repo.Storer.SetEncodedObject(commitObj)
+	if err != nil {
+		return fmt.Errorf("store commit: %w", err)
+	}
+
+	newRef := plumbing.NewHashReference(refName, commitHash)
+	return r.repo.Storer.SetReference(newRef)
+}
+
 // ReadPage reads a file from a branch.
 func (r *Repo) ReadPage(branch, path string) ([]byte, error) {
 	refName := plumbing.NewBranchReferenceName(branch)
