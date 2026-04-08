@@ -1,13 +1,13 @@
 {{define "content"}}
 <h1>{{.Project}} — Pages</h1>
-<table class="page-table">
+<table class="page-table sortable" id="page-table">
     <thead>
         <tr>
-            <th>Title</th>
-            <th>Type</th>
-            <th>Status</th>
-            <th>Trust</th>
-            <th>Last Edit</th>
+            <th data-sort="text" class="sortable-th">Title <span class="sort-arrow"></span></th>
+            <th data-sort="text" class="sortable-th">Type <span class="sort-arrow"></span></th>
+            <th data-sort="text" class="sortable-th">Status <span class="sort-arrow"></span></th>
+            <th data-sort="num" class="sortable-th">Trust <span class="sort-arrow"></span></th>
+            <th data-sort="date" class="sortable-th">Last Edit <span class="sort-arrow"></span></th>
         </tr>
     </thead>
     <tbody>
@@ -30,4 +30,46 @@
         {{end}}
     </tbody>
 </table>
+<script>
+(function() {
+    const table = document.getElementById('page-table');
+    if (!table) return;
+    const headers = table.querySelectorAll('th.sortable-th');
+    let currentCol = -1;
+    let ascending = true;
+
+    headers.forEach((th, colIdx) => {
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', () => {
+            if (currentCol === colIdx) {
+                ascending = !ascending;
+            } else {
+                currentCol = colIdx;
+                ascending = true;
+            }
+            headers.forEach(h => h.querySelector('.sort-arrow').textContent = '');
+            th.querySelector('.sort-arrow').textContent = ascending ? ' \u25B2' : ' \u25BC';
+
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const sortType = th.dataset.sort;
+
+            rows.sort((a, b) => {
+                const aCell = a.cells[colIdx]?.textContent.trim() || '';
+                const bCell = b.cells[colIdx]?.textContent.trim() || '';
+                let cmp = 0;
+                if (sortType === 'num') {
+                    cmp = parseFloat(aCell.replace(/[^\d.-]/g, '') || '0') - parseFloat(bCell.replace(/[^\d.-]/g, '') || '0');
+                } else if (sortType === 'date') {
+                    cmp = (aCell || '0').localeCompare(bCell || '0');
+                } else {
+                    cmp = aCell.localeCompare(bCell, undefined, { sensitivity: 'base' });
+                }
+                return ascending ? cmp : -cmp;
+            });
+            rows.forEach(r => tbody.appendChild(r));
+        });
+    });
+})();
+</script>
 {{end}}
