@@ -179,8 +179,8 @@ func (s *MCPServer) toolPropose(raw json.RawMessage) (interface{}, error) {
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
-	if p.Project == "" || p.ID == "" || p.Title == "" || p.Type == "" || p.Body == "" {
-		return nil, fmt.Errorf("project, id, title, type, and body are required")
+	if p.Project == "" || p.Title == "" || p.Type == "" || p.Body == "" {
+		return nil, fmt.Errorf("project, title, type, and body are required")
 	}
 
 	req := CreatePageRequest{
