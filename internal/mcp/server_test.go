@@ -79,9 +79,18 @@ func rpcCall(t *testing.T, s *MCPServer, method string, params interface{}) JSON
 	var out bytes.Buffer
 	s.Serve(bytes.NewReader(append(reqLine, '\n')), &out)
 
+	// Parse Content-Length framed response
+	raw := out.String()
+	var body string
+	if idx := strings.Index(raw, "\r\n\r\n"); idx >= 0 {
+		body = raw[idx+4:]
+	} else {
+		body = raw
+	}
+
 	var resp JSONRPCResponse
-	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal response: %v (raw: %s)", err, out.String())
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v (raw: %s)", err, raw)
 	}
 	return resp
 }

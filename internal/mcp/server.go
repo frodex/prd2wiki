@@ -90,27 +90,29 @@ func (s *MCPServer) RegisterResource(pattern string, handler ResourceHandler) {
 	s.resources[pattern] = handler
 }
 
-// ServeStdio runs the MCP server main loop: reads newline-delimited JSON-RPC
-// requests from stdin and writes responses to stdout.
+// ServeStdio runs the MCP server main loop on stdin/stdout.
 func (s *MCPServer) ServeStdio() {
 	s.Serve(os.Stdin, os.Stdout)
 }
 
-// Serve runs the main loop reading from r and writing to w. This is the
-// testable core of ServeStdio.
+// Serve runs the main loop reading from r and writing to w.
+// Supports both Content-Length framed messages (MCP stdio transport)
+// and bare newline-delimited JSON (for testing).
 func (s *MCPServer) Serve(r io.Reader, w io.Writer) {
-	scanner := bufio.NewScanner(r)
-	// Allow large messages (16 MB).
-	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	br := bufio.NewReader(r)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+	for {
+		// Try to read a message — either Content-Length framed or bare JSON line.
+		msg, err := readMessage(br)
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
 			continue
 		}
 
 		var req JSONRPCRequest
-		if err := json.Unmarshal([]byte(line), &req); err != nil {
+		if err := json.Unmarshal(msg, &req); err != nil {
 			resp := JSONRPCResponse{
 				JSONRPC: "2.0",
 				ID:      nil,
@@ -120,8 +122,64 @@ func (s *MCPServer) Serve(r io.Reader, w io.Writer) {
 			continue
 		}
 
+		// Notifications (no ID) don't get responses
+		if req.Method == "notifications/initialized" || req.Method == "notifications/cancelled" {
+			continue
+		}
+
 		resp := s.dispatch(req)
 		writeResponse(w, resp)
+	}
+}
+
+// readMessage reads one JSON-RPC message, supporting both:
+// 1. Content-Length framed: "Content-Length: N\r\n\r\n{...}"
+// 2. Bare newline-delimited: "{...}\n"
+func readMessage(br *bufio.Reader) ([]byte, error) {
+	for {
+		// Peek at next non-empty content
+		line, err := br.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Content-Length header?
+		if strings.HasPrefix(line, "Content-Length:") {
+			sizeStr := strings.TrimSpace(strings.TrimPrefix(line, "Content-Length:"))
+			var size int
+			fmt.Sscanf(sizeStr, "%d", &size)
+			if size <= 0 {
+				continue
+			}
+
+			// Read until empty line (end of headers)
+			for {
+				hdr, err := br.ReadString('\n')
+				if err != nil {
+					return nil, err
+				}
+				if strings.TrimSpace(hdr) == "" {
+					break
+				}
+			}
+
+			// Read exactly size bytes
+			buf := make([]byte, size)
+			_, err := io.ReadFull(br, buf)
+			if err != nil {
+				return nil, err
+			}
+			return buf, nil
+		}
+
+		// Bare JSON line
+		if len(line) > 0 && line[0] == '{' {
+			return []byte(line), nil
+		}
 	}
 }
 
@@ -391,5 +449,5 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) JSONRPCResponse {
 
 func writeResponse(w io.Writer, resp JSONRPCResponse) {
 	data, _ := json.Marshal(resp)
-	fmt.Fprintf(w, "%s\n", data)
+	fmt.Fprintf(w, "Content-Length: %d\r\n\r\n%s", len(data), data)
 }
