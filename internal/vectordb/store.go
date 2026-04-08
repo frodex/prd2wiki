@@ -2,7 +2,11 @@ package vectordb
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -10,16 +14,26 @@ import (
 	"github.com/frodex/prd2wiki/internal/embedder"
 )
 
-// Store is an in-memory vector store for page embeddings.
+// Store is a vector store for page embeddings with optional disk persistence.
+// When a persist path is configured, the store auto-saves after every write.
 type Store struct {
-	mu      sync.RWMutex
-	records []PageEmbedding
-	emb     embedder.Embedder
+	mu          sync.RWMutex
+	records     []PageEmbedding
+	emb         embedder.Embedder
+	persistPath string // if set, auto-save on every write
 }
 
 // NewStore creates a new Store using the provided Embedder.
 func NewStore(emb embedder.Embedder) *Store {
 	return &Store{emb: emb}
+}
+
+// SetPersistPath configures auto-save: after every IndexPage or RemovePage,
+// the full record set is written to this path as JSON.
+func (s *Store) SetPersistPath(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.persistPath = path
 }
 
 // Count returns the number of embedding records in the store.
@@ -70,6 +84,10 @@ func (s *Store) IndexPage(ctx context.Context, project, pageID, typ, tags string
 	}
 	s.records = append(filtered, records...)
 
+	if err := s.saveLocked(); err != nil {
+		return fmt.Errorf("persist after IndexPage: %w", err)
+	}
+
 	return nil
 }
 
@@ -85,6 +103,59 @@ func (s *Store) RemovePage(pageID string) {
 		}
 	}
 	s.records = filtered
+	_ = s.saveLocked() // best-effort persist
+}
+
+// SaveToDisk writes the current records to path as JSON.
+func (s *Store) SaveToDisk(path string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return writeJSON(path, s.records)
+}
+
+// LoadFromDisk reads records from a JSON file. Existing records are replaced.
+func (s *Store) LoadFromDisk(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var records []PageEmbedding
+	if err := json.Unmarshal(data, &records); err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.records = records
+	return nil
+}
+
+// saveLocked writes records to persistPath. Caller must hold s.mu (read or write).
+func (s *Store) saveLocked() error {
+	if s.persistPath == "" {
+		return nil
+	}
+	return writeJSON(s.persistPath, s.records)
+}
+
+// writeJSON atomically writes data as JSON to path (write to temp, rename).
+func writeJSON(path string, v any) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+
+	tmp := path + ".tmp"
+	data, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
+	}
+	return nil
 }
 
 type scoredResult struct {

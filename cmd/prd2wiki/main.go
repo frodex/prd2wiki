@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 
@@ -143,6 +144,16 @@ func main() {
 	}
 	vstore := vectordb.NewStore(emb)
 
+	// Load persisted vector index from disk (avoids re-embedding on restart).
+	vectorPath := filepath.Join(cfg.Data.Dir, "vectors", "pages.json")
+	if err := vstore.LoadFromDisk(vectorPath); err != nil {
+		log.Printf("vector index: no persisted data at %s, will embed on first write", vectorPath)
+	} else {
+		log.Printf("vector index: loaded %d entries from disk", vstore.Count())
+	}
+	// Enable auto-save so every IndexPage/RemovePage persists to disk.
+	vstore.SetPersistPath(vectorPath)
+
 	// Create embedding profile store.
 	profileStore, err := embedder.NewEmbeddingProfileStore(db)
 	if err != nil {
@@ -162,13 +173,9 @@ func main() {
 		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab)
 	}
 
-	// TODO: Smart vector index rebuild — only embed pages whose content changed.
-	// Currently the in-memory vector store is empty on restart.
-	// Pages get embedded on write through the librarian.
-	// A proper fix needs content-hash tracking to avoid re-embedding unchanged pages.
-	// For now, rebuild on first startup only if the vector store is empty.
+	// Rebuild vector index only if nothing was loaded from disk.
 	if vstore.Count() == 0 {
-		log.Printf("vector index: empty, rebuilding from git...")
+		log.Printf("vector index: empty after disk load, rebuilding from git...")
 		for _, project := range cfg.Projects {
 			lib := librarians[project]
 			repo := repos[project]
@@ -183,8 +190,11 @@ func main() {
 				}
 			}
 		}
+		if vstore.Count() > 0 {
+			log.Printf("vector index: rebuild complete, %d entries persisted to disk", vstore.Count())
+		}
 	} else {
-		log.Printf("vector index: %d entries, skipping rebuild", vstore.Count())
+		log.Printf("vector index: %d entries loaded, skipping rebuild", vstore.Count())
 	}
 
 	// Create API server and web handler.

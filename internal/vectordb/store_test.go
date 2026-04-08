@@ -138,3 +138,74 @@ func TestSearchEmptyStore(t *testing.T) {
 		t.Errorf("expected 0 results on empty store, got %d", len(results))
 	}
 }
+
+func TestPersistAndReload(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/vectors.json"
+
+	store1 := NewStore(&mockEmbedder{})
+	ctx := context.Background()
+
+	chunks := []TextChunk{
+		{Section: "intro", Text: "persistent vector storage"},
+		{Section: "body", Text: "survives restarts"},
+	}
+	if err := store1.IndexPage(ctx, "proj1", "page-persist", "doc", "test", chunks); err != nil {
+		t.Fatalf("IndexPage: %v", err)
+	}
+	if err := store1.SaveToDisk(path); err != nil {
+		t.Fatalf("SaveToDisk: %v", err)
+	}
+
+	// Load into a fresh store (no embedder needed for search with loaded vectors).
+	store2 := NewStore(&mockEmbedder{})
+	if err := store2.LoadFromDisk(path); err != nil {
+		t.Fatalf("LoadFromDisk: %v", err)
+	}
+
+	if store2.Count() != store1.Count() {
+		t.Fatalf("count mismatch: store1=%d, store2=%d", store1.Count(), store2.Count())
+	}
+
+	results, err := store2.Search(ctx, "proj1", "persistent", 10)
+	if err != nil {
+		t.Fatalf("Search after reload: %v", err)
+	}
+	if len(results) == 0 {
+		t.Error("expected results after reload, got 0")
+	}
+	if results[0].PageID != "page-persist" {
+		t.Errorf("expected page-persist, got %s", results[0].PageID)
+	}
+}
+
+func TestAutoSave(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/auto.json"
+
+	store := NewStore(&mockEmbedder{})
+	store.SetPersistPath(path)
+	ctx := context.Background()
+
+	chunks := []TextChunk{{Section: "s1", Text: "auto save test"}}
+	if err := store.IndexPage(ctx, "proj1", "page-auto", "doc", "", chunks); err != nil {
+		t.Fatalf("IndexPage: %v", err)
+	}
+
+	// Verify file exists and can be loaded.
+	store2 := NewStore(&mockEmbedder{})
+	if err := store2.LoadFromDisk(path); err != nil {
+		t.Fatalf("LoadFromDisk after auto-save: %v", err)
+	}
+	if store2.Count() != 1 {
+		t.Errorf("expected 1 record after auto-save, got %d", store2.Count())
+	}
+}
+
+func TestLoadFromDiskMissing(t *testing.T) {
+	store := NewStore(&mockEmbedder{})
+	err := store.LoadFromDisk("/nonexistent/path/vectors.json")
+	if err == nil {
+		t.Error("expected error for missing file, got nil")
+	}
+}
