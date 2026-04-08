@@ -28,6 +28,8 @@ var validTypes = map[string]bool{
 var validStatuses = map[string]bool{
 	"draft":      true,
 	"review":     true,
+	"approved":   true,
+	"rejected":   true,
 	"active":     true,
 	"contested":  true,
 	"stale":      true,

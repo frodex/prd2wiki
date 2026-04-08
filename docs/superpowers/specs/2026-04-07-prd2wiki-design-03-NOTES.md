@@ -18,7 +18,7 @@ The system serves as a **source of truth** that agents can read, write, challeng
 
 ### 1.1 What This Is
 
-- A **work surface for planning and research** — captures the birth process of a PRD, not just the final document. Brainstorming loops, rejected approaches, reasoning, and anti-patterns are preserved as first-class records. ALLOWING FOR THE DIRECT MUTATION OF AGENTIC PLANS BY USERS AND PROVIDING A STEPPED HISTORY AUTOMATICALLY BY IT'S DESIGN. AGENTS AND USERS CAN DIFF PRIOR VERSIONS TO CLEARLY SEE MUTATIONS AND NOTES REQUIRING INCORPORATION INTO NEW VERSIONS OF THE ARTIFACT.
+- A **work surface for planning and research** — captures the birth process of a PRD, not just the final document. Brainstorming loops, rejected approaches, reasoning, and anti-patterns are preserved as first-class records. ALLOWING FOR THE DIRECT MUTATION OF AGENTIC PLANS BY USERS AND PROVIDING A STEPPED HISTORY AUTOMATICALLY BY ITS DESIGN. AGENTS AND USERS CAN DIFF PRIOR VERSIONS TO CLEARLY SEE MUTATIONS AND NOTES REQUIRING INCORPORATION INTO NEW VERSIONS OF THE ARTIFACT.
 - A git-backed wiki with What You See Is What You Get (WYSIWYG) web User Interface (UI) for humans and Model Context Protocol (MCP) interface for agents AND AUTOMATIC SCHEMA ENFORCEMENT AND CORRECTION FOR POORLY INPUT DATA
 - A knowledge management system with provenance-based trust, source pinning, and self-healing
 - A multi-project, multi-team platform with standard Role-Based Access Control (RBAC)
@@ -115,7 +115,7 @@ Because the wiki spans multiple projects with consistent schema and provenance:
 
 ### 2.5 Sidecar API for NEW Applications
 
-The Core API must support sidecar applications, IE A UTILITY THAT DIRETLY ALLOWS AGENTS TO ACCESS WIKI FOR brainstorming sessions AS USER INTERFACE.
+The Core API must support sidecar applications, I.E. A UTILITY THAT DIRECTLY ALLOWS AGENTS TO ACCESS WIKI FOR brainstorming sessions AS USER INTERFACE.
 
  A sidecar app could:
 
@@ -124,7 +124,7 @@ The Core API must support sidecar applications, IE A UTILITY THAT DIRETLY ALLOWS
 - Accept structured input from the human (not just free-text chat)
 - Feed that input directly to the agent via the wiki
 
-This is a future application phase, but the API must be designed to support it from the start. The USER wysiwug INTERFACES AND MCP sidecar ALLOWING AGENTS TO INTERFACE WITH THE WIKI is the first example of this pattern; agent-attached brainstorming UIs are the next.
+This is a future application phase, but the API must be designed to support it from the start. The USER WYSIWYG INTERFACES AND MCP sidecar ALLOWING AGENTS TO INTERFACE WITH THE WIKI is the first example of this pattern; agent-attached brainstorming UIs are the next.
 
 ---
 
@@ -423,11 +423,11 @@ When staleness is detected, the steward agent:
    - **No impact:** Change doesn't affect the page's claims. Clear the flag, update checksum.
    - **Partial impact:** Some sections still valid, some not. Mark specific sections, explain what's accurate and what's not.
    - **Full invalidation:** Change fundamentally breaks the page's claims. Flag for owner to rebuild.
-   - REQUEST AUTHORIZED/AUTHORATATIVE USERS/AGENTS TO ADDRESS THE ISSUES - CAN RE-FORK OR LAUNCH AGENTS (CLAUDE-FORKER AGENT-)
+   - REQUEST AUTHORIZED/AUTHORITATIVE USERS/AGENTS TO ADDRESS THE ISSUES - CAN RE-FORK OR LAUNCH AGENTS (CLAUDE-FORKER AGENT-)
 
 ### 6.5 Self-Deprecation
 
-If a page's sources are thoroughly invalidated, the system auto-sets `status: deprecated` with an explanation and required action. OR WHEN NEWER APPROVED DOCUMENTS EXISIT
+If a page's sources are thoroughly invalidated, the system auto-sets `status: deprecated` with an explanation and required action. OR WHEN NEWER APPROVED DOCUMENTS EXIST
 
 ### 6.6 Local Source Copies
 
