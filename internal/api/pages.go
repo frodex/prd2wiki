@@ -33,7 +33,7 @@ func (s *Server) updatePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate bool) {
-	project := sanitizePageID(r.PathValue("project"))
+	project := r.PathValue("project")
 
 	lib, ok := s.librarians[project]
 	if !ok {
@@ -111,14 +111,14 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 }
 
 func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
-	project := sanitizePageID(r.PathValue("project"))
+	project := r.PathValue("project")
 	repo, ok := s.repos[project]
 	if !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
-	id := sanitizePageID(r.PathValue("id"))
+	id := r.PathValue("id") // read: accept original case
 	branch := r.URL.Query().Get("branch")
 
 	// Resolve path: try index first, then hash-prefix, then flat.
@@ -180,14 +180,14 @@ func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deletePage(w http.ResponseWriter, r *http.Request) {
-	project := sanitizePageID(r.PathValue("project"))
+	project := r.PathValue("project")
 	repo, ok := s.repos[project]
 	if !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
-	id := sanitizePageID(r.PathValue("id"))
+	id := r.PathValue("id") // read: accept original case
 	branch := r.URL.Query().Get("branch")
 	if branch == "" {
 		branch = "draft/incoming"
@@ -215,7 +215,7 @@ func (s *Server) deletePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listPages(w http.ResponseWriter, r *http.Request) {
-	project := sanitizePageID(r.PathValue("project"))
+	project := r.PathValue("project")
 	if _, ok := s.repos[project]; !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return

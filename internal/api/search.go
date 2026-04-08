@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
-	project := sanitizePageID(r.PathValue("project"))
+	project := r.PathValue("project")
 	if _, ok := s.repos[project]; !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
