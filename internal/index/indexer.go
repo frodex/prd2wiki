@@ -71,6 +71,11 @@ func (ix *Indexer) IndexPage(project, branch, path string, fm *schema.Frontmatte
 		return fmt.Errorf("upsert page %q: %w", fm.ID, err)
 	}
 
+	// Update FTS index — delete old entry, insert new one.
+	_, _ = ix.db.Exec("DELETE FROM pages_fts WHERE id = ?", fm.ID)
+	_, _ = ix.db.Exec(`INSERT INTO pages_fts (id, title, body, tags) VALUES (?, ?, ?, ?)`,
+		fm.ID, fm.Title, string(body), tags)
+
 	// Delete existing provenance edges for this page, then re-insert.
 	if _, err := ix.db.Exec("DELETE FROM provenance_edges WHERE source_page = ?", fm.ID); err != nil {
 		return fmt.Errorf("delete provenance edges for %q: %w", fm.ID, err)
@@ -91,6 +96,7 @@ func (ix *Indexer) IndexPage(project, branch, path string, fm *schema.Frontmatte
 
 // RemovePage removes a page and its provenance edges from the index.
 func (ix *Indexer) RemovePage(id string) error {
+	_, _ = ix.db.Exec("DELETE FROM pages_fts WHERE id = ?", id)
 	if _, err := ix.db.Exec("DELETE FROM provenance_edges WHERE source_page = ?", id); err != nil {
 		return fmt.Errorf("delete provenance edges for %q: %w", id, err)
 	}
