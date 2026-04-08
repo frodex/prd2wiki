@@ -29,6 +29,11 @@ type Config struct {
 	Data struct {
 		Dir string `yaml:"dir"`
 	} `yaml:"data"`
+	Embedder struct {
+		Endpoint   string `yaml:"endpoint"`   // e.g. "http://localhost:8081"
+		Dimensions int    `yaml:"dimensions"`  // e.g. 768
+		Timeout    int    `yaml:"timeout"`     // seconds, default 30
+	} `yaml:"embedder"`
 	Projects []string `yaml:"projects"`
 }
 
@@ -105,8 +110,32 @@ func main() {
 		}
 	}
 
-	// Create embedder, vector store, and librarians.
-	emb := embedder.NewNoopEmbedder(768)
+	// Create embedder — try real LlamaCpp, fall back to Noop.
+	var emb embedder.Embedder
+	dims := cfg.Embedder.Dimensions
+	if dims == 0 {
+		dims = 768
+	}
+	timeout := cfg.Embedder.Timeout
+	if timeout == 0 {
+		timeout = 30
+	}
+	endpoint := cfg.Embedder.Endpoint
+	if endpoint == "" {
+		endpoint = os.Getenv("PRDWIKI_EMBEDDER_URL")
+	}
+	if endpoint == "" {
+		endpoint = "http://localhost:8081"
+	}
+
+	llamaEmb := embedder.NewLlamaCppEmbedder(endpoint, dims, timeout)
+	if llamaEmb.Available() {
+		emb = llamaEmb
+		log.Printf("embedder: connected to LlamaCpp at %s (dims=%d)", endpoint, dims)
+	} else {
+		emb = embedder.NewNoopEmbedder(dims)
+		log.Printf("embedder: LlamaCpp not available at %s — using noop (lexical search only)", endpoint)
+	}
 	vstore := vectordb.NewStore(emb)
 
 	librarians := make(map[string]*librarian.Librarian)
