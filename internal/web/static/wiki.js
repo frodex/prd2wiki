@@ -11,7 +11,10 @@ async function initMilkdown() {
 
     if (window.prd2wikiEditor) {
         try {
-            const ok = await window.prd2wikiEditor.initEditor('milkdown-editor', 'editor-fallback');
+            const form = document.getElementById('page-form');
+            const project = form ? form.dataset.project : '';
+            const pageId = document.getElementById('field-id') ? document.getElementById('field-id').value : '';
+            const ok = await window.prd2wikiEditor.initEditor('milkdown-editor', 'editor-fallback', project, pageId);
             if (ok) {
                 getMarkdownFn = () => window.prd2wikiEditor.getEditorContent();
                 console.log('Milkdown editor initialized (bundled)');
@@ -22,12 +25,40 @@ async function initMilkdown() {
         }
     }
 
-    // Fallback to textarea
+    // Fallback to textarea with paste-to-upload support
     console.warn('Milkdown not available, using textarea fallback');
     usingFallback = true;
     container.style.display = 'none';
     if (fallback) {
         fallback.style.display = '';
+        // Add clipboard paste handler for images in textarea mode
+        fallback.addEventListener('paste', async (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = items[i].getAsFile();
+                    if (!file) continue;
+                    const form = document.getElementById('page-form');
+                    const project = form ? form.dataset.project : '';
+                    const pageId = document.getElementById('field-id') ? document.getElementById('field-id').value : '';
+                    if (!project || !pageId) { alert('Save the page first before uploading images.'); return; }
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    try {
+                        const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/pages/${encodeURIComponent(pageId)}/attachments`, { method: 'POST', body: formData });
+                        if (!resp.ok) { alert('Upload failed: ' + resp.status); return; }
+                        const { url } = await resp.json();
+                        const pos = fallback.selectionStart;
+                        const md = `![screenshot](${url})`;
+                        fallback.value = fallback.value.slice(0, pos) + md + fallback.value.slice(pos);
+                        fallback.selectionStart = fallback.selectionEnd = pos + md.length;
+                    } catch (err) { alert('Upload error: ' + err.message); }
+                    return;
+                }
+            }
+        });
     }
 }
 

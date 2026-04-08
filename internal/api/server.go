@@ -50,6 +50,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/projects/{project}/pages/{id}/restore", s.restorePage)
 	mux.HandleFunc("POST /api/projects/{project}/pages/{id}/approve", s.approvePage)
 
+	mux.HandleFunc("POST /api/projects/{project}/pages/{id}/attachments", s.uploadAttachment)
+	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/attachments", s.listAttachments)
+	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/attachments/{filename}", s.getAttachment)
+
 	return mux
 }
 
