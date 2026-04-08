@@ -32,12 +32,6 @@ func (s *Server) pageHistory(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	path := "pages/" + id + ".md"
 
-	branch, err := repo.FindBranchForPage(path)
-	if err != nil {
-		http.Error(w, "page not found", http.StatusNotFound)
-		return
-	}
-
 	limit := 50
 	if q := r.URL.Query().Get("limit"); q != "" {
 		if n, err := strconv.Atoi(q); err == nil && n > 0 {
@@ -45,7 +39,7 @@ func (s *Server) pageHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	commits, err := repo.PageHistory(branch, path, limit)
+	commits, err := repo.PageHistoryAllBranches(path, limit)
 	if err != nil {
 		http.Error(w, "history: "+err.Error(), http.StatusInternalServerError)
 		return

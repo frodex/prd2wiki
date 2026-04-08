@@ -424,15 +424,9 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 
 	path := "pages/" + id + ".md"
 
-	branch, err := repo.FindBranchForPage(path)
-	if err != nil {
-		http.Error(w, "page not found on any branch", http.StatusNotFound)
-		return
-	}
-
-	commits, err := repo.PageHistory(branch, path, 50)
-	if err != nil {
-		http.Error(w, "history: "+err.Error(), http.StatusInternalServerError)
+	commits, err := repo.PageHistoryAllBranches(path, 50)
+	if err != nil || len(commits) == 0 {
+		http.Error(w, "no history found for this page", http.StatusNotFound)
 		return
 	}
 

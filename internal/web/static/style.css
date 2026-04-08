@@ -541,3 +541,13 @@ h1 {
         padding: 0.4rem;
     }
 }
+
+.btn-danger {
+    background: #dc3545;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+}
+.btn-danger:hover {
+    background: #c82333;
+}

@@ -64,6 +64,50 @@ func (r *Repo) PageHistory(branch, path string, limit int) ([]CommitInfo, error)
 	return commits, nil
 }
 
+// PageHistoryAllBranches returns commit history for a file across ALL branches,
+// deduplicated by hash, sorted most recent first.
+func (r *Repo) PageHistoryAllBranches(path string, limit int) ([]CommitInfo, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	branches, err := r.ListBranches()
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool)
+	var all []CommitInfo
+
+	for _, branch := range branches {
+		commits, err := r.PageHistory(branch, path, limit)
+		if err != nil {
+			continue // branch may not have this file
+		}
+		for _, c := range commits {
+			if !seen[c.Hash] {
+				seen[c.Hash] = true
+				all = append(all, c)
+			}
+		}
+	}
+
+	// Sort by date descending
+	for i := 0; i < len(all); i++ {
+		for j := i + 1; j < len(all); j++ {
+			if all[j].Date.After(all[i].Date) {
+				all[i], all[j] = all[j], all[i]
+			}
+		}
+	}
+
+	if len(all) > limit {
+		all = all[:limit]
+	}
+
+	return all, nil
+}
+
 // ReadPageAtCommit reads a file's content at a specific commit hash.
 func (r *Repo) ReadPageAtCommit(commitHash, path string) ([]byte, error) {
 	h := plumbing.NewHash(commitHash)
