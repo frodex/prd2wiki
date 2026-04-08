@@ -306,6 +306,8 @@ async function submitPage(intent) {
         if ((intent === 'conform' || intent === 'integrate') &&
             ((result.warnings && result.warnings.length > 0) ||
              (result.issues && result.issues.length > 0))) {
+            // Store the server-generated ID so acceptChanges redirects correctly
+            if (result.id) lastSubmitData.id = result.id;
             showDiffPreview(data, result, project);
             return;
         }
