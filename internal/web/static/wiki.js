@@ -9,47 +9,25 @@ async function initMilkdown() {
     const fallback = document.getElementById('editor-fallback');
     if (!container) return;
 
-    const initialContent = fallback ? fallback.value : '';
-
-    try {
-        const [coreModule, commonmarkModule, gfmModule, listenerModule, nordModule, utilsModule] = await Promise.all([
-            import('https://esm.sh/@milkdown/kit@7/core'),
-            import('https://esm.sh/@milkdown/kit@7/preset/commonmark'),
-            import('https://esm.sh/@milkdown/kit@7/preset/gfm'),
-            import('https://esm.sh/@milkdown/kit@7/plugin/listener'),
-            import('https://esm.sh/@milkdown/kit@7/theme/nord'),
-            import('https://esm.sh/@milkdown/kit@7/utils'),
-        ]);
-
-        const { Editor, rootCtx, defaultValueCtx } = coreModule;
-        const { commonmark } = commonmarkModule;
-        const { gfm } = gfmModule;
-        const { listener, listenerCtx } = listenerModule;
-        const { nord } = nordModule;
-        const { getMarkdown } = utilsModule;
-
-        const editor = await Editor.make()
-            .config(nord)
-            .config((ctx) => {
-                ctx.set(rootCtx, container);
-                ctx.set(defaultValueCtx, initialContent);
-            })
-            .use(commonmark)
-            .use(gfm)
-            .use(listener)
-            .create();
-
-        editorInstance = editor;
-        getMarkdownFn = () => editor.action(getMarkdown());
-        container.style.display = '';
-        console.log('Milkdown editor initialized');
-    } catch (err) {
-        console.warn('Milkdown failed to load, falling back to textarea:', err);
-        usingFallback = true;
-        container.style.display = 'none';
-        if (fallback) {
-            fallback.style.display = '';
+    if (window.prd2wikiEditor) {
+        try {
+            const ok = await window.prd2wikiEditor.initEditor('milkdown-editor', 'editor-fallback');
+            if (ok) {
+                getMarkdownFn = () => window.prd2wikiEditor.getEditorContent();
+                console.log('Milkdown editor initialized (bundled)');
+                return;
+            }
+        } catch (err) {
+            console.warn('Bundled Milkdown failed:', err);
         }
+    }
+
+    // Fallback to textarea
+    console.warn('Milkdown not available, using textarea fallback');
+    usingFallback = true;
+    container.style.display = 'none';
+    if (fallback) {
+        fallback.style.display = '';
     }
 }
 

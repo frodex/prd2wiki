@@ -1,6 +1,9 @@
-.PHONY: build build-mcp build-all test run clean
+.PHONY: build build-mcp build-all test run clean frontend
 
-build:
+frontend:
+	cd frontend && npm run build
+
+build: frontend
 	go build -o bin/prd2wiki ./cmd/prd2wiki
 
 build-mcp:

@@ -1,0 +1,15 @@
+{
+  "name": "prd2wiki-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@milkdown/kit": "^7.20.0",
+    "@milkdown/plugin-listener": "^7.20.0",
+    "@milkdown/theme-nord": "^7.20.0",
+    "vite": "^8.0.7"
+  }
+}

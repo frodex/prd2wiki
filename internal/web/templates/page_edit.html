@@ -42,8 +42,8 @@
 
     <div class="form-group">
         <label>Body (Markdown)</label>
-        <div id="milkdown-editor" class="editor-container"></div>
-        <textarea id="editor-fallback" class="editor-fallback" style="display:none;" rows="20">{{$page.Body}}</textarea>
+        <div id="milkdown-editor" class="editor-container" style="display:none;"></div>
+        <textarea id="editor-fallback" class="editor-fallback" rows="20">{{$page.Body}}</textarea>
     </div>
 
     <div class="form-actions">
@@ -58,5 +58,7 @@
     <div id="results-content"></div>
 </div>
 
+<link rel="stylesheet" href="/static/dist/editor.css">
+<script src="/static/dist/editor.iife.js"></script>
 <script type="module" src="/static/wiki.js"></script>
 {{end}}
