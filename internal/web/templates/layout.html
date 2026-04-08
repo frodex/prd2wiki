@@ -1,0 +1,24 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} — prd2wiki</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="wiki-nav">
+        <a href="/" class="logo">prd2wiki</a>
+        <div class="nav-links">
+            <a href="/projects/{{.Project}}/pages">Pages</a>
+            <a href="/projects/{{.Project}}/pages/new">New Page</a>
+            <a href="/projects/{{.Project}}/search">Search</a>
+        </div>
+    </nav>
+    <main class="wiki-main">
+        {{template "content" .}}
+    </main>
+</body>
+</html>
+{{end}}
