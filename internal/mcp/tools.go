@@ -189,7 +189,7 @@ func (s *MCPServer) toolPropose(raw json.RawMessage) (interface{}, error) {
 		Type:   p.Type,
 		Body:   p.Body,
 		Tags:   p.Tags,
-		Branch: "draft/agent",
+		Branch: "draft/incoming",
 		Intent: p.Intent,
 		Author: "mcp-agent",
 	}

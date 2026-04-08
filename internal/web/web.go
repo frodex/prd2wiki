@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net/http"
 	"strings"
+	"time"
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
@@ -39,17 +40,20 @@ type PageListItem struct {
 
 // PageViewData holds data for the page view template.
 type PageViewData struct {
-	ID         string
-	Title      string
-	Type       string
-	Status     string
-	TrustLevel int
-	Creator    string
-	Created    string
-	Modified   string
-	Tags       []string
-	BodyHTML   template.HTML
-	Sources    []schema.Source
+	ID           string
+	Title        string
+	Type         string
+	Status       string
+	TrustLevel   int
+	Creator      string
+	Created      string
+	Modified     string
+	Tags         []string
+	BodyHTML      template.HTML
+	Sources      []schema.Source
+	Branch       string
+	LastEditBy   string
+	LastEditDate string
 }
 
 // PageEditData holds data for the page edit template.
@@ -204,32 +208,45 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// viewPage renders a single wiki page.
-// readPageAnyBranch tries to read a page from truth first, then all other branches.
-func readPageAnyBranch(repo *wgit.Repo, path string) (*schema.Frontmatter, []byte, error) {
-	branches := []string{"truth", "draft/incoming", "draft/agent", "draft/test"}
-	if allBranches, err := repo.ListBranches(); err == nil {
-		for _, b := range allBranches {
-			found := false
-			for _, existing := range branches {
-				if b == existing {
-					found = true
-					break
-				}
-			}
-			if !found {
-				branches = append(branches, b)
-			}
-		}
+// readPageNewest finds the most recently modified version of a page across all branches.
+// Returns the frontmatter, body, and the branch it was found on.
+func readPageNewest(repo *wgit.Repo, path string) (*schema.Frontmatter, []byte, string, error) {
+	branches, err := repo.ListBranches()
+	if err != nil || len(branches) == 0 {
+		branches = []string{"truth", "draft/incoming"}
 	}
+
+	type candidate struct {
+		fm     *schema.Frontmatter
+		body   []byte
+		branch string
+		date   time.Time
+	}
+
+	var best *candidate
 
 	for _, branch := range branches {
 		fm, body, err := repo.ReadPageWithMeta(branch, path)
-		if err == nil {
-			return fm, body, nil
+		if err != nil {
+			continue
+		}
+
+		// Get the latest commit date for this file on this branch
+		commits, _ := repo.PageHistory(branch, path, 1)
+		var commitDate time.Time
+		if len(commits) > 0 {
+			commitDate = commits[0].Date
+		}
+
+		if best == nil || commitDate.After(best.date) {
+			best = &candidate{fm: fm, body: body, branch: branch, date: commitDate}
 		}
 	}
-	return nil, nil, fmt.Errorf("page not found on any branch")
+
+	if best == nil {
+		return nil, nil, "", fmt.Errorf("page not found on any branch")
+	}
+	return best.fm, best.body, best.branch, nil
 }
 
 func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
@@ -245,10 +262,18 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 	// Determine the page path from the id.
 	path := "pages/" + id + ".md"
 
-	fm, body, err := readPageAnyBranch(repo, path)
+	fm, body, pageBranch, err := readPageNewest(repo, path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
+	}
+
+	// Get last edit info from git history
+	var lastEditBy, lastEditDate string
+	commits, _ := repo.PageHistoryAllBranches(path, 1)
+	if len(commits) > 0 {
+		lastEditBy = commits[0].Author
+		lastEditDate = commits[0].Date.Format("2006-01-02 15:04")
 	}
 
 	// Render markdown body to HTML.
@@ -259,15 +284,18 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pvd := PageViewData{
-		ID:         fm.ID,
-		Title:      fm.Title,
-		Type:       fm.Type,
-		Status:     fm.Status,
-		TrustLevel: fm.TrustLevel,
-		Creator:    fm.DCCreator,
-		Tags:       fm.Tags,
-		BodyHTML:   template.HTML(htmlBuf.String()),
-		Sources:    fm.Provenance.Sources,
+		ID:           fm.ID,
+		Title:        fm.Title,
+		Type:         fm.Type,
+		Status:       fm.Status,
+		TrustLevel:   fm.TrustLevel,
+		Creator:      fm.DCCreator,
+		Tags:         fm.Tags,
+		BodyHTML:      template.HTML(htmlBuf.String()),
+		Sources:      fm.Provenance.Sources,
+		Branch:       pageBranch,
+		LastEditBy:   lastEditBy,
+		LastEditDate: lastEditDate,
 	}
 	if !fm.DCCreated.IsZero() {
 		pvd.Created = fm.DCCreated.Format("2006-01-02")
@@ -302,7 +330,7 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 
 	path := "pages/" + id + ".md"
 
-	fm, body, err := readPageAnyBranch(repo, path)
+	fm, body, _, err := readPageNewest(repo, path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -432,7 +460,7 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 
 	// Determine page title from the latest version.
 	title := id
-	fm, _, fmErr := readPageAnyBranch(repo, path)
+	fm, _, _, fmErr := readPageNewest(repo, path)
 	if fmErr == nil && fm.Title != "" {
 		title = fm.Title
 	}
@@ -577,7 +605,7 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 	changes := computeLineDiff(string(fromData), string(toData))
 
 	title := id
-	fm, _, fmErr := readPageAnyBranch(repo, path)
+	fm, _, _, fmErr := readPageNewest(repo, path)
 	if fmErr == nil && fm.Title != "" {
 		title = fm.Title
 	}

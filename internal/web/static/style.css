@@ -560,3 +560,12 @@ h1 {
 .btn-restore:hover {
     background: #219a52;
 }
+
+.meta-bar-secondary {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 0.25rem;
+}
+.meta-bar-secondary .meta-item {
+    margin-right: 1rem;
+}

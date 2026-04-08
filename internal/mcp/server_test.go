@@ -273,8 +273,8 @@ func TestWikiProposeTool(t *testing.T) {
 		var req CreatePageRequest
 		json.NewDecoder(r.Body).Decode(&req)
 
-		if req.Branch != "draft/agent" {
-			t.Errorf("branch: got %q, want draft/agent", req.Branch)
+		if req.Branch != "draft/incoming" {
+			t.Errorf("branch: got %q, want draft/incoming", req.Branch)
 		}
 		if req.Author != "mcp-agent" {
 			t.Errorf("author: got %q, want mcp-agent", req.Author)

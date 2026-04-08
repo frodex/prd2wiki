@@ -15,9 +15,14 @@
     <span class="badge badge-{{$page.Type}}">{{$page.Type}}</span>
     <span class="badge badge-{{$page.Status}}">{{$page.Status}}</span>
     <span class="badge">L{{$page.TrustLevel}}</span>
-    {{if $page.Creator}}<span class="meta-item">by {{$page.Creator}}</span>{{end}}
-    {{if $page.Created}}<span class="meta-item">created {{$page.Created}}</span>{{end}}
-    {{if $page.Modified}}<span class="meta-item">modified {{$page.Modified}}</span>{{end}}
+    {{if $page.Creator}}<span class="meta-item">owner: {{$page.Creator}}</span>{{end}}
+</div>
+
+<div class="meta-bar meta-bar-secondary">
+    {{if $page.LastEditBy}}<span class="meta-item">last edit by: <strong>{{$page.LastEditBy}}</strong></span>{{end}}
+    {{if $page.LastEditDate}}<span class="meta-item">{{$page.LastEditDate}}</span>{{end}}
+    {{if $page.Branch}}<span class="meta-item">branch: {{$page.Branch}}</span>{{end}}
+    {{if $page.Created}}<span class="meta-item">created: {{$page.Created}}</span>{{end}}
 </div>
 
 {{if $page.Tags}}
