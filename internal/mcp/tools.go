@@ -52,7 +52,7 @@ func (s *MCPServer) registerTools() {
 				"tags":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}},
 				"intent":  map[string]interface{}{"type": "string", "enum": []string{"verbatim", "conform", "integrate"}},
 			},
-			"required": []string{"project", "id", "title", "type", "body"},
+			"required": []string{"project", "title", "type", "body"},
 		},
 	}, s.toolPropose)
 
