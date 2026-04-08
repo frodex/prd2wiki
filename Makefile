@@ -1,7 +1,12 @@
-.PHONY: build test run clean
+.PHONY: build build-mcp build-all test run clean
 
 build:
 	go build -o bin/prd2wiki ./cmd/prd2wiki
+
+build-mcp:
+	go build -o bin/prd2wiki-mcp ./cmd/prd2wiki-mcp
+
+build-all: build build-mcp
 
 test:
 	go test ./... -v -count=1

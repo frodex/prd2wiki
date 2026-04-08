@@ -15,6 +15,7 @@ type MCPServer struct {
 	client    *WikiClient
 	tools     map[string]registeredTool
 	resources map[string]ResourceHandler
+	prompts   map[string]registeredPrompt
 }
 
 // registeredTool pairs a tool definition with its handler function.
@@ -75,6 +76,7 @@ func NewServer(client *WikiClient) *MCPServer {
 	}
 	s.registerTools()
 	s.registerResources()
+	s.registerPrompts()
 	return s
 }
 
@@ -135,6 +137,10 @@ func (s *MCPServer) dispatch(req JSONRPCRequest) JSONRPCResponse {
 		return s.handleResourcesList(req)
 	case "resources/read":
 		return s.handleResourcesRead(req)
+	case "prompts/list":
+		return s.handlePromptsList(req)
+	case "prompts/get":
+		return s.handlePromptsGet(req)
 	default:
 		return JSONRPCResponse{
 			JSONRPC: "2.0",
@@ -153,6 +159,7 @@ func (s *MCPServer) handleInitialize(req JSONRPCRequest) JSONRPCResponse {
 			"capabilities": map[string]interface{}{
 				"tools":     map[string]interface{}{},
 				"resources": map[string]interface{}{},
+				"prompts":   map[string]interface{}{},
 			},
 			"serverInfo": map[string]interface{}{
 				"name":    "prd2wiki",
@@ -315,6 +322,67 @@ func (s *MCPServer) handleResourcesRead(req JSONRPCRequest) JSONRPCResponse {
 					"uri":      params.URI,
 					"mimeType": "application/json",
 					"text":     string(text),
+				},
+			},
+		},
+	}
+}
+
+func (s *MCPServer) handlePromptsList(req JSONRPCRequest) JSONRPCResponse {
+	defs := make([]PromptDef, 0, len(s.prompts))
+	for _, rp := range s.prompts {
+		defs = append(defs, rp.Def)
+	}
+	return JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result:  map[string]interface{}{"prompts": defs},
+	}
+}
+
+func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) JSONRPCResponse {
+	var params struct {
+		Name      string            `json:"name"`
+		Arguments map[string]string `json:"arguments"`
+	}
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &RPCError{Code: -32602, Message: "invalid params: " + err.Error()},
+		}
+	}
+
+	rp, ok := s.prompts[params.Name]
+	if !ok {
+		return JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &RPCError{Code: -32602, Message: fmt.Sprintf("unknown prompt: %s", params.Name)},
+		}
+	}
+
+	text, err := rp.Render(params.Arguments)
+	if err != nil {
+		return JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &RPCError{Code: -32602, Message: err.Error()},
+		}
+	}
+
+	return JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result: map[string]interface{}{
+			"description": rp.Def.Description,
+			"messages": []map[string]interface{}{
+				{
+					"role": "user",
+					"content": map[string]interface{}{
+						"type": "text",
+						"text": text,
+					},
 				},
 			},
 		},
