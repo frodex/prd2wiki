@@ -13,6 +13,8 @@ embedder:
 projects:
   - default
   - battletech
+  - phat-toad-with-trails
+  - svg-terminal
 
 logging:
   level: "info"
