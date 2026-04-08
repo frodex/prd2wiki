@@ -179,14 +179,36 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 	// Determine the page path from the id.
 	path := "pages/" + id + ".md"
 
-	// Try truth branch first, fall back to draft/incoming.
-	fm, body, err := repo.ReadPageWithMeta("truth", path)
-	if err != nil {
-		fm, body, err = repo.ReadPageWithMeta("draft/incoming", path)
-		if err != nil {
-			http.Error(w, "page not found: "+err.Error(), http.StatusNotFound)
-			return
+	// Try branches in priority order: truth, then any branch where this page exists.
+	branches := []string{"truth", "draft/incoming", "draft/agent", "draft/test"}
+	// Also try all branches from the repo
+	if allBranches, err := repo.ListBranches(); err == nil {
+		for _, b := range allBranches {
+			found := false
+			for _, existing := range branches {
+				if b == existing {
+					found = true
+					break
+				}
+			}
+			if !found {
+				branches = append(branches, b)
+			}
 		}
+	}
+
+	var fm *schema.Frontmatter
+	var body []byte
+	var readErr error
+	for _, branch := range branches {
+		fm, body, readErr = repo.ReadPageWithMeta(branch, path)
+		if readErr == nil {
+			break
+		}
+	}
+	if readErr != nil {
+		http.Error(w, "page not found on any branch", http.StatusNotFound)
+		return
 	}
 
 	// Render markdown body to HTML.
