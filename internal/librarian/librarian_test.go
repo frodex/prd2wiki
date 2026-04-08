@@ -432,3 +432,122 @@ func TestLibrarianIntegrate(t *testing.T) {
 		}
 	}
 }
+
+func TestPagePathHashPrefix(t *testing.T) {
+	// New pages with auto-generated hash IDs should go into hash-prefix dirs.
+	lib, repo := setupLibrarian(t)
+	ctx := context.Background()
+
+	fm := &schema.Frontmatter{
+		ID:     "", // auto-generate from title
+		Title:  "Hash Prefix Test Page",
+		Type:   "concept",
+		Status: "draft",
+	}
+
+	result, err := lib.Submit(ctx, librarian.SubmitRequest{
+		Project:     "testproject",
+		Branch:      "main",
+		Frontmatter: fm,
+		Body:        []byte("# Hash Prefix Test Page\n\nContent.\n"),
+		Intent:      librarian.IntentVerbatim,
+		Author:      "test-author",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if !result.Saved {
+		t.Fatalf("expected saved=true; issues: %v", result.Issues)
+	}
+
+	// ID should be a 7-char hex hash.
+	if !schema.IsHashID(fm.ID) {
+		t.Fatalf("auto-generated ID %q is not a hash ID", fm.ID)
+	}
+
+	// Path should use hash-prefix: pages/{first2}/{rest}.md
+	wantPrefix := "pages/" + fm.ID[:2] + "/" + fm.ID[2:] + ".md"
+	if result.Path != wantPrefix {
+		t.Errorf("path: got %q, want %q", result.Path, wantPrefix)
+	}
+
+	// Must be readable from git at that path.
+	readFM, _, err := repo.ReadPageWithMeta("main", result.Path)
+	if err != nil {
+		t.Fatalf("ReadPageWithMeta(%q): %v", result.Path, err)
+	}
+	if readFM.ID != fm.ID {
+		t.Errorf("ID mismatch: got %q, want %q", readFM.ID, fm.ID)
+	}
+}
+
+func TestLegacyFlatPath(t *testing.T) {
+	// Pages with explicit human-readable IDs should stay in flat layout.
+	lib, repo := setupLibrarian(t)
+	ctx := context.Background()
+
+	fm := &schema.Frontmatter{
+		ID:     "design-003",
+		Title:  "Design Three",
+		Type:   "concept",
+		Status: "draft",
+	}
+
+	result, err := lib.Submit(ctx, librarian.SubmitRequest{
+		Project:     "testproject",
+		Branch:      "main",
+		Frontmatter: fm,
+		Body:        []byte("# Design Three\n\nLegacy flat page.\n"),
+		Intent:      librarian.IntentVerbatim,
+		Author:      "test-author",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	wantPath := "pages/design-003.md"
+	if result.Path != wantPath {
+		t.Errorf("path: got %q, want %q", result.Path, wantPath)
+	}
+
+	// Must be readable.
+	readFM, _, err := repo.ReadPageWithMeta("main", wantPath)
+	if err != nil {
+		t.Fatalf("ReadPageWithMeta(%q): %v", wantPath, err)
+	}
+	if readFM.ID != "design-003" {
+		t.Errorf("ID mismatch: got %q, want %q", readFM.ID, "design-003")
+	}
+}
+
+func TestExplicitHashLikeIDStaysFlat(t *testing.T) {
+	// If a user explicitly provides an ID that happens to be 7 hex chars,
+	// it should use hash-prefix layout since it matches hash format.
+	lib, _ := setupLibrarian(t)
+	ctx := context.Background()
+
+	fm := &schema.Frontmatter{
+		ID:     "abc1234",
+		Title:  "Explicit Hash-Like ID",
+		Type:   "concept",
+		Status: "draft",
+	}
+
+	result, err := lib.Submit(ctx, librarian.SubmitRequest{
+		Project:     "testproject",
+		Branch:      "main",
+		Frontmatter: fm,
+		Body:        []byte("# Explicit Hash-Like ID\n\nContent.\n"),
+		Intent:      librarian.IntentVerbatim,
+		Author:      "test-author",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	// Even explicit IDs matching hash format go to hash-prefix dirs.
+	wantPath := "pages/ab/c1234.md"
+	if result.Path != wantPath {
+		t.Errorf("path: got %q, want %q", result.Path, wantPath)
+	}
+}

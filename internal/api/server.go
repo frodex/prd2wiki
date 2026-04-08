@@ -2,11 +2,13 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
+	"github.com/frodex/prd2wiki/internal/schema"
 )
 
 // Server holds application state and serves the REST API.
@@ -60,4 +62,33 @@ func (s *Server) Handler() http.Handler {
 // ListenAndServe starts the HTTP server.
 func (s *Server) ListenAndServe() error {
 	return http.ListenAndServe(s.addr, s.Handler())
+}
+
+// resolvePagePath looks up the stored path for a page ID from the SQLite index.
+// Falls back to hash-prefix path for hash IDs, or flat path for legacy IDs.
+func (s *Server) resolvePagePath(project, id string) string {
+	results, err := s.search.ByID(project, id)
+	if err == nil && len(results) > 0 && results[0].Path != "" {
+		return results[0].Path
+	}
+	sanitized := schema.SanitizePathSegment(id)
+	if schema.IsHashID(sanitized) && len(sanitized) >= 2 {
+		return fmt.Sprintf("pages/%s/%s.md", sanitized[:2], sanitized[2:])
+	}
+	return fmt.Sprintf("pages/%s.md", sanitized)
+}
+
+// alternatePagePath returns the other path format for an ID (hash-prefix vs flat).
+// Returns "" if there is no meaningful alternate.
+func (s *Server) alternatePagePath(id, currentPath string) string {
+	sanitized := schema.SanitizePathSegment(id)
+	flat := fmt.Sprintf("pages/%s.md", sanitized)
+	if len(sanitized) >= 2 {
+		hashPrefix := fmt.Sprintf("pages/%s/%s.md", sanitized[:2], sanitized[2:])
+		if currentPath == hashPrefix {
+			return flat
+		}
+		return hashPrefix
+	}
+	return ""
 }

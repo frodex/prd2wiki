@@ -120,18 +120,36 @@ func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
 
 	id := sanitizePageID(r.PathValue("id"))
 	branch := r.URL.Query().Get("branch")
-	path := "pages/" + id + ".md"
+
+	// Resolve path: try index first, then hash-prefix, then flat.
+	path := s.resolvePagePath(project, id)
 
 	var fm *schema.Frontmatter
 	var body []byte
 	var err error
 
 	if branch != "" {
-		// Specific branch requested
+		// Specific branch requested — try resolved path, then alternate.
 		fm, body, err = repo.ReadPageWithMeta(branch, path)
+		if err != nil {
+			altPath := s.alternatePagePath(id, path)
+			if altPath != "" {
+				fm, body, err = repo.ReadPageWithMeta(branch, altPath)
+			}
+		}
 	} else {
 		// Search all branches, newest first
 		branch, err = repo.FindBranchForPage(path)
+		if err != nil {
+			// Try alternate path format.
+			altPath := s.alternatePagePath(id, path)
+			if altPath != "" {
+				branch, err = repo.FindBranchForPage(altPath)
+				if err == nil {
+					path = altPath
+				}
+			}
+		}
 		if err == nil {
 			fm, body, err = repo.ReadPageWithMeta(branch, path)
 		}
@@ -175,7 +193,8 @@ func (s *Server) deletePage(w http.ResponseWriter, r *http.Request) {
 		branch = "draft/incoming"
 	}
 
-	path := "pages/" + id + ".md"
+	// Resolve path: try index first, then hash-prefix, then flat.
+	path := s.resolvePagePath(project, id)
 	author := "anonymous@prd2wiki"
 	if err := repo.DeletePage(branch, path, "delete "+id, author); err != nil {
 		if strings.Contains(err.Error(), "not found") {

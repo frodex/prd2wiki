@@ -232,6 +232,25 @@ func (r *Repo) ReadPage(branch, path string) ([]byte, error) {
 	return data, nil
 }
 
+// HasPage returns true if a page exists at the given path on the given branch.
+func (r *Repo) HasPage(branch, path string) bool {
+	refName := plumbing.NewBranchReferenceName(branch)
+	ref, err := r.repo.Reference(refName, true)
+	if err != nil {
+		return false
+	}
+	commit, err := r.repo.CommitObject(ref.Hash())
+	if err != nil {
+		return false
+	}
+	tree, err := commit.Tree()
+	if err != nil {
+		return false
+	}
+	_, err = tree.File(path)
+	return err == nil
+}
+
 // ListBranches returns all branch names.
 func (r *Repo) ListBranches() ([]string, error) {
 	refs, err := r.repo.References()

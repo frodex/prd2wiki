@@ -14,6 +14,13 @@ import (
 	"github.com/frodex/prd2wiki/internal/vocabulary"
 )
 
+// PagePathOptions controls how pagePath resolves the storage path.
+// It exists so callers can test hash-prefix vs legacy behavior.
+type PagePathOptions struct {
+	// ForceHashPrefix forces hash-prefix directory layout regardless of ID format.
+	ForceHashPrefix bool
+}
+
 const (
 	IntentVerbatim  = "verbatim"
 	IntentConform   = "conform"
@@ -56,28 +63,11 @@ func New(repo *wgit.Repo, indexer *index.Indexer, vstore *vectordb.Store, vocab 
 	}
 }
 
-// generateID creates a page ID from the title, or a random one if no title.
+// generateID creates a content-addressed hash ID from the title and current time,
+// or a random fallback if the title is empty.
 func generateID(title string) string {
 	if title != "" {
-		// Slugify the title
-		id := strings.ToLower(title)
-		id = strings.Map(func(r rune) rune {
-			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-				return r
-			}
-			if r == ' ' || r == '-' || r == '_' {
-				return '-'
-			}
-			return -1
-		}, id)
-		// Collapse multiple dashes
-		for strings.Contains(id, "--") {
-			id = strings.ReplaceAll(id, "--", "-")
-		}
-		id = strings.Trim(id, "-")
-		if id != "" {
-			return id
-		}
+		return schema.GeneratePageID(title, time.Now())
 	}
 	// Random fallback
 	b := make([]byte, 4)
@@ -181,20 +171,65 @@ func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch stri
 }
 
 // pagePath returns the canonical git path for a page.
-// If the frontmatter has Module and/or Category set, the page is stored
-// in a subdirectory: pages/{module}/{category}/{id}.md
-// Flat pages (no module/category) stay at pages/{id}.md.
+//
+// For hash IDs (7 hex chars, no module/category): uses git-style hash-prefix
+// directories: pages/{first-2-chars}/{rest}.md
+//
+// For human-readable IDs or pages with Module/Category: uses the original layout:
+// pages/{module}/{category}/{id}.md or pages/{id}.md
+//
 // All path segments are sanitized to prevent traversal and injection attacks.
 func pagePath(fm *schema.Frontmatter) string {
-	parts := []string{"pages"}
-	if fm.Module != "" {
-		parts = append(parts, schema.SanitizePathSegment(fm.Module))
+	id := schema.SanitizePathSegment(fm.ID)
+
+	// If module or category is set, use the module/category layout (unchanged).
+	if fm.Module != "" || fm.Category != "" {
+		parts := []string{"pages"}
+		if fm.Module != "" {
+			parts = append(parts, schema.SanitizePathSegment(fm.Module))
+		}
+		if fm.Category != "" {
+			parts = append(parts, schema.SanitizePathSegment(fm.Category))
+		}
+		parts = append(parts, id+".md")
+		return strings.Join(parts, "/")
 	}
-	if fm.Category != "" {
-		parts = append(parts, schema.SanitizePathSegment(fm.Category))
+
+	// Hash IDs get git-style hash-prefix directories.
+	if schema.IsHashID(id) && len(id) >= 2 {
+		return fmt.Sprintf("pages/%s/%s.md", id[:2], id[2:])
 	}
-	parts = append(parts, schema.SanitizePathSegment(fm.ID)+".md")
-	return strings.Join(parts, "/")
+
+	// Legacy human-readable IDs stay flat.
+	return fmt.Sprintf("pages/%s.md", id)
+}
+
+// ResolvePagePath tries to find the actual storage path for a page ID.
+// It checks the hash-prefix directory first, then falls back to the flat layout.
+// The repo is checked to see which path actually has content.
+// If neither exists, returns the canonical path for the ID format.
+func ResolvePagePath(repo interface{ HasPage(branch, path string) bool }, branch, id string) string {
+	sanitized := schema.SanitizePathSegment(id)
+
+	// Try hash-prefix path first (for hash IDs).
+	if len(sanitized) >= 2 {
+		hashPath := fmt.Sprintf("pages/%s/%s.md", sanitized[:2], sanitized[2:])
+		if repo != nil && repo.HasPage(branch, hashPath) {
+			return hashPath
+		}
+	}
+
+	// Try flat path (legacy).
+	flatPath := fmt.Sprintf("pages/%s.md", sanitized)
+	if repo != nil && repo.HasPage(branch, flatPath) {
+		return flatPath
+	}
+
+	// Neither found — return canonical path for the ID format.
+	if schema.IsHashID(sanitized) && len(sanitized) >= 2 {
+		return fmt.Sprintf("pages/%s/%s.md", sanitized[:2], sanitized[2:])
+	}
+	return flatPath
 }
 
 // commitMessage builds the commit message for a submission.
