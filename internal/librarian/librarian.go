@@ -82,6 +82,20 @@ func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 		req.Frontmatter.ID = generateID(req.Frontmatter.Title)
 	}
 
+	// Extract base64 images on ALL intents — binary data doesn't belong in markdown.
+	cleaned, extractedImages := ExtractBase64Images(string(req.Body), req.Frontmatter.ID, req.Project)
+	if len(extractedImages) > 0 {
+		req.Body = []byte(cleaned)
+		// Store each extracted image as an attachment in git
+		for _, img := range extractedImages {
+			if err := l.repo.WritePage(req.Branch, img.Path, img.Data,
+				"extract inline image: "+img.Filename, req.Author); err != nil {
+				// Log but don't fail the whole submission
+				continue
+			}
+		}
+	}
+
 	switch req.Intent {
 	case IntentVerbatim:
 		return l.submitVerbatim(ctx, req)
