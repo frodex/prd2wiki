@@ -9,8 +9,8 @@ import (
 )
 
 func (s *Server) deprecatePage(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
-	id := r.PathValue("id")
+	project := sanitizePageID(r.PathValue("project"))
+	id := sanitizePageID(r.PathValue("id"))
 
 	repo, ok := s.repos[project]
 	if !ok {
@@ -53,8 +53,8 @@ func (s *Server) deprecatePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) approvePage(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
-	id := r.PathValue("id")
+	project := sanitizePageID(r.PathValue("project"))
+	id := sanitizePageID(r.PathValue("id"))
 
 	repo, ok := s.repos[project]
 	if !ok {
@@ -95,8 +95,8 @@ func (s *Server) approvePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) restorePage(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
-	id := r.PathValue("id")
+	project := sanitizePageID(r.PathValue("project"))
+	id := sanitizePageID(r.PathValue("id"))
 
 	repo, ok := s.repos[project]
 	if !ok {

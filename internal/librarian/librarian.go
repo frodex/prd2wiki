@@ -184,15 +184,16 @@ func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch stri
 // If the frontmatter has Module and/or Category set, the page is stored
 // in a subdirectory: pages/{module}/{category}/{id}.md
 // Flat pages (no module/category) stay at pages/{id}.md.
+// All path segments are sanitized to prevent traversal and injection attacks.
 func pagePath(fm *schema.Frontmatter) string {
 	parts := []string{"pages"}
 	if fm.Module != "" {
-		parts = append(parts, fm.Module)
+		parts = append(parts, schema.SanitizePathSegment(fm.Module))
 	}
 	if fm.Category != "" {
-		parts = append(parts, fm.Category)
+		parts = append(parts, schema.SanitizePathSegment(fm.Category))
 	}
-	parts = append(parts, fm.ID+".md")
+	parts = append(parts, schema.SanitizePathSegment(fm.ID)+".md")
 	return strings.Join(parts, "/")
 }
 

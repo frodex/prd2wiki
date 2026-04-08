@@ -25,14 +25,14 @@ var allowedTypes = map[string]string{
 }
 
 func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
+	project := sanitizePageID(r.PathValue("project"))
 	repo, ok := s.repos[project]
 	if !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
-	id := r.PathValue("id")
+	id := sanitizePageID(r.PathValue("id"))
 
 	// Read file data and filename from either multipart or raw body.
 	var data []byte
@@ -95,14 +95,14 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAttachment(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
+	project := sanitizePageID(r.PathValue("project"))
 	repo, ok := s.repos[project]
 	if !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
-	id := r.PathValue("id")
+	id := sanitizePageID(r.PathValue("id"))
 	filename := r.PathValue("filename")
 
 	branch := r.URL.Query().Get("branch")
@@ -135,14 +135,14 @@ func (s *Server) getAttachment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listAttachments(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
+	project := sanitizePageID(r.PathValue("project"))
 	repo, ok := s.repos[project]
 	if !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
-	id := r.PathValue("id")
+	id := sanitizePageID(r.PathValue("id"))
 
 	branch := r.URL.Query().Get("branch")
 	if branch == "" {

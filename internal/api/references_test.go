@@ -12,9 +12,9 @@ func TestGetReferences(t *testing.T) {
 	srv := setupTestServer(t)
 	handler := srv.Handler()
 
-	// Create page P-001 with a provenance source "SRC-001".
+	// Create page P-001 with a provenance source "src-001".
 	body := map[string]interface{}{
-		"id":    "P-001",
+		"id":    "p-001",
 		"title": "Page One",
 		"type":  "requirement",
 		"body":  "# Page One\n\nContent here.",
@@ -33,7 +33,7 @@ func TestGetReferences(t *testing.T) {
 	// Insert a provenance edge directly into the database for P-001 -> SRC-001.
 	_, err := srv.db.Exec(`
 		INSERT INTO provenance_edges (source_page, target_ref, target_version, target_checksum, status)
-		VALUES ('P-001', 'SRC-001', 1, 'abc123', 'valid')
+		VALUES ('p-001', 'src-001', 1, 'abc123', 'valid')
 	`)
 	if err != nil {
 		t.Fatalf("insert provenance edge: %v", err)
@@ -53,8 +53,8 @@ func TestGetReferences(t *testing.T) {
 		t.Fatalf("decode references response: %v", err)
 	}
 
-	if refResp.Ref != "P-001" {
-		t.Errorf("root ref: got %q, want P-001", refResp.Ref)
+	if refResp.Ref != "p-001" {
+		t.Errorf("root ref: got %q, want p-001", refResp.Ref)
 	}
 	if refResp.Status != "root" {
 		t.Errorf("root status: got %q, want root", refResp.Status)
@@ -64,7 +64,7 @@ func TestGetReferences(t *testing.T) {
 	}
 
 	child := refResp.Children[0]
-	if child.Ref != "SRC-001" {
+	if child.Ref != "src-001" {
 		t.Errorf("child ref: got %q, want SRC-001", child.Ref)
 	}
 	if child.Status != "valid" {

@@ -364,7 +364,7 @@ func TestLibrarianFlatPathNoModule(t *testing.T) {
 		t.Fatalf("Submit: %v", err)
 	}
 
-	wantPath := "pages/DESIGN-003.md"
+	wantPath := "pages/design-003.md"
 	if result.Path != wantPath {
 		t.Errorf("path: got %q, want %q", result.Path, wantPath)
 	}

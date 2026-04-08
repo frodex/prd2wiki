@@ -22,14 +22,14 @@ type DiffResult struct {
 }
 
 func (s *Server) pageHistory(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
+	project := sanitizePageID(r.PathValue("project"))
 	repo, ok := s.repos[project]
 	if !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
-	id := r.PathValue("id")
+	id := sanitizePageID(r.PathValue("id"))
 	path := "pages/" + id + ".md"
 
 	limit := 50
@@ -50,14 +50,14 @@ func (s *Server) pageHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) pageAtCommit(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
+	project := sanitizePageID(r.PathValue("project"))
 	repo, ok := s.repos[project]
 	if !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
-	id := r.PathValue("id")
+	id := sanitizePageID(r.PathValue("id"))
 	hash := r.PathValue("hash")
 	path := "pages/" + id + ".md"
 
@@ -79,14 +79,14 @@ func (s *Server) pageAtCommit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) pageDiff(w http.ResponseWriter, r *http.Request) {
-	project := r.PathValue("project")
+	project := sanitizePageID(r.PathValue("project"))
 	repo, ok := s.repos[project]
 	if !ok {
 		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
-	id := r.PathValue("id")
+	id := sanitizePageID(r.PathValue("id"))
 	path := "pages/" + id + ".md"
 	from := r.URL.Query().Get("from")
 	to := r.URL.Query().Get("to")
