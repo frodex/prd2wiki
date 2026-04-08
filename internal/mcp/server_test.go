@@ -113,7 +113,7 @@ func TestInitialize(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected map result, got %T", resp.Result)
 	}
-	if result["protocolVersion"] != "2024-11-05" {
+	if result["protocolVersion"] != "2025-11-25" {
 		t.Errorf("protocolVersion: got %v", result["protocolVersion"])
 	}
 	info, _ := result["serverInfo"].(map[string]interface{})
