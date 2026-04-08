@@ -45,6 +45,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/history", s.pageHistory)
 	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/history/{hash}", s.pageAtCommit)
 	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/diff", s.pageDiff)
+	mux.HandleFunc("POST /api/projects/{project}/pages/{id}/deprecate", s.deprecatePage)
+	mux.HandleFunc("POST /api/projects/{project}/pages/{id}/restore", s.restorePage)
 
 	return mux
 }

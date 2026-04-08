@@ -542,12 +542,21 @@ h1 {
     }
 }
 
-.btn-danger {
-    background: #dc3545;
+.btn-warn {
+    background: #e67e22;
     color: #fff;
     border: none;
     cursor: pointer;
 }
-.btn-danger:hover {
-    background: #c82333;
+.btn-warn:hover {
+    background: #d35400;
+}
+.btn-restore {
+    background: #27ae60;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+}
+.btn-restore:hover {
+    background: #219a52;
 }
