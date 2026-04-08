@@ -101,6 +101,7 @@ function showResults(data, isError) {
     }
 
     content.innerHTML = html;
+    area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function escapeHtml(str) {
@@ -176,6 +177,7 @@ function showDiffPreview(original, result, project) {
 
     html += '</div>';
     content.innerHTML = html;
+    area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // Make diff action functions globally accessible for inline onclick handlers (module scope)
@@ -239,7 +241,8 @@ async function submitPage(intent) {
 
         showResults(result, false);
 
-        // On success, redirect to page view after a short delay
+        // On success, clear auto-saved draft and redirect to page view
+        clearAutosaveDraft();
         if (result.id || result.path) {
             const pageId = result.id || result.path?.replace('pages/','').replace('.md','') || data.id;
             setTimeout(() => {
@@ -320,6 +323,24 @@ window.expandRef = async function expandRef(project, refId, toggleEl) {
     }
 };
 
+// Auto-save draft to localStorage
+function autosaveDraftKey() {
+    const id = document.getElementById('field-id')?.value || 'new';
+    return 'prd2wiki-draft-' + id;
+}
+
+function autosaveDraft() {
+    const data = collectFormData('draft');
+    if (data && data.body) {
+        data._savedAt = Date.now();
+        localStorage.setItem(autosaveDraftKey(), JSON.stringify(data));
+    }
+}
+
+function clearAutosaveDraft() {
+    localStorage.removeItem(autosaveDraftKey());
+}
+
 // Wire up submit buttons
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.btn-submit').forEach(btn => {
@@ -331,4 +352,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize editor
     initMilkdown();
+
+    // Restore auto-saved draft if present
+    const form = document.getElementById('page-form');
+    if (form) {
+        const key = autosaveDraftKey();
+        const saved = localStorage.getItem(key);
+        if (saved) {
+            try {
+                const data = JSON.parse(saved);
+                if (data._savedAt && confirm('Restore unsaved draft from ' + new Date(data._savedAt).toLocaleString() + '?')) {
+                    if (data.title) {
+                        const titleEl = document.getElementById('field-title');
+                        if (titleEl) titleEl.value = data.title;
+                    }
+                    if (data.type) {
+                        const typeEl = document.getElementById('field-type');
+                        if (typeEl) typeEl.value = data.type;
+                    }
+                    if (data.status) {
+                        const statusEl = document.getElementById('field-status');
+                        if (statusEl) statusEl.value = data.status;
+                    }
+                    if (data.tags) {
+                        const tagsEl = document.getElementById('field-tags');
+                        if (tagsEl) tagsEl.value = data.tags.join(', ');
+                    }
+                    if (data.body) {
+                        const fallback = document.getElementById('editor-fallback');
+                        if (fallback) fallback.value = data.body;
+                    }
+                } else {
+                    localStorage.removeItem(key);
+                }
+            } catch (e) {
+                localStorage.removeItem(key);
+            }
+        }
+
+        // Start auto-save interval
+        setInterval(autosaveDraft, 5000);
+    }
 });

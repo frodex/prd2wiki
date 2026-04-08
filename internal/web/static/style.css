@@ -560,6 +560,35 @@ h1 {
 .btn-restore:hover {
     background: #219a52;
 }
+.btn-approve {
+    background: #27ae60;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+}
+.btn-approve:hover {
+    background: #219a52;
+}
+
+/* Page list annotations */
+.page-id-annotation {
+    display: block;
+    font-size: 0.75rem;
+    color: #999;
+    font-family: monospace;
+}
+.last-edit-cell {
+    font-size: 0.8rem;
+    color: #666;
+}
+.last-edit-by {
+    font-weight: 500;
+}
+.last-edit-date {
+    display: block;
+    font-size: 0.75rem;
+    color: #999;
+}
 
 .meta-bar-secondary {
     font-size: 0.8rem;

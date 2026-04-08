@@ -3,21 +3,27 @@
 <table class="page-table">
     <thead>
         <tr>
-            <th>ID</th>
             <th>Title</th>
             <th>Type</th>
             <th>Status</th>
             <th>Trust</th>
+            <th>Last Edit</th>
         </tr>
     </thead>
     <tbody>
         {{range .Content}}
         <tr>
-            <td><a href="/projects/{{$.Project}}/pages/{{.ID}}">{{.ID}}</a></td>
-            <td>{{.Title}}</td>
+            <td>
+                <a href="/projects/{{$.Project}}/pages/{{.ID}}">{{.Title}}</a>
+                <span class="page-id-annotation">{{.ID}}</span>
+            </td>
             <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
             <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
             <td>L{{.TrustLevel}}</td>
+            <td class="last-edit-cell">
+                {{if .LastEditBy}}<span class="last-edit-by">{{.LastEditBy}}</span>{{end}}
+                {{if .LastEditDate}}<span class="last-edit-date">{{.LastEditDate}}</span>{{end}}
+            </td>
         </tr>
         {{else}}
         <tr><td colspan="5">No pages yet. <a href="/projects/{{.Project}}/pages/new">Create one</a>.</td></tr>

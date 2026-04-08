@@ -30,12 +30,14 @@ type PageData struct {
 
 // PageListItem represents one row in the page listing table.
 type PageListItem struct {
-	ID         string
-	Title      string
-	Type       string
-	Status     string
-	TrustLevel int
-	Path       string
+	ID           string
+	Title        string
+	Type         string
+	Status       string
+	TrustLevel   int
+	Path         string
+	LastEditBy   string
+	LastEditDate string
 }
 
 // PageViewData holds data for the page view template.
@@ -183,6 +185,8 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	repo := h.repos[project]
+
 	items := make([]PageListItem, len(results))
 	for i, pr := range results {
 		items[i] = PageListItem{
@@ -192,6 +196,13 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 			Status:     pr.Status,
 			TrustLevel: pr.TrustLevel,
 			Path:       pr.Path,
+		}
+		if repo != nil {
+			commits, _ := repo.PageHistoryAllBranches(pr.Path, 1)
+			if len(commits) > 0 {
+				items[i].LastEditBy = commits[0].Author
+				items[i].LastEditDate = commits[0].Date.Format("2006-01-02 15:04")
+			}
 		}
 	}
 
