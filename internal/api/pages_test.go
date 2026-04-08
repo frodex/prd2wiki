@@ -245,6 +245,76 @@ func TestProjectNotFound(t *testing.T) {
 	}
 }
 
+func TestCreatePageFlatPayload(t *testing.T) {
+	srv := setupTestServer(t)
+	handler := srv.Handler()
+
+	// POST with flat JSON matching what the browser sends — this was the bug format.
+	rawJSON := []byte(`{"id":"TEST-FLAT","title":"Flat Payload Test","type":"concept","body":"# Test","intent":"verbatim"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/projects/test-project/pages", bytes.NewReader(rawJSON))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var createResp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if createResp["id"] != "TEST-FLAT" {
+		t.Errorf("id: got %v, want TEST-FLAT", createResp["id"])
+	}
+	if createResp["title"] != "Flat Payload Test" {
+		t.Errorf("title: got %v, want 'Flat Payload Test' — flat payload was not parsed correctly", createResp["title"])
+	}
+}
+
+func TestCreatePageNoID(t *testing.T) {
+	srv := setupTestServer(t)
+	handler := srv.Handler()
+
+	// POST with title but no ID — server must auto-generate one.
+	rawJSON := []byte(`{"title":"Auto ID Page","type":"concept","body":"# Auto ID","intent":"verbatim"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/projects/test-project/pages", bytes.NewReader(rawJSON))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var createResp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	generatedID, ok := createResp["id"].(string)
+	if !ok || generatedID == "" {
+		t.Fatalf("expected a non-empty generated id in response, got %v", createResp["id"])
+	}
+
+	// GET the page using the returned ID — must exist.
+	getURL := "/api/projects/test-project/pages/" + generatedID + "?branch=draft/incoming"
+	req = httptest.NewRequest(http.MethodGet, getURL, nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get generated page: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var getResp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	if getResp["id"] != generatedID {
+		t.Errorf("retrieved page id: got %v, want %v", getResp["id"], generatedID)
+	}
+}
+
 func TestCreatePageWithIntents(t *testing.T) {
 	srv := setupTestServer(t)
 

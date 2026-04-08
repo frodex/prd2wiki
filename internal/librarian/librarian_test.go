@@ -168,6 +168,132 @@ func TestLibrarianValidationError(t *testing.T) {
 	}
 }
 
+func TestLibrarianAutoGenerateID(t *testing.T) {
+	lib, repo := setupLibrarian(t)
+	ctx := context.Background()
+
+	fm := &schema.Frontmatter{
+		ID:    "", // empty — should be auto-generated from title
+		Title: "Hello World Test",
+		Type:  "concept",
+	}
+
+	result, err := lib.Submit(ctx, librarian.SubmitRequest{
+		Project:     "testproject",
+		Branch:      "draft/incoming",
+		Frontmatter: fm,
+		Body:        []byte("# Hello World Test\n\nSome content.\n"),
+		Intent:      librarian.IntentVerbatim,
+		Author:      "test-author",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if !result.Saved {
+		t.Fatalf("expected saved=true, got false; issues: %v", result.Issues)
+	}
+
+	// Path must not be "pages/.md" — that was the bug.
+	if result.Path == "pages/.md" {
+		t.Fatalf("generated path is 'pages/.md' — ID was not generated")
+	}
+	if result.Path == "" {
+		t.Fatal("result path is empty")
+	}
+
+	// The ID in frontmatter must be non-empty after submission.
+	if fm.ID == "" {
+		t.Fatal("frontmatter ID is still empty after auto-generation")
+	}
+
+	// Read back from git and verify ID in frontmatter is non-empty.
+	readFM, _, err := repo.ReadPageWithMeta("draft/incoming", result.Path)
+	if err != nil {
+		t.Fatalf("ReadPageWithMeta(%q): %v", result.Path, err)
+	}
+	if readFM.ID == "" {
+		t.Errorf("ID in stored frontmatter is empty — auto-generation did not persist")
+	}
+}
+
+func TestLibrarianAutoGenerateIDNoTitle(t *testing.T) {
+	lib, _ := setupLibrarian(t)
+	ctx := context.Background()
+
+	fm := &schema.Frontmatter{
+		ID:    "", // empty
+		Title: "", // also empty — must fall back to random ID
+		Type:  "concept",
+	}
+
+	result, err := lib.Submit(ctx, librarian.SubmitRequest{
+		Project:     "testproject",
+		Branch:      "draft/incoming",
+		Frontmatter: fm,
+		Body:        []byte("No title, no ID.\n"),
+		Intent:      librarian.IntentVerbatim,
+		Author:      "test-author",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if !result.Saved {
+		t.Fatalf("expected saved=true, got false; issues: %v", result.Issues)
+	}
+
+	// ID must follow the random fallback pattern: page-{date}-{hex}
+	if fm.ID == "" {
+		t.Fatal("ID is still empty — random fallback did not run")
+	}
+	if !strings.HasPrefix(fm.ID, "page-") {
+		t.Errorf("random ID %q does not start with 'page-'", fm.ID)
+	}
+	// Verify path is not broken
+	if result.Path == "pages/.md" || result.Path == "" {
+		t.Errorf("path is broken: %q", result.Path)
+	}
+}
+
+func TestLibrarianVerbatimEmptyID(t *testing.T) {
+	lib, repo := setupLibrarian(t)
+	ctx := context.Background()
+
+	fm := &schema.Frontmatter{
+		ID:    "",
+		Title: "Verbatim Empty ID Test",
+		Type:  "requirement",
+	}
+
+	result, err := lib.Submit(ctx, librarian.SubmitRequest{
+		Project:     "testproject",
+		Branch:      "draft/incoming",
+		Frontmatter: fm,
+		Body:        []byte("# Verbatim Empty ID Test\n\nContent.\n"),
+		Intent:      librarian.IntentVerbatim,
+		Author:      "test-author",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if !result.Saved {
+		t.Fatalf("verbatim should save despite schema issues; got saved=false, issues: %v", result.Issues)
+	}
+
+	// Path must be valid — not "pages/.md".
+	if result.Path == "pages/.md" {
+		t.Fatalf("verbatim with empty ID produced broken path 'pages/.md'")
+	}
+
+	// Verify the page is actually readable from git.
+	readFM, _, err := repo.ReadPageWithMeta("draft/incoming", result.Path)
+	if err != nil {
+		t.Fatalf("ReadPageWithMeta(%q): %v", result.Path, err)
+	}
+	if readFM.ID == "" {
+		t.Errorf("stored frontmatter still has empty ID")
+	}
+}
+
 func TestLibrarianIntegrate(t *testing.T) {
 	lib, _ := setupLibrarian(t)
 	ctx := context.Background()

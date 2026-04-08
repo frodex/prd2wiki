@@ -295,6 +295,59 @@ func TestRebuildFromRepo(t *testing.T) {
 	}
 }
 
+func TestRebuildMultipleBranches(t *testing.T) {
+	db := openTestDB(t)
+	ix := NewIndexer(db)
+
+	dir := t.TempDir()
+	repo, err := wgit.InitRepo(dir, "multibranch")
+	if err != nil {
+		t.Fatalf("InitRepo: %v", err)
+	}
+
+	fmA := &schema.Frontmatter{ID: "A-001", Title: "Alpha Page", Type: "concept", Status: "draft"}
+	if err := repo.WritePageWithMeta("draft/agent", "pages/a-001.md", fmA, []byte("Alpha body."), "add a-001", "test"); err != nil {
+		t.Fatalf("WritePageWithMeta draft/agent: %v", err)
+	}
+
+	fmB := &schema.Frontmatter{ID: "B-001", Title: "Beta Page", Type: "policy", Status: "draft"}
+	if err := repo.WritePageWithMeta("draft/incoming", "pages/b-001.md", fmB, []byte("Beta body."), "add b-001", "test"); err != nil {
+		t.Fatalf("WritePageWithMeta draft/incoming: %v", err)
+	}
+
+	// Rebuild branch 1, then branch 2 — this was the bug: branch 2 rebuild wiped branch 1.
+	if err := ix.RebuildFromRepo("multibranch", repo, "draft/agent"); err != nil {
+		t.Fatalf("RebuildFromRepo draft/agent: %v", err)
+	}
+	if err := ix.RebuildFromRepo("multibranch", repo, "draft/incoming"); err != nil {
+		t.Fatalf("RebuildFromRepo draft/incoming: %v", err)
+	}
+
+	// Both pages must survive.
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pages WHERE project = ?", "multibranch").Scan(&count); err != nil {
+		t.Fatalf("count pages: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 pages after rebuilding two branches, got %d (second rebuild wiped the first)", count)
+	}
+
+	var branch string
+	if err := db.QueryRow("SELECT branch FROM pages WHERE id = ?", "A-001").Scan(&branch); err != nil {
+		t.Fatalf("query A-001: %v", err)
+	}
+	if branch != "draft/agent" {
+		t.Errorf("A-001 branch: got %q, want draft/agent", branch)
+	}
+
+	if err := db.QueryRow("SELECT branch FROM pages WHERE id = ?", "B-001").Scan(&branch); err != nil {
+		t.Fatalf("query B-001: %v", err)
+	}
+	if branch != "draft/incoming" {
+		t.Errorf("B-001 branch: got %q, want draft/incoming", branch)
+	}
+}
+
 func TestRebuildFromRepoClears(t *testing.T) {
 	db := openTestDB(t)
 	ix := NewIndexer(db)
