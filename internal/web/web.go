@@ -286,8 +286,15 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	treeFilter := r.URL.Query().Get("tree")
+	tagFilter := r.URL.Query().Get("tag")
 
-	results, err := h.search.ListAll(project)
+	var results []index.PageResult
+	var err error
+	if tagFilter != "" {
+		results, err = h.search.ByTag(project, tagFilter)
+	} else {
+		results, err = h.search.ListAll(project)
+	}
 	if err != nil {
 		http.Error(w, "failed to list pages: "+err.Error(), http.StatusInternalServerError)
 		return
