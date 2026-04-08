@@ -55,13 +55,11 @@ function collectFormData(intent) {
         .filter(t => t.length > 0);
 
     return {
-        frontmatter: {
-            id: form.querySelector('#field-id').value.trim(),
-            title: form.querySelector('#field-title').value.trim(),
-            type: form.querySelector('#field-type').value,
-            status: form.querySelector('#field-status').value,
-            tags: tags,
-        },
+        id: form.querySelector('#field-id').value.trim(),
+        title: form.querySelector('#field-title').value.trim(),
+        type: form.querySelector('#field-type').value,
+        status: form.querySelector('#field-status').value,
+        tags: tags,
         body: getEditorMarkdown(),
         intent: intent,
     };
@@ -147,8 +145,8 @@ function showDiffPreview(original, result, project) {
 
     // Show field-by-field diff between what was submitted and what was returned
     const fields = [
-        { label: 'Title', orig: original.frontmatter.title, cur: result.title },
-        { label: 'Status', orig: original.frontmatter.status, cur: result.status },
+        { label: 'Title', orig: original.title, cur: result.title },
+        { label: 'Status', orig: original.status, cur: result.status },
     ];
     let hasDiff = false;
     let diffHtml = '<table class="diff-table"><thead><tr><th>Field</th><th>Submitted</th><th>Returned</th></tr></thead><tbody>';
@@ -185,7 +183,7 @@ window.acceptChanges = function() {
     // Changes were already saved by the API, so redirect to the page
     if (!lastSubmitData) return;
     const project = document.getElementById('page-form').dataset.project;
-    const pageId = lastSubmitData.frontmatter.id;
+    const pageId = lastSubmitData.id;
     window.location.href = '/projects/' + encodeURIComponent(project) + '/pages/' + encodeURIComponent(pageId);
 };
 
@@ -206,7 +204,7 @@ async function submitPage(intent) {
     const data = collectFormData(intent);
     if (!data) return;
 
-    if (!data.frontmatter.title) {
+    if (!data.title) {
         showResults('Title is required.', true);
         return;
     }
@@ -243,7 +241,7 @@ async function submitPage(intent) {
 
         // On success, redirect to page view after a short delay
         if (result.id || result.path) {
-            const pageId = result.id || result.path?.replace('pages/','').replace('.md','') || data.frontmatter.id;
+            const pageId = result.id || result.path?.replace('pages/','').replace('.md','') || data.id;
             setTimeout(() => {
                 window.location.href = '/projects/' + encodeURIComponent(project) + '/pages/' + encodeURIComponent(pageId);
             }, 1500);
