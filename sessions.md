@@ -30,12 +30,25 @@ Brainstorming phase — exploring requirements and architecture for the PRD wiki
 
 ## Pending Items
 
-[2026-04-07] Define architecture and tech stack for PRD wiki system
+[2026-04-08] Design agent notification/callback system — subscribe to page changes, wake sleeping agents, notification schema. Sidecar pattern. Connects to steward agent dispatch.
+[2026-04-08] Soft references — vector similarity suggestions with accept/dismiss/promote UI
+[2026-04-08] OIDC authentication integration
+[2026-04-08] Staleness detection — periodic source checksum validation + cascading invalidation
 
 ---
 
 ## Session History (most recent first)
 
-### SESSION-1 / 2026-04-07
-- Project initialized from empty directory
-- Brainstorming phase started for PRD wiki concept
+### SESSION-1 / 2026-04-07 — 2026-04-08
+- Brainstormed and designed full wiki system (spec v0.4, 17 sections)
+- Researched standards: MCP, PROV-DM, SLSA, RBAC, Dublin Core, MADR, Gitsign
+- Researched prior art: Karpathy LLM Wiki, Pippi Knowledge Librarian, PHAT-TOAD steward framework
+- Built all 5 phases: wiki core, librarian, web UI, MCP sidecar, steward agents
+- 54 Go source files, 13 packages, all tests passing
+- Milkdown WYSIWYG editor bundled via Vite
+- LlamaCpp embedder running on Intel GPU (Vulkan) with nomic-embed-text-v1.5
+- MCP sidecar connected to Claude Code with 7 tools
+- Page history with cross-branch commit tracking and diff view
+- Deprecate/restore lifecycle (no delete)
+- Fixed: JSON payload mismatch, auto-ID generation, multi-branch index rebuild, branch-agnostic page lookup
+- Artifacts: spec (4 versions), research journal, bug journal, bibliography, 5 implementation plans
