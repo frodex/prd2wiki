@@ -35,26 +35,25 @@
 </div>
 
 {{if $page.Sources}}
-<div class="provenance-section">
+<div class="provenance-section" data-project="{{$.Project}}" data-page-id="{{$page.ID}}">
     <h2>Provenance</h2>
-    <table class="page-table">
-        <thead>
-            <tr>
-                <th>Reference</th>
-                <th>Version</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range $page.Sources}}
-            <tr>
-                <td>{{.Ref}}</td>
-                <td>{{if .Version}}v{{.Version}}{{else}}-{{end}}</td>
-                <td>{{if .Status}}<span class="badge badge-{{.Status}}">{{.Status}}</span>{{else}}-{{end}}</td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+    <ul class="ref-tree">
+        {{range $page.Sources}}
+        <li class="ref-node">
+            <span class="ref-toggle" onclick="expandRef('{{$.Project}}', '{{.Ref}}', this)">&#9654;</span>
+            <span class="ref-label">
+                {{.Ref}}
+                {{if .Version}}<span class="ref-version">v{{.Version}}</span>{{end}}
+                {{if eq .Status "valid"}}<span class="ref-status ref-valid" title="valid">&#10003;</span>
+                {{else if or (eq .Status "stale") (eq .Status "contested")}}<span class="ref-status ref-warn" title="{{.Status}}">&#9888;</span>
+                {{else if .Status}}<span class="badge badge-{{.Status}}">{{.Status}}</span>
+                {{end}}
+            </span>
+        </li>
+        {{end}}
+    </ul>
 </div>
 {{end}}
+
+<script src="/static/wiki.js"></script>
 {{end}}

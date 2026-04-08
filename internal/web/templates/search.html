@@ -1,0 +1,62 @@
+{{define "content"}}
+{{$s := .Content}}
+
+<h1>Search</h1>
+
+<form class="search-form" method="GET" action="/projects/{{$.Project}}/search">
+    <div class="search-row">
+        <input type="text" name="q" placeholder="Search pages..." value="{{$s.Query}}" class="search-input">
+        <button type="submit" class="btn btn-primary">Search</button>
+    </div>
+    <div class="search-filters">
+        <select name="type">
+            <option value="">All types</option>
+            <option value="concept" {{if eq $s.Type "concept"}}selected{{end}}>concept</option>
+            <option value="guide" {{if eq $s.Type "guide"}}selected{{end}}>guide</option>
+            <option value="reference" {{if eq $s.Type "reference"}}selected{{end}}>reference</option>
+            <option value="tutorial" {{if eq $s.Type "tutorial"}}selected{{end}}>tutorial</option>
+        </select>
+        <select name="status">
+            <option value="">All statuses</option>
+            <option value="draft" {{if eq $s.Status "draft"}}selected{{end}}>draft</option>
+            <option value="review" {{if eq $s.Status "review"}}selected{{end}}>review</option>
+            <option value="published" {{if eq $s.Status "published"}}selected{{end}}>published</option>
+            <option value="contested" {{if eq $s.Status "contested"}}selected{{end}}>contested</option>
+            <option value="stale" {{if eq $s.Status "stale"}}selected{{end}}>stale</option>
+        </select>
+        <input type="text" name="tag" placeholder="Tag filter" value="{{$s.Tag}}" class="search-tag-input">
+    </div>
+</form>
+
+{{if or $s.Query $s.Type $s.Status $s.Tag}}
+<div class="search-results">
+    <h2>Results</h2>
+    {{if $s.Results}}
+    <table class="page-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Trust</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range $s.Results}}
+            <tr>
+                <td><a href="/projects/{{$.Project}}/pages/{{.ID}}">{{.ID}}</a></td>
+                <td>{{.Title}}</td>
+                <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
+                <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
+                <td>L{{.TrustLevel}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="search-empty">No results found.</p>
+    {{end}}
+</div>
+{{end}}
+{{end}}

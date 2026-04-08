@@ -133,6 +133,97 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+// Store the last submission data so we can resubmit as verbatim
+let lastSubmitData = null;
+
+function showDiffPreview(original, result, project) {
+    const area = document.getElementById('results-area');
+    const content = document.getElementById('results-content');
+    if (!area || !content) return;
+
+    area.style.display = '';
+
+    let html = '<div class="diff-preview">';
+    html += '<h3>Changes Preview</h3>';
+
+    // Show warnings
+    if (result.warnings && result.warnings.length > 0) {
+        html += '<div class="diff-warnings"><strong>Warnings:</strong><ul>';
+        result.warnings.forEach(w => {
+            html += '<li>' + escapeHtml(String(w)) + '</li>';
+        });
+        html += '</ul></div>';
+    }
+
+    // Show issues
+    if (result.issues && result.issues.length > 0) {
+        html += '<div class="diff-issues"><strong>Issues:</strong><ul>';
+        result.issues.forEach(i => {
+            const sev = i.severity || 'info';
+            const field = i.field ? '[' + escapeHtml(i.field) + '] ' : '';
+            html += '<li class="issue-' + escapeHtml(sev) + '">'
+                + field + escapeHtml(i.message || String(i)) + '</li>';
+        });
+        html += '</ul></div>';
+    }
+
+    // Show field-by-field diff between what was submitted and what was returned
+    const fields = [
+        { label: 'Title', orig: original.frontmatter.title, cur: result.title },
+        { label: 'Status', orig: original.frontmatter.status, cur: result.status },
+    ];
+    let hasDiff = false;
+    let diffHtml = '<table class="diff-table"><thead><tr><th>Field</th><th>Submitted</th><th>Returned</th></tr></thead><tbody>';
+
+    fields.forEach(f => {
+        if (f.orig && f.cur && f.orig !== f.cur) {
+            hasDiff = true;
+            diffHtml += '<tr>'
+                + '<td>' + escapeHtml(f.label) + '</td>'
+                + '<td class="diff-removed">' + escapeHtml(f.orig) + '</td>'
+                + '<td class="diff-added">' + escapeHtml(f.cur) + '</td>'
+                + '</tr>';
+        }
+    });
+    diffHtml += '</tbody></table>';
+
+    if (hasDiff) {
+        html += diffHtml;
+    }
+
+    // Action buttons
+    html += '<div class="diff-actions">';
+    html += '<button class="btn btn-primary" onclick="acceptChanges()">Accept Changes</button>';
+    html += '<button class="btn" onclick="editMore()">Edit More</button>';
+    html += '<button class="btn" onclick="saveAsIs()">Save As-Is</button>';
+    html += '</div>';
+
+    html += '</div>';
+    content.innerHTML = html;
+}
+
+// Make diff action functions globally accessible for inline onclick handlers (module scope)
+window.acceptChanges = function() {
+    // Changes were already saved by the API, so redirect to the page
+    if (!lastSubmitData) return;
+    const project = document.getElementById('page-form').dataset.project;
+    const pageId = lastSubmitData.frontmatter.id;
+    window.location.href = '/projects/' + encodeURIComponent(project) + '/pages/' + encodeURIComponent(pageId);
+};
+
+window.editMore = function() {
+    // Hide the results area and let the user continue editing
+    const area = document.getElementById('results-area');
+    if (area) area.style.display = 'none';
+};
+
+window.saveAsIs = function() {
+    // Resubmit the original data as verbatim (no mutation)
+    if (!lastSubmitData) return;
+    lastSubmitData.intent = 'verbatim';
+    submitPage('verbatim');
+};
+
 async function submitPage(intent) {
     const data = collectFormData(intent);
     if (!data) return;
@@ -145,6 +236,8 @@ async function submitPage(intent) {
         showResults('Title is required.', true);
         return;
     }
+
+    lastSubmitData = data;
 
     const project = document.getElementById('page-form').dataset.project;
     const url = '/api/projects/' + encodeURIComponent(project) + '/pages';
@@ -163,6 +256,14 @@ async function submitPage(intent) {
             return;
         }
 
+        // For conform/integrate, show diff preview if there are warnings or issues
+        if ((intent === 'conform' || intent === 'integrate') &&
+            ((result.warnings && result.warnings.length > 0) ||
+             (result.issues && result.issues.length > 0))) {
+            showDiffPreview(data, result, project);
+            return;
+        }
+
         showResults(result, false);
 
         // On success, redirect to page view after a short delay
@@ -176,6 +277,75 @@ async function submitPage(intent) {
         showResults('Network error: ' + err.message, true);
     }
 }
+
+// Reference tree expansion — attach to window for inline onclick access
+window.expandRef = async function expandRef(project, refId, toggleEl) {
+    const li = toggleEl.closest('.ref-node');
+    if (!li) return;
+
+    // If already expanded, toggle collapse
+    const existing = li.querySelector('.ref-tree');
+    if (existing) {
+        existing.remove();
+        toggleEl.innerHTML = '&#9654;'; // right arrow
+        toggleEl.classList.remove('ref-expanded');
+        return;
+    }
+
+    toggleEl.innerHTML = '&#9660;'; // down arrow
+    toggleEl.classList.add('ref-expanded');
+
+    try {
+        const resp = await fetch('/api/projects/' + encodeURIComponent(project) +
+            '/pages/' + encodeURIComponent(refId) + '/references?depth=1');
+        if (!resp.ok) {
+            toggleEl.innerHTML = '&#9654;';
+            toggleEl.classList.remove('ref-expanded');
+            return;
+        }
+        const data = await resp.json();
+        const children = data.children || [];
+
+        if (children.length === 0) {
+            const empty = document.createElement('ul');
+            empty.className = 'ref-tree';
+            empty.innerHTML = '<li class="ref-empty">No child references</li>';
+            li.appendChild(empty);
+            return;
+        }
+
+        const ul = document.createElement('ul');
+        ul.className = 'ref-tree';
+
+        children.forEach(child => {
+            const childLi = document.createElement('li');
+            childLi.className = 'ref-node';
+
+            let statusIcon = '';
+            if (child.status === 'valid') {
+                statusIcon = '<span class="ref-status ref-valid" title="valid">&#10003;</span>';
+            } else if (child.status === 'stale' || child.status === 'contested') {
+                statusIcon = '<span class="ref-status ref-warn" title="' + escapeHtml(child.status) + '">&#9888;</span>';
+            } else if (child.status) {
+                statusIcon = '<span class="badge badge-' + escapeHtml(child.status) + '">' + escapeHtml(child.status) + '</span>';
+            }
+
+            const version = child.version ? '<span class="ref-version">v' + child.version + '</span>' : '';
+            const title = child.title ? ' <span class="ref-title">' + escapeHtml(child.title) + '</span>' : '';
+
+            childLi.innerHTML =
+                '<span class="ref-toggle" onclick="expandRef(\'' + escapeHtml(project) + '\', \'' + escapeHtml(child.ref) + '\', this)">&#9654;</span>' +
+                '<span class="ref-label">' + escapeHtml(child.ref) + title + version + ' ' + statusIcon + '</span>';
+
+            ul.appendChild(childLi);
+        });
+
+        li.appendChild(ul);
+    } catch (err) {
+        toggleEl.innerHTML = '&#9654;';
+        toggleEl.classList.remove('ref-expanded');
+    }
+};
 
 // Wire up submit buttons
 document.addEventListener('DOMContentLoaded', () => {

@@ -71,6 +71,33 @@ func (s *Searcher) ByTag(project, tag string) ([]PageResult, error) {
 	return s.query(selectPages+` WHERE project = ? AND tags LIKE ?`, project, "%"+tag+"%")
 }
 
+// FullText searches the FTS5 index for pages matching the query within a project.
+func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
+	sql := selectPages + `
+		INNER JOIN pages_fts ON pages.id = pages_fts.id
+		WHERE pages.project = ? AND pages_fts MATCH ?
+		ORDER BY rank`
+	return s.query(sql, project, q)
+}
+
+// Search dispatches to the appropriate query method based on the provided filters.
+// It tries full-text first (if q is non-empty), then type, status, tag filters,
+// and falls back to ListAll.
+func (s *Searcher) Search(project, q, typ, status, tag string) ([]PageResult, error) {
+	switch {
+	case q != "":
+		return s.FullText(project, q)
+	case typ != "":
+		return s.ByType(project, typ)
+	case status != "":
+		return s.ByStatus(project, status)
+	case tag != "":
+		return s.ByTag(project, tag)
+	default:
+		return s.ListAll(project)
+	}
+}
+
 // DependentsOf returns all pages that cite the given reference via a provenance edge.
 func (s *Searcher) DependentsOf(ref string) ([]PageResult, error) {
 	sql := selectPages + `

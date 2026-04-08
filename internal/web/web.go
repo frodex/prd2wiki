@@ -62,6 +62,15 @@ type PageEditData struct {
 	Body    string
 }
 
+// SearchData holds data for the search results template.
+type SearchData struct {
+	Query   string
+	Type    string
+	Status  string
+	Tag     string
+	Results []PageListItem
+}
+
 // Handler serves the wiki web UI.
 type Handler struct {
 	repos      map[string]*wgit.Repo
@@ -86,6 +95,7 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		"templates/page_list.html",
 		"templates/page_view.html",
 		"templates/page_edit.html",
+		"templates/search.html",
 	}
 	for _, pt := range pageTemplates {
 		t := template.Must(template.ParseFS(content, "templates/layout.html", pt))
@@ -290,7 +300,54 @@ func (h *Handler) newPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// searchPages renders search results (stub for future implementation).
+// searchPages renders search results for a project.
 func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	project := r.PathValue("project")
+
+	q := r.URL.Query()
+	query := q.Get("q")
+	typ := q.Get("type")
+	status := q.Get("status")
+	tag := q.Get("tag")
+
+	sd := SearchData{
+		Query:  query,
+		Type:   typ,
+		Status: status,
+		Tag:    tag,
+	}
+
+	// Only run a search if at least one filter is provided.
+	if query != "" || typ != "" || status != "" || tag != "" {
+		results, err := h.search.Search(project, query, typ, status, tag)
+		if err != nil {
+			http.Error(w, "search failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		items := make([]PageListItem, len(results))
+		for i, pr := range results {
+			items[i] = PageListItem{
+				ID:         pr.ID,
+				Title:      pr.Title,
+				Type:       pr.Type,
+				Status:     pr.Status,
+				TrustLevel: pr.TrustLevel,
+				Path:       pr.Path,
+			}
+		}
+		sd.Results = items
+	}
+
+	data := PageData{
+		Project:  project,
+		Title:    "Search — " + project,
+		Content:  sd,
+		Projects: h.projects(),
+	}
+
+	t := h.templates["templates/search.html"]
+	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
+	}
 }
