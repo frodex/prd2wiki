@@ -182,8 +182,12 @@ function showDiffPreview(original, result, project) {
 
 // Make diff action functions globally accessible for inline onclick handlers (module scope)
 window.acceptChanges = function() {
-    // Changes were already saved by the API, so redirect to the page
     if (!lastSubmitData) return;
+    const currentBody = getEditorMarkdown();
+    if (currentBody !== lastSubmitData.body) {
+        showResults('You made additional edits after the format check. Click a submit button again to include your new changes.', true);
+        return;
+    }
     const project = document.getElementById('page-form').dataset.project;
     const pageId = lastSubmitData.id;
     window.location.href = '/projects/' + encodeURIComponent(project) + '/pages/' + encodeURIComponent(pageId);
@@ -227,7 +231,11 @@ async function submitPage(intent) {
         const result = await resp.json();
 
         if (!resp.ok) {
-            showResults(result.error || ('HTTP ' + resp.status), true);
+            if (result.issues && result.issues.length > 0) {
+                showResults(result, false);  // show structured issues, not generic error
+            } else {
+                showResults(result.error || ('HTTP ' + resp.status), true);
+            }
             return;
         }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -213,6 +214,10 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].LastEditDate > items[j].LastEditDate
+	})
 
 	data := PageData{
 		Project:  project,
