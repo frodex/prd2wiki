@@ -96,16 +96,8 @@ func (s *Server) pageDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fromData, err := repo.ReadPageAtCommit(from, path)
-	if err != nil {
-		http.Error(w, "read from: "+err.Error(), http.StatusNotFound)
-		return
-	}
-	toData, err := repo.ReadPageAtCommit(to, path)
-	if err != nil {
-		http.Error(w, "read to: "+err.Error(), http.StatusNotFound)
-		return
-	}
+	fromData, _ := repo.ReadPageAtCommit(from, path) // empty if file didn't exist yet
+	toData, _ := repo.ReadPageAtCommit(to, path)     // empty if file was deleted
 
 	changes := lineDiff(string(fromData), string(toData))
 

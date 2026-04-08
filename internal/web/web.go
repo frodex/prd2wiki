@@ -645,16 +645,8 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 
 	path := "pages/" + id + ".md"
 
-	fromData, err := repo.ReadPageAtCommit(from, path)
-	if err != nil {
-		http.Error(w, "read from version: "+err.Error(), http.StatusNotFound)
-		return
-	}
-	toData, err := repo.ReadPageAtCommit(to, path)
-	if err != nil {
-		http.Error(w, "read to version: "+err.Error(), http.StatusNotFound)
-		return
-	}
+	fromData, _ := repo.ReadPageAtCommit(from, path) // empty if file didn't exist yet
+	toData, _ := repo.ReadPageAtCommit(to, path)     // empty if file was deleted
 
 	changes := computeLineDiff(string(fromData), string(toData))
 
