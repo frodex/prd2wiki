@@ -417,23 +417,55 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 
 	// Only run a search if at least one filter is provided.
 	if query != "" || typ != "" || status != "" || tag != "" {
-		results, err := h.search.Search(project, query, typ, status, tag)
-		if err != nil {
-			http.Error(w, "search failed: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+		var items []PageListItem
 
-		items := make([]PageListItem, len(results))
-		for i, pr := range results {
-			items[i] = PageListItem{
-				ID:         pr.ID,
-				Title:      pr.Title,
-				Type:       pr.Type,
-				Status:     pr.Status,
-				TrustLevel: pr.TrustLevel,
-				Path:       pr.Path,
+		if query != "" {
+			// Text queries go through the librarian → vector store
+			lib, ok := h.librarians[project]
+			if ok {
+				vresults, err := lib.Search(r.Context(), project, query, 20)
+				if err == nil {
+					seen := make(map[string]bool)
+					for _, vr := range vresults {
+						if seen[vr.PageID] {
+							continue
+						}
+						seen[vr.PageID] = true
+						pages, err := h.search.ByID(project, vr.PageID)
+						if err == nil && len(pages) > 0 {
+							pr := pages[0]
+							items = append(items, PageListItem{
+								ID: pr.ID, Title: pr.Title, Type: pr.Type,
+								Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
+							})
+						}
+					}
+				}
+			}
+		} else {
+			// Structured filters go to SQLite
+			var results []index.PageResult
+			var err error
+			switch {
+			case typ != "":
+				results, err = h.search.ByType(project, typ)
+			case status != "":
+				results, err = h.search.ByStatus(project, status)
+			case tag != "":
+				results, err = h.search.ByTag(project, tag)
+			}
+			if err != nil {
+				http.Error(w, "search failed: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			for _, pr := range results {
+				items = append(items, PageListItem{
+					ID: pr.ID, Title: pr.Title, Type: pr.Type,
+					Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
+				})
 			}
 		}
+
 		sd.Results = items
 	}
 

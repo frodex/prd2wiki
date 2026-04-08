@@ -56,6 +56,11 @@ func (s *Searcher) ListAll(project string) ([]PageResult, error) {
 	return s.query(selectPages+` WHERE project = ?`, project)
 }
 
+// ByID returns a page by its ID within a project.
+func (s *Searcher) ByID(project, id string) ([]PageResult, error) {
+	return s.query(selectPages+` WHERE project = ? AND id = ?`, project, id)
+}
+
 // ByType returns pages of a given type within a project.
 func (s *Searcher) ByType(project, typ string) ([]PageResult, error) {
 	return s.query(selectPages+` WHERE project = ? AND type = ?`, project, typ)

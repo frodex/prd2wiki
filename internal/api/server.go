@@ -20,6 +20,7 @@ type Server struct {
 }
 
 // NewServer creates a Server with the given address, repos, database, and librarians.
+// All vector search and content operations go through the librarians.
 func NewServer(addr string, repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian) *Server {
 	return &Server{
 		addr:       addr,

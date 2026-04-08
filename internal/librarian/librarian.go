@@ -104,6 +104,58 @@ func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 	}
 }
 
+// SearchResult holds a search result with page ID and relevance.
+type SearchResult struct {
+	PageID     string  `json:"page_id"`
+	Section    string  `json:"section,omitempty"`
+	Similarity float64 `json:"similarity"`
+}
+
+// Search queries the vector store for pages matching the query text.
+// The query is normalized through the vocabulary before searching.
+func (l *Librarian) Search(ctx context.Context, project, query string, limit int) ([]SearchResult, error) {
+	// Normalize query terms through vocabulary
+	words := strings.Fields(query)
+	normalized := make([]string, len(words))
+	for i, w := range words {
+		normalized[i] = l.vocab.Normalize(w)
+	}
+	normalizedQuery := strings.Join(normalized, " ")
+
+	results, err := l.vstore.Search(ctx, project, normalizedQuery, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []SearchResult
+	for _, r := range results {
+		out = append(out, SearchResult{
+			PageID:     r.PageID,
+			Section:    r.Section,
+			Similarity: r.Similarity,
+		})
+	}
+	return out, nil
+}
+
+// FindSimilar finds pages similar to the given page via the vector store.
+func (l *Librarian) FindSimilar(ctx context.Context, project, pageID string, limit int) ([]SearchResult, error) {
+	results, err := l.vstore.FindSimilar(ctx, project, pageID, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []SearchResult
+	for _, r := range results {
+		out = append(out, SearchResult{
+			PageID:     r.PageID,
+			Section:    r.Section,
+			Similarity: r.Similarity,
+		})
+	}
+	return out, nil
+}
+
 // pagePath returns the canonical git path for a page.
 func pagePath(id string) string {
 	return "pages/" + id + ".md"
