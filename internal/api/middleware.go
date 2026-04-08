@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 // RequestLogger logs every request with method, path, status, and duration.
@@ -19,6 +21,20 @@ func RequestLogger(next http.Handler) http.Handler {
 			"duration", time.Since(start),
 		)
 	})
+}
+
+// RateLimiter limits requests per second.
+func RateLimiter(rps float64, burst int) func(http.Handler) http.Handler {
+	limiter := rate.NewLimiter(rate.Limit(rps), burst)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !limiter.Allow() {
+				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 type statusWriter struct {

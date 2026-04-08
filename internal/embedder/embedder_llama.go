@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // EmbedderConfig holds configuration for the LlamaCpp embedding client.
@@ -105,36 +106,28 @@ func (e *LlamaCppEmbedder) EmbedBatch(ctx context.Context, texts []string, langu
 	}
 
 	results := make([][]float32, len(prefixed))
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	var firstErr error
+	g, ctx := errgroup.WithContext(ctx)
 
 	for start := 0; start < len(prefixed); start += e.cfg.BatchSize {
+		start := start
 		end := start + e.cfg.BatchSize
 		if end > len(prefixed) {
 			end = len(prefixed)
 		}
 		chunk := prefixed[start:end]
-		offset := start
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		g.Go(func() error {
 			vecs, err := e.embed(ctx, chunk)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil && firstErr == nil {
-				firstErr = err
-				return
+			if err != nil {
+				return err
 			}
-			if err == nil {
-				copy(results[offset:], vecs)
-			}
-		}()
+			copy(results[start:], vecs)
+			return nil
+		})
 	}
-	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 	return results, nil
 }

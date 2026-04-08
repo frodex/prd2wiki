@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/frodex/prd2wiki/internal/api"
 	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
@@ -91,9 +93,11 @@ func New(cfg Config) (*App, error) {
 		return nil, fmt.Errorf("open database %q: %w", dbPath, err)
 	}
 
-	// Rebuild index from repos on startup.
+	// Rebuild index from repos on startup (parallel via errgroup).
 	indexer := index.NewIndexer(db)
+	g, _ := errgroup.WithContext(context.Background())
 	for _, project := range cfg.Projects {
+		project := project // capture
 		repo := repos[project]
 		branches, err := repo.ListBranches()
 		if err != nil {
@@ -101,11 +105,15 @@ func New(cfg Config) (*App, error) {
 			continue
 		}
 		for _, branch := range branches {
-			slog.Info("rebuilding index", "project", project, "branch", branch)
-			if err := indexer.RebuildFromRepo(project, repo, branch); err != nil {
-				slog.Warn("rebuild failed", "project", project, "branch", branch, "error", err)
-			}
+			branch := branch
+			g.Go(func() error {
+				slog.Info("rebuilding index", "project", project, "branch", branch)
+				return indexer.RebuildFromRepo(project, repo, branch)
+			})
 		}
+	}
+	if err := g.Wait(); err != nil {
+		slog.Warn("index rebuild had errors", "error", err)
 	}
 
 	// Apply embedder config defaults.
@@ -175,22 +183,31 @@ func New(cfg Config) (*App, error) {
 		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab)
 	}
 
-	// Rebuild vector index only if nothing was loaded from disk.
+	// Rebuild vector index only if nothing was loaded from disk (parallel via errgroup).
 	if vstore.Count() == 0 {
 		slog.Info("vector index empty, rebuilding from git")
+		vg, vctx := errgroup.WithContext(context.Background())
 		for _, project := range cfg.Projects {
+			project := project // capture
 			lib := librarians[project]
 			repo := repos[project]
 			branches, _ := repo.ListBranches()
 			for _, branch := range branches {
-				ctx := context.Background()
-				n, err := lib.RebuildVectorIndex(ctx, project, branch)
-				if err != nil {
-					slog.Warn("vector rebuild failed", "project", project, "branch", branch, "error", err)
-				} else if n > 0 {
-					slog.Info("vector index rebuilt", "project", project, "branch", branch, "pages", n)
-				}
+				branch := branch
+				vg.Go(func() error {
+					n, err := lib.RebuildVectorIndex(vctx, project, branch)
+					if err != nil {
+						return fmt.Errorf("vector rebuild %s/%s: %w", project, branch, err)
+					}
+					if n > 0 {
+						slog.Info("vector index rebuilt", "project", project, "branch", branch, "pages", n)
+					}
+					return nil
+				})
 			}
+		}
+		if err := vg.Wait(); err != nil {
+			slog.Warn("vector index rebuild had errors", "error", err)
 		}
 		if vstore.Count() > 0 {
 			slog.Info("vector index rebuild complete", "entries", vstore.Count())
@@ -209,7 +226,7 @@ func New(cfg Config) (*App, error) {
 	webHandler.Register(mux)
 
 	// Wrap with middleware.
-	handler := api.RequestLogger(mux)
+	handler := api.RequestLogger(api.RateLimiter(100, 200)(mux))
 
 	return &App{
 		Config:     cfg,
