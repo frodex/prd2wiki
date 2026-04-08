@@ -106,10 +106,13 @@ func (s *MCPServer) Serve(r io.Reader, w io.Writer) {
 		msg, err := readMessage(br)
 		if err != nil {
 			if err == io.EOF {
+				fmt.Fprintf(os.Stderr, "mcp: stdin EOF, shutting down\n")
 				return
 			}
+			fmt.Fprintf(os.Stderr, "mcp: read error: %v\n", err)
 			continue
 		}
+		fmt.Fprintf(os.Stderr, "mcp: received %d bytes: %s\n", len(msg), string(msg))
 
 		var req JSONRPCRequest
 		if err := json.Unmarshal(msg, &req); err != nil {
@@ -213,7 +216,7 @@ func (s *MCPServer) handleInitialize(req JSONRPCRequest) JSONRPCResponse {
 		JSONRPC: "2.0",
 		ID:      req.ID,
 		Result: map[string]interface{}{
-			"protocolVersion": "2024-11-05",
+			"protocolVersion": "2025-11-25",
 			"capabilities": map[string]interface{}{
 				"tools":     map[string]interface{}{},
 				"resources": map[string]interface{}{},
@@ -449,5 +452,14 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) JSONRPCResponse {
 
 func writeResponse(w io.Writer, resp JSONRPCResponse) {
 	data, _ := json.Marshal(resp)
-	fmt.Fprintf(w, "Content-Length: %d\r\n\r\n%s", len(data), data)
+	fmt.Fprintf(os.Stderr, "mcp: sending %d bytes: %.200s\n", len(data), string(data))
+	msg := fmt.Sprintf("Content-Length: %d\r\n\r\n%s\n", len(data), data)
+	w.Write([]byte(msg))
+	// Flush if possible
+	if f, ok := w.(interface{ Sync() error }); ok {
+		f.Sync()
+	}
+	if f, ok := w.(*os.File); ok {
+		f.Sync()
+	}
 }
