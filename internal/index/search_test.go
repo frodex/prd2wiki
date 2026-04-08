@@ -1,0 +1,135 @@
+package index
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/frodex/prd2wiki/internal/schema"
+)
+
+// setupSearchDB creates a temp SQLite DB, seeds 4 pages, and returns a Searcher and Indexer.
+func setupSearchDB(t *testing.T) (*Searcher, *Indexer) {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := OpenDatabase(filepath.Join(dir, "search_test.db"))
+	if err != nil {
+		t.Fatalf("OpenDatabase: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	ix := NewIndexer(db)
+
+	pages := []struct {
+		id     string
+		title  string
+		typ    string
+		status string
+		tags   []string
+	}{
+		{"P-001", "Auth Requirement", "requirement", "active", []string{"auth", "security"}},
+		{"P-002", "Session Concept", "concept", "active", []string{"session"}},
+		{"P-003", "API Reference", "reference", "draft", []string{"api"}},
+		{"P-004", "Deprecated Auth Req", "requirement", "deprecated", []string{"auth"}},
+	}
+
+	for _, p := range pages {
+		fm := &schema.Frontmatter{
+			ID:     p.id,
+			Title:  p.title,
+			Type:   p.typ,
+			Status: p.status,
+			Tags:   p.tags,
+		}
+		if err := ix.IndexPage("testproj", "main", "pages/"+p.id+".md", fm, []byte("body")); err != nil {
+			t.Fatalf("IndexPage %s: %v", p.id, err)
+		}
+	}
+
+	return NewSearcher(db), ix
+}
+
+func TestListAll(t *testing.T) {
+	s, _ := setupSearchDB(t)
+	results, err := s.ListAll("testproj")
+	if err != nil {
+		t.Fatalf("ListAll: %v", err)
+	}
+	if len(results) != 4 {
+		t.Errorf("ListAll: got %d results, want 4", len(results))
+	}
+}
+
+func TestSearchByType(t *testing.T) {
+	s, _ := setupSearchDB(t)
+	results, err := s.ByType("testproj", "requirement")
+	if err != nil {
+		t.Fatalf("ByType: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("ByType(requirement): got %d results, want 2", len(results))
+	}
+	for _, r := range results {
+		if r.Type != "requirement" {
+			t.Errorf("ByType: expected type=requirement, got %q", r.Type)
+		}
+	}
+}
+
+func TestSearchByStatus(t *testing.T) {
+	s, _ := setupSearchDB(t)
+	results, err := s.ByStatus("testproj", "active")
+	if err != nil {
+		t.Fatalf("ByStatus: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("ByStatus(active): got %d results, want 2", len(results))
+	}
+	for _, r := range results {
+		if r.Status != "active" {
+			t.Errorf("ByStatus: expected status=active, got %q", r.Status)
+		}
+	}
+}
+
+func TestSearchByTag(t *testing.T) {
+	s, _ := setupSearchDB(t)
+	results, err := s.ByTag("testproj", "auth")
+	if err != nil {
+		t.Fatalf("ByTag: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("ByTag(auth): got %d results, want 2", len(results))
+	}
+}
+
+func TestDependentsOf(t *testing.T) {
+	s, ix := setupSearchDB(t)
+
+	// Re-index P-001 with a provenance source so it depends on "ext-ref-001"
+	fm := &schema.Frontmatter{
+		ID:     "P-001",
+		Title:  "Auth Requirement",
+		Type:   "requirement",
+		Status: "active",
+		Tags:   []string{"auth", "security"},
+		Provenance: schema.Provenance{
+			Sources: []schema.Source{
+				{Ref: "ext-ref-001", Version: 1, Status: "valid"},
+			},
+		},
+	}
+	if err := ix.IndexPage("testproj", "main", "pages/P-001.md", fm, []byte("body")); err != nil {
+		t.Fatalf("IndexPage P-001 with provenance: %v", err)
+	}
+
+	results, err := s.DependentsOf("ext-ref-001")
+	if err != nil {
+		t.Fatalf("DependentsOf: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("DependentsOf(ext-ref-001): got %d results, want 1", len(results))
+	}
+	if len(results) > 0 && results[0].ID != "P-001" {
+		t.Errorf("DependentsOf: expected P-001, got %q", results[0].ID)
+	}
+}
