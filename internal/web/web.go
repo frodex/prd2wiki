@@ -111,6 +111,7 @@ type ProjectCard struct {
 	Description string
 	Status      string
 	PageCount   int
+	Project     string // the wiki project this lives in (e.g. "default")
 }
 
 // SearchData holds data for the search results template.
@@ -238,15 +239,28 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 			}
 			seen[pr.ID] = true
 
-			// Count total pages in this project.
-			allPages, _ := h.search.ListAll(pr.Project)
+			// Find the project's primary tag (first tag that isn't "project")
+			projTag := ""
+			for _, t := range strings.Split(pr.Tags, ",") {
+				t = strings.TrimSpace(t)
+				if t != "" && t != "project" {
+					projTag = t
+					break
+				}
+			}
+			if projTag == "" {
+				projTag = schema.SanitizePathSegment(pr.Title)
+			}
+
+			taggedPages, _ := h.search.ByTag(pr.Project, projTag)
 
 			cards = append(cards, ProjectCard{
-				ID:          pr.ID,
+				ID:          projTag,
 				Title:       pr.Title,
-				Description: pr.Tags, // use tags as a brief description
+				Description: pr.Tags,
 				Status:      pr.Status,
-				PageCount:   len(allPages),
+				PageCount:   len(taggedPages),
+				Project:     pr.Project,
 			})
 		}
 	}
