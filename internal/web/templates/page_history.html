@@ -1,0 +1,42 @@
+{{define "content"}}
+{{$hist := .Content}}
+
+<h1>History: {{$hist.Title}}</h1>
+
+<p><a href="/projects/{{$.Project}}/pages/{{$hist.ID}}">&larr; Back to page</a></p>
+
+<form id="diff-form" method="get" action="/projects/{{$.Project}}/pages/{{$hist.ID}}/diff">
+    <table class="wiki-table">
+        <thead>
+            <tr>
+                <th>From</th>
+                <th>To</th>
+                <th>Hash</th>
+                <th>Author</th>
+                <th>Date</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range $i, $c := $hist.Commits}}
+            <tr>
+                <td><input type="radio" name="from" value="{{$c.Hash}}"{{if eq $i 1}} checked{{end}}></td>
+                <td><input type="radio" name="to" value="{{$c.Hash}}"{{if eq $i 0}} checked{{end}}></td>
+                <td>
+                    <a href="/projects/{{$.Project}}/pages/{{$hist.ID}}/history/{{$c.Hash}}" title="{{$c.Hash}}">
+                        {{$c.ShortHash}}
+                    </a>
+                </td>
+                <td>{{$c.Author}}</td>
+                <td>{{$c.DateStr}}</td>
+                <td>{{$c.Message}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+
+    {{if gt (len $hist.Commits) 1}}
+    <button type="submit" class="btn btn-edit">Compare Selected</button>
+    {{end}}
+</form>
+{{end}}

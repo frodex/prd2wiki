@@ -42,6 +42,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/projects/{project}/pages", s.listPages)
 	mux.HandleFunc("GET /api/projects/{project}/search", s.searchPages)
 	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/references", s.getReferences)
+	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/history", s.pageHistory)
+	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/history/{hash}", s.pageAtCommit)
+	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/diff", s.pageDiff)
 
 	return mux
 }

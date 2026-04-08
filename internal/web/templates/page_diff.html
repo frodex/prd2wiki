@@ -1,0 +1,58 @@
+{{define "content"}}
+{{$diff := .Content}}
+
+<h1>Diff: {{$diff.Title}}</h1>
+
+<p>
+    <a href="/projects/{{$.Project}}/pages/{{$diff.ID}}/history">&larr; Back to history</a>
+</p>
+
+<div class="meta-bar">
+    <span class="badge">From: {{$diff.FromShort}}</span>
+    <span>&rarr;</span>
+    <span class="badge">To: {{$diff.ToShort}}</span>
+</div>
+
+<div class="diff-view">
+    {{range $diff.Changes}}
+    <div class="diff-line diff-{{.Type}}">{{.Content}}</div>
+    {{end}}
+</div>
+
+<style>
+    .diff-view {
+        font-family: monospace;
+        font-size: 0.9em;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        overflow-x: auto;
+        margin-top: 1rem;
+    }
+    .diff-line {
+        padding: 2px 8px;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    .diff-context {
+        background: #f8f9fa;
+        color: #333;
+    }
+    .diff-add {
+        background: #d4edda;
+        color: #155724;
+    }
+    .diff-add::before {
+        content: "+ ";
+    }
+    .diff-delete {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    .diff-delete::before {
+        content: "- ";
+    }
+    .diff-context::before {
+        content: "  ";
+    }
+</style>
+{{end}}
