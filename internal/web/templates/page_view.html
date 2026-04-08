@@ -1,0 +1,60 @@
+{{define "content"}}
+{{$page := .Content}}
+
+{{if or (eq $page.Status "contested") (eq $page.Status "stale")}}
+<div class="warning-banner">
+    This page is marked as <strong>{{$page.Status}}</strong>.
+    {{if eq $page.Status "contested"}}Content accuracy is disputed.{{end}}
+    {{if eq $page.Status "stale"}}Content may be outdated.{{end}}
+</div>
+{{end}}
+
+<h1>{{$page.Title}}</h1>
+
+<div class="meta-bar">
+    <span class="badge badge-{{$page.Type}}">{{$page.Type}}</span>
+    <span class="badge badge-{{$page.Status}}">{{$page.Status}}</span>
+    <span class="badge">L{{$page.TrustLevel}}</span>
+    {{if $page.Creator}}<span class="meta-item">by {{$page.Creator}}</span>{{end}}
+    {{if $page.Created}}<span class="meta-item">created {{$page.Created}}</span>{{end}}
+    {{if $page.Modified}}<span class="meta-item">modified {{$page.Modified}}</span>{{end}}
+</div>
+
+{{if $page.Tags}}
+<div class="tag-bar">
+    {{range $page.Tags}}<span class="badge badge-tag">{{.}}</span>{{end}}
+</div>
+{{end}}
+
+<div class="page-body">
+    {{$page.BodyHTML}}
+</div>
+
+<div class="page-actions">
+    <a href="/projects/{{$.Project}}/pages/{{$page.ID}}/edit" class="btn btn-edit">Edit</a>
+</div>
+
+{{if $page.Sources}}
+<div class="provenance-section">
+    <h2>Provenance</h2>
+    <table class="page-table">
+        <thead>
+            <tr>
+                <th>Reference</th>
+                <th>Version</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range $page.Sources}}
+            <tr>
+                <td>{{.Ref}}</td>
+                <td>{{if .Version}}v{{.Version}}{{else}}-{{end}}</td>
+                <td>{{if .Status}}<span class="badge badge-{{.Status}}">{{.Status}}</span>{{else}}-{{end}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}
+{{end}}

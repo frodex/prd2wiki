@@ -1,14 +1,18 @@
 package web
 
 import (
+	"bytes"
 	"database/sql"
 	"embed"
 	"html/template"
 	"net/http"
+	"strings"
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
+	"github.com/frodex/prd2wiki/internal/schema"
+	"github.com/yuin/goldmark"
 )
 
 //go:embed templates/*.html static/*
@@ -30,6 +34,32 @@ type PageListItem struct {
 	Status     string
 	TrustLevel int
 	Path       string
+}
+
+// PageViewData holds data for the page view template.
+type PageViewData struct {
+	ID         string
+	Title      string
+	Type       string
+	Status     string
+	TrustLevel int
+	Creator    string
+	Created    string
+	Modified   string
+	Tags       []string
+	BodyHTML   template.HTML
+	Sources    []schema.Source
+}
+
+// PageEditData holds data for the page edit template.
+type PageEditData struct {
+	IsNew   bool
+	ID      string
+	Title   string
+	Type    string
+	Status  string
+	TagsCSV string
+	Body    string
 }
 
 // Handler serves the wiki web UI.
@@ -54,6 +84,8 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 	// Parse each page template together with the layout.
 	pageTemplates := []string{
 		"templates/page_list.html",
+		"templates/page_view.html",
+		"templates/page_edit.html",
 	}
 	for _, pt := range pageTemplates {
 		t := template.Must(template.ParseFS(content, "templates/layout.html", pt))
@@ -123,19 +155,139 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// viewPage renders a single wiki page (stub for future implementation).
+// viewPage renders a single wiki page.
 func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	project := r.PathValue("project")
+	id := r.PathValue("id")
+
+	repo, ok := h.repos[project]
+	if !ok {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	// Determine the page path from the id.
+	path := "pages/" + id + ".md"
+
+	// Try truth branch first, fall back to draft/incoming.
+	fm, body, err := repo.ReadPageWithMeta("truth", path)
+	if err != nil {
+		fm, body, err = repo.ReadPageWithMeta("draft/incoming", path)
+		if err != nil {
+			http.Error(w, "page not found: "+err.Error(), http.StatusNotFound)
+			return
+		}
+	}
+
+	// Render markdown body to HTML.
+	var htmlBuf bytes.Buffer
+	if err := goldmark.Convert(body, &htmlBuf); err != nil {
+		http.Error(w, "markdown render error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pvd := PageViewData{
+		ID:         fm.ID,
+		Title:      fm.Title,
+		Type:       fm.Type,
+		Status:     fm.Status,
+		TrustLevel: fm.TrustLevel,
+		Creator:    fm.DCCreator,
+		Tags:       fm.Tags,
+		BodyHTML:   template.HTML(htmlBuf.String()),
+		Sources:    fm.Provenance.Sources,
+	}
+	if !fm.DCCreated.IsZero() {
+		pvd.Created = fm.DCCreated.Format("2006-01-02")
+	}
+	if !fm.DCModified.IsZero() {
+		pvd.Modified = fm.DCModified.Format("2006-01-02")
+	}
+
+	data := PageData{
+		Project:  project,
+		Title:    fm.Title + " — " + project,
+		Content:  pvd,
+		Projects: h.projects(),
+	}
+
+	t := h.templates["templates/page_view.html"]
+	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
-// editPage renders the page edit form (stub for future implementation).
+// editPage renders the page edit form with existing page content.
 func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	project := r.PathValue("project")
+	id := r.PathValue("id")
+
+	repo, ok := h.repos[project]
+	if !ok {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	path := "pages/" + id + ".md"
+
+	fm, body, err := repo.ReadPageWithMeta("truth", path)
+	if err != nil {
+		fm, body, err = repo.ReadPageWithMeta("draft/incoming", path)
+		if err != nil {
+			http.Error(w, "page not found: "+err.Error(), http.StatusNotFound)
+			return
+		}
+	}
+
+	ped := PageEditData{
+		IsNew:   false,
+		ID:      fm.ID,
+		Title:   fm.Title,
+		Type:    fm.Type,
+		Status:  fm.Status,
+		TagsCSV: strings.Join(fm.Tags, ", "),
+		Body:    string(body),
+	}
+
+	data := PageData{
+		Project:  project,
+		Title:    "Edit: " + fm.Title,
+		Content:  ped,
+		Projects: h.projects(),
+	}
+
+	t := h.templates["templates/page_edit.html"]
+	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
-// newPage renders the new page form (stub for future implementation).
+// newPage renders the new page form with default values.
 func (h *Handler) newPage(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	project := r.PathValue("project")
+
+	if _, ok := h.repos[project]; !ok {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	ped := PageEditData{
+		IsNew:  true,
+		Type:   "concept",
+		Status: "draft",
+	}
+
+	data := PageData{
+		Project:  project,
+		Title:    "New Page",
+		Content:  ped,
+		Projects: h.projects(),
+	}
+
+	t := h.templates["templates/page_edit.html"]
+	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // searchPages renders search results (stub for future implementation).

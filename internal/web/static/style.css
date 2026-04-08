@@ -116,6 +116,235 @@ h1 {
 .badge-review    { background: #fef3c7; color: #92400e; }
 .badge-published { background: #d1fae5; color: #065f46; }
 
+/* Warning banner */
+.warning-banner {
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-left: 4px solid #dc2626;
+    color: #991b1b;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+/* Meta bar */
+.meta-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.meta-item {
+    color: #555;
+}
+
+/* Tag bar */
+.tag-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+
+.badge-tag {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.badge-stale {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-contested {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Page body (rendered markdown) */
+.page-body {
+    line-height: 1.7;
+    margin-bottom: 1.5rem;
+}
+
+.page-body h2 { font-size: 1.3rem; margin: 1.5rem 0 0.5rem; }
+.page-body h3 { font-size: 1.1rem; margin: 1.2rem 0 0.4rem; }
+.page-body p { margin-bottom: 0.8rem; }
+.page-body ul, .page-body ol { margin: 0.5rem 0 0.8rem 1.5rem; }
+.page-body code {
+    background: #f0f0f0;
+    padding: 0.15em 0.35em;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+.page-body pre {
+    background: #f5f5f5;
+    padding: 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+}
+.page-body pre code {
+    background: none;
+    padding: 0;
+}
+
+/* Page actions */
+.page-actions {
+    margin-bottom: 1.5rem;
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 0.45rem 1rem;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    background: #fff;
+    color: #333;
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.btn:hover {
+    background: #f5f5f5;
+}
+
+.btn-edit {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+}
+
+.btn-edit:hover {
+    background: #1d4ed8;
+}
+
+.btn-primary {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+}
+
+.btn-primary:hover {
+    background: #1d4ed8;
+}
+
+.btn-accent {
+    background: #7c3aed;
+    color: #fff;
+    border-color: #7c3aed;
+}
+
+.btn-accent:hover {
+    background: #6d28d9;
+}
+
+/* Provenance */
+.provenance-section {
+    border-top: 1px solid #e0e0e0;
+    padding-top: 1rem;
+    margin-top: 1rem;
+}
+
+.provenance-section h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Form styles */
+.page-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.form-group label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #444;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-family: inherit;
+}
+
+.form-group input[readonly] {
+    background: #f0f0f0;
+    color: #666;
+}
+
+.editor-container {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    min-height: 300px;
+    padding: 0.5rem;
+}
+
+.editor-fallback {
+    width: 100%;
+    font-family: monospace;
+    font-size: 0.9rem;
+    padding: 0.5rem;
+}
+
+.form-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+/* Results area */
+.results-area {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background: #fafafa;
+}
+
+.results-area h2 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.result-error {
+    color: #dc2626;
+    font-weight: 500;
+}
+
+.result-success {
+    color: #059669;
+    font-weight: 500;
+}
+
+.result-issues ul,
+.result-warnings ul {
+    margin: 0.3rem 0 0.5rem 1.2rem;
+    font-size: 0.9rem;
+}
+
+.issue-error { color: #dc2626; }
+.issue-warning { color: #d97706; }
+
 /* Responsive */
 @media (max-width: 600px) {
     .wiki-nav {

@@ -1,0 +1,62 @@
+{{define "content"}}
+{{$page := .Content}}
+
+<h1>{{if $page.IsNew}}New Page{{else}}Edit: {{$page.Title}}{{end}}</h1>
+
+<form id="page-form" class="page-form" data-project="{{$.Project}}">
+    <div class="form-group">
+        <label for="field-id">ID</label>
+        <input type="text" id="field-id" name="id" value="{{$page.ID}}" {{if not $page.IsNew}}readonly{{end}} required>
+    </div>
+
+    <div class="form-group">
+        <label for="field-title">Title</label>
+        <input type="text" id="field-title" name="title" value="{{$page.Title}}" required>
+    </div>
+
+    <div class="form-group">
+        <label for="field-type">Type</label>
+        <select id="field-type" name="type">
+            <option value="concept" {{if eq $page.Type "concept"}}selected{{end}}>concept</option>
+            <option value="guide" {{if eq $page.Type "guide"}}selected{{end}}>guide</option>
+            <option value="reference" {{if eq $page.Type "reference"}}selected{{end}}>reference</option>
+            <option value="tutorial" {{if eq $page.Type "tutorial"}}selected{{end}}>tutorial</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="field-status">Status</label>
+        <select id="field-status" name="status">
+            <option value="draft" {{if eq $page.Status "draft"}}selected{{end}}>draft</option>
+            <option value="review" {{if eq $page.Status "review"}}selected{{end}}>review</option>
+            <option value="published" {{if eq $page.Status "published"}}selected{{end}}>published</option>
+            <option value="contested" {{if eq $page.Status "contested"}}selected{{end}}>contested</option>
+            <option value="stale" {{if eq $page.Status "stale"}}selected{{end}}>stale</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="field-tags">Tags (comma-separated)</label>
+        <input type="text" id="field-tags" name="tags" value="{{$page.TagsCSV}}">
+    </div>
+
+    <div class="form-group">
+        <label>Body (Markdown)</label>
+        <div id="milkdown-editor" class="editor-container"></div>
+        <textarea id="editor-fallback" class="editor-fallback" style="display:none;" rows="20">{{$page.Body}}</textarea>
+    </div>
+
+    <div class="form-actions">
+        <button type="button" class="btn btn-submit" data-intent="verbatim">Do Not Mutate</button>
+        <button type="button" class="btn btn-submit btn-primary" data-intent="conform">Correct &amp; Format</button>
+        <button type="button" class="btn btn-submit btn-accent" data-intent="integrate">Reason &amp; Merge</button>
+    </div>
+</form>
+
+<div id="results-area" class="results-area" style="display:none;">
+    <h2>Results</h2>
+    <div id="results-content"></div>
+</div>
+
+<script type="module" src="/static/wiki.js"></script>
+{{end}}
