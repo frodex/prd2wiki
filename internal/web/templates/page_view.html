@@ -31,35 +31,13 @@
 </div>
 {{end}}
 
-<div class="page-actions">
-    <a href="/projects/{{$.Project}}/pages/{{$page.ID}}/edit" class="btn btn-edit">Edit</a>
-    <a href="/projects/{{$.Project}}/pages/{{$page.ID}}/history" class="btn">History</a>
-    {{if or (eq $page.Status "draft") (eq $page.Status "review")}}
-    <button class="btn btn-approve" onclick="if(confirm('Approve this page?')){fetch('/api/projects/{{$.Project}}/pages/{{$page.ID}}/approve',{method:'POST'}).then(()=>location.reload())}">Approve</button>
-    {{end}}
-    {{if ne $page.Status "deprecated"}}
-    <button class="btn btn-warn" onclick="if(confirm('Deprecate this page?')){fetch('/api/projects/{{$.Project}}/pages/{{$page.ID}}/deprecate',{method:'POST'}).then(()=>location.reload())}">Deprecate</button>
-    {{else}}
-    <button class="btn btn-restore" onclick="if(confirm('Restore this page?')){fetch('/api/projects/{{$.Project}}/pages/{{$page.ID}}/restore',{method:'POST'}).then(()=>location.reload())}">Restore</button>
-    {{end}}
-</div>
+{{template "page-actions" $page}}
 
 <div class="page-body">
     {{$page.BodyHTML}}
 </div>
 
-<div class="page-actions">
-    <a href="/projects/{{$.Project}}/pages/{{$page.ID}}/edit" class="btn btn-edit">Edit</a>
-    <a href="/projects/{{$.Project}}/pages/{{$page.ID}}/history" class="btn">History</a>
-    {{if or (eq $page.Status "draft") (eq $page.Status "review")}}
-    <button class="btn btn-approve" onclick="if(confirm('Approve this page?')){fetch('/api/projects/{{$.Project}}/pages/{{$page.ID}}/approve',{method:'POST'}).then(()=>location.reload())}">Approve</button>
-    {{end}}
-    {{if ne $page.Status "deprecated"}}
-    <button class="btn btn-warn" onclick="if(confirm('Deprecate this page? It will be marked as no longer current but preserved in history.')){fetch('/api/projects/{{$.Project}}/pages/{{$page.ID}}/deprecate',{method:'POST'}).then(()=>location.reload())}">Deprecate</button>
-    {{else}}
-    <button class="btn btn-restore" onclick="if(confirm('Restore this page to draft status?')){fetch('/api/projects/{{$.Project}}/pages/{{$page.ID}}/restore',{method:'POST'}).then(()=>location.reload())}">Restore</button>
-    {{end}}
-</div>
+{{template "page-actions" $page}}
 
 {{if $page.Sources}}
 <div class="provenance-section" data-project="{{$.Project}}" data-page-id="{{$page.ID}}">

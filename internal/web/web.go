@@ -43,6 +43,7 @@ type PageListItem struct {
 
 // PageViewData holds data for the page view template.
 type PageViewData struct {
+	Project      string
 	ID           string
 	Title        string
 	Type         string
@@ -141,8 +142,14 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		"templates/page_diff.html",
 	}
 	for _, pt := range pageTemplates {
-		t := template.Must(template.ParseFS(content, "templates/layout.html", pt))
-		h.templates[pt] = t
+		// page_view needs the page_actions partial
+		if pt == "templates/page_view.html" {
+			t := template.Must(template.ParseFS(content, "templates/layout.html", "templates/page_actions.html", pt))
+			h.templates[pt] = t
+		} else {
+			t := template.Must(template.ParseFS(content, "templates/layout.html", pt))
+			h.templates[pt] = t
+		}
 	}
 
 	return h
@@ -296,6 +303,7 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pvd := PageViewData{
+		Project:      project,
 		ID:           fm.ID,
 		Title:        fm.Title,
 		Type:         fm.Type,
@@ -586,6 +594,7 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pvd := PageViewData{
+		Project:    project,
 		ID:         fm.ID,
 		Title:      fm.Title + " (at " + short + ")",
 		Type:       fm.Type,
