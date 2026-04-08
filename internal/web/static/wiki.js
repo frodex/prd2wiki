@@ -353,48 +353,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize editor
     initMilkdown();
 
-    // Restore auto-saved draft if present
+    // Auto-save: clear any old draft on editor load (server content is authoritative),
+    // then start saving in case the browser crashes mid-edit.
     const form = document.getElementById('page-form');
     if (form) {
-        const key = autosaveDraftKey();
-        const saved = localStorage.getItem(key);
-        if (saved) {
-            try {
-                const data = JSON.parse(saved);
-                // Only offer restore if draft is less than 60 seconds old
-                // (browser crash / accidental navigation mid-edit)
-                // Otherwise discard — the server version is authoritative
-                const ageMs = Date.now() - (data._savedAt || 0);
-                if (data._savedAt && ageMs < 60000 && confirm('Restore unsaved changes from ' + Math.round(ageMs/1000) + ' seconds ago?')) {
-                    if (data.title) {
-                        const titleEl = document.getElementById('field-title');
-                        if (titleEl) titleEl.value = data.title;
-                    }
-                    if (data.type) {
-                        const typeEl = document.getElementById('field-type');
-                        if (typeEl) typeEl.value = data.type;
-                    }
-                    if (data.status) {
-                        const statusEl = document.getElementById('field-status');
-                        if (statusEl) statusEl.value = data.status;
-                    }
-                    if (data.tags) {
-                        const tagsEl = document.getElementById('field-tags');
-                        if (tagsEl) tagsEl.value = data.tags.join(', ');
-                    }
-                    if (data.body) {
-                        const fallback = document.getElementById('editor-fallback');
-                        if (fallback) fallback.value = data.body;
-                    }
-                } else {
-                    localStorage.removeItem(key);
-                }
-            } catch (e) {
-                localStorage.removeItem(key);
-            }
-        }
-
-        // Start auto-save interval
+        clearAutosaveDraft();
         setInterval(autosaveDraft, 5000);
     }
 });
