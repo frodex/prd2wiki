@@ -1,4 +1,4 @@
-.PHONY: build build-mcp build-all test run clean frontend
+.PHONY: build build-mcp build-scan build-ingest build-all test run clean frontend
 
 frontend:
 	cd frontend && npm run build
@@ -9,7 +9,13 @@ build: frontend
 build-mcp:
 	go build -o bin/prd2wiki-mcp ./cmd/prd2wiki-mcp
 
-build-all: build build-mcp
+build-scan:
+	go build -o bin/prd2wiki-scan ./cmd/prd2wiki-scan
+
+build-ingest:
+	go build -o bin/prd2wiki-ingest ./cmd/prd2wiki-ingest
+
+build-all: build build-mcp build-scan build-ingest
 
 test:
 	go test ./... -v -count=1
