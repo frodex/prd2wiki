@@ -1,0 +1,11 @@
+services:
+  prd2wiki:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - wiki-data:/data
+    restart: unless-stopped
+
+volumes:
+  wiki-data:
