@@ -106,18 +106,17 @@ func (ix *Indexer) RemovePage(id string) error {
 //  3. Reading and parsing each file
 //  4. Calling IndexPage for each
 func (ix *Indexer) RebuildFromRepo(project string, repo *wgit.Repo, branch string) error {
-	// Clear existing entries for this project.
-	// First, delete provenance edges for all pages in this project.
+	// Clear existing entries for this project+branch only (not the whole project).
 	_, err := ix.db.Exec(`
 		DELETE FROM provenance_edges
-		WHERE source_page IN (SELECT id FROM pages WHERE project = ?)
-	`, project)
+		WHERE source_page IN (SELECT id FROM pages WHERE project = ? AND branch = ?)
+	`, project, branch)
 	if err != nil {
-		return fmt.Errorf("clear provenance edges for project %q: %w", project, err)
+		return fmt.Errorf("clear provenance edges for project %q branch %q: %w", project, branch, err)
 	}
 
-	if _, err := ix.db.Exec("DELETE FROM pages WHERE project = ?", project); err != nil {
-		return fmt.Errorf("clear pages for project %q: %w", project, err)
+	if _, err := ix.db.Exec("DELETE FROM pages WHERE project = ? AND branch = ?", project, branch); err != nil {
+		return fmt.Errorf("clear pages for project %q branch %q: %w", project, branch, err)
 	}
 
 	// List all pages from git.
