@@ -22,6 +22,13 @@ func NewStore(emb embedder.Embedder) *Store {
 	return &Store{emb: emb}
 }
 
+// Count returns the number of embedding records in the store.
+func (s *Store) Count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.records)
+}
+
 // IndexPage embeds all chunks, removes existing entries for pageID, and stores new records.
 func (s *Store) IndexPage(ctx context.Context, project, pageID, typ, tags string, chunks []TextChunk) error {
 	if len(chunks) == 0 {

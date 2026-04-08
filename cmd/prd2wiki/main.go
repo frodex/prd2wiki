@@ -162,20 +162,29 @@ func main() {
 		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab)
 	}
 
-	// Rebuild vector index from repos on startup.
-	for _, project := range cfg.Projects {
-		lib := librarians[project]
-		repo := repos[project]
-		branches, _ := repo.ListBranches()
-		for _, branch := range branches {
-			ctx := context.Background()
-			n, err := lib.RebuildVectorIndex(ctx, project, branch)
-			if err != nil {
-				log.Printf("warning: vector rebuild %s/%s: %v", project, branch, err)
-			} else if n > 0 {
-				log.Printf("vector index: embedded %d pages from %s/%s", n, project, branch)
+	// TODO: Smart vector index rebuild — only embed pages whose content changed.
+	// Currently the in-memory vector store is empty on restart.
+	// Pages get embedded on write through the librarian.
+	// A proper fix needs content-hash tracking to avoid re-embedding unchanged pages.
+	// For now, rebuild on first startup only if the vector store is empty.
+	if vstore.Count() == 0 {
+		log.Printf("vector index: empty, rebuilding from git...")
+		for _, project := range cfg.Projects {
+			lib := librarians[project]
+			repo := repos[project]
+			branches, _ := repo.ListBranches()
+			for _, branch := range branches {
+				ctx := context.Background()
+				n, err := lib.RebuildVectorIndex(ctx, project, branch)
+				if err != nil {
+					log.Printf("warning: vector rebuild %s/%s: %v", project, branch, err)
+				} else if n > 0 {
+					log.Printf("vector index: embedded %d pages from %s/%s", n, project, branch)
+				}
 			}
 		}
+	} else {
+		log.Printf("vector index: %d entries, skipping rebuild", vstore.Count())
 	}
 
 	// Create API server and web handler.
