@@ -2,7 +2,10 @@ package librarian
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"strings"
+	"time"
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
@@ -53,8 +56,42 @@ func New(repo *wgit.Repo, indexer *index.Indexer, vstore *vectordb.Store, vocab 
 	}
 }
 
+// generateID creates a page ID from the title, or a random one if no title.
+func generateID(title string) string {
+	if title != "" {
+		// Slugify the title
+		id := strings.ToLower(title)
+		id = strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+				return r
+			}
+			if r == ' ' || r == '-' || r == '_' {
+				return '-'
+			}
+			return -1
+		}, id)
+		// Collapse multiple dashes
+		for strings.Contains(id, "--") {
+			id = strings.ReplaceAll(id, "--", "-")
+		}
+		id = strings.Trim(id, "-")
+		if id != "" {
+			return id
+		}
+	}
+	// Random fallback
+	b := make([]byte, 4)
+	rand.Read(b)
+	return fmt.Sprintf("page-%s-%x", time.Now().Format("20060102"), b)
+}
+
 // Submit processes a page submission according to the requested intent.
 func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
+	// Auto-generate ID if empty
+	if req.Frontmatter.ID == "" {
+		req.Frontmatter.ID = generateID(req.Frontmatter.Title)
+	}
+
 	switch req.Intent {
 	case IntentVerbatim:
 		return l.submitVerbatim(ctx, req)
