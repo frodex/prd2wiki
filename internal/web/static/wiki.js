@@ -361,7 +361,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (saved) {
             try {
                 const data = JSON.parse(saved);
-                if (data._savedAt && confirm('Restore unsaved draft from ' + new Date(data._savedAt).toLocaleString() + '?')) {
+                // Only offer restore if draft is less than 60 seconds old
+                // (browser crash / accidental navigation mid-edit)
+                // Otherwise discard — the server version is authoritative
+                const ageMs = Date.now() - (data._savedAt || 0);
+                if (data._savedAt && ageMs < 60000 && confirm('Restore unsaved changes from ' + Math.round(ageMs/1000) + ' seconds ago?')) {
                     if (data.title) {
                         const titleEl = document.getElementById('field-title');
                         if (titleEl) titleEl.value = data.title;
