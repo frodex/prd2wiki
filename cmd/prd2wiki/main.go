@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -15,6 +16,7 @@ import (
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
+	"github.com/frodex/prd2wiki/internal/web"
 )
 
 // Config holds the application configuration loaded from YAML.
@@ -106,10 +108,20 @@ func main() {
 		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab)
 	}
 
-	// Start the API server.
+	// Create API server and web handler.
 	srv := api.NewServer(cfg.Server.Addr, repos, db, librarians)
+	webHandler := web.NewHandler(repos, db, librarians)
+
+	// Compose both into a single root mux.
+	mux := http.NewServeMux()
+	mux.Handle("/api/", srv.Handler())
+	webHandler.Register(mux)
+
+	// Start server.
 	log.Printf("prd2wiki listening on %s", cfg.Server.Addr)
-	if err := srv.ListenAndServe(); err != nil {
+	log.Printf("  Web UI: http://localhost%s/", cfg.Server.Addr)
+	log.Printf("  API:    http://localhost%s/api/", cfg.Server.Addr)
+	if err := http.ListenAndServe(cfg.Server.Addr, mux); err != nil {
 		log.Fatalf("server: %v", err)
 	}
 }
