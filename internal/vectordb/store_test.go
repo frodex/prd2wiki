@@ -9,11 +9,13 @@ import (
 // cosine similarity is meaningful in tests.
 type mockEmbedder struct{}
 
-func (m *mockEmbedder) Available() bool { return true }
-func (m *mockEmbedder) Dimensions() int { return 4 }
+// Embed generates a simple 4-dim vector from a single text by hashing characters.
+func (m *mockEmbedder) Embed(_ context.Context, text, language string) ([]float32, error) {
+	return textToVec(text), nil
+}
 
-// Embed generates a simple 4-dim vector per text by hashing the first byte.
-func (m *mockEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
+// EmbedBatch generates simple 4-dim vectors per text by hashing characters.
+func (m *mockEmbedder) EmbedBatch(_ context.Context, texts []string, language string) ([][]float32, error) {
 	out := make([][]float32, len(texts))
 	for i, t := range texts {
 		out[i] = textToVec(t)
@@ -21,7 +23,7 @@ func (m *mockEmbedder) Embed(_ context.Context, texts []string) ([][]float32, er
 	return out, nil
 }
 
-func (m *mockEmbedder) EmbedQuery(_ context.Context, query string) ([]float32, error) {
+func (m *mockEmbedder) EmbedQuery(_ context.Context, query, language string) ([]float32, error) {
 	return textToVec(query), nil
 }
 

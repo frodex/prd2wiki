@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -29,11 +30,7 @@ type Config struct {
 	Data struct {
 		Dir string `yaml:"dir"`
 	} `yaml:"data"`
-	Embedder struct {
-		Endpoint   string `yaml:"endpoint"`   // e.g. "http://localhost:8081"
-		Dimensions int    `yaml:"dimensions"`  // e.g. 768
-		Timeout    int    `yaml:"timeout"`     // seconds, default 30
-	} `yaml:"embedder"`
+	Embedder embedder.EmbedderConfig `yaml:"embedder"`
 	Projects []string `yaml:"projects"`
 }
 
@@ -110,33 +107,54 @@ func main() {
 		}
 	}
 
-	// Create embedder — try real LlamaCpp, fall back to Noop.
-	var emb embedder.Embedder
-	dims := cfg.Embedder.Dimensions
-	if dims == 0 {
-		dims = 768
+	// Apply embedder config defaults.
+	embCfg := cfg.Embedder
+	if embCfg.Endpoint == "" {
+		embCfg.Endpoint = os.Getenv("PRDWIKI_EMBEDDER_URL")
 	}
-	timeout := cfg.Embedder.Timeout
-	if timeout == 0 {
-		timeout = 30
+	if embCfg.Endpoint == "" {
+		embCfg.Endpoint = "http://localhost:8081"
 	}
-	endpoint := cfg.Embedder.Endpoint
-	if endpoint == "" {
-		endpoint = os.Getenv("PRDWIKI_EMBEDDER_URL")
+	if embCfg.Dimensions == 0 {
+		embCfg.Dimensions = 768
 	}
-	if endpoint == "" {
-		endpoint = "http://localhost:8081"
+	if embCfg.TimeoutStr == "" {
+		embCfg.TimeoutStr = "30s"
+	}
+	if embCfg.Type == "" {
+		embCfg.Type = "llama_cpp"
+	}
+	if embCfg.QueryPrefix == "" {
+		embCfg.QueryPrefix = "search_query: "
+	}
+	if embCfg.PassagePrefix == "" {
+		embCfg.PassagePrefix = "search_document: "
 	}
 
-	llamaEmb := embedder.NewLlamaCppEmbedder(endpoint, dims, timeout)
-	if llamaEmb.Available() {
+	// Create embedder — try real LlamaCpp, fall back to Noop.
+	var emb embedder.Embedder
+	llamaEmb := embedder.NewLlamaCppEmbedder(embCfg)
+	if err := llamaEmb.HealthCheck(context.Background()); err == nil {
 		emb = llamaEmb
-		log.Printf("embedder: connected to LlamaCpp at %s (dims=%d)", endpoint, dims)
+		log.Printf("embedder: connected to LlamaCpp at %s (dims=%d)", embCfg.Endpoint, embCfg.Dimensions)
 	} else {
-		emb = embedder.NewNoopEmbedder(dims)
-		log.Printf("embedder: LlamaCpp not available at %s — using noop (lexical search only)", endpoint)
+		emb = embedder.NoopEmbedder{}
+		log.Printf("embedder: LlamaCpp not available at %s — using noop (lexical search only)", embCfg.Endpoint)
 	}
 	vstore := vectordb.NewStore(emb)
+
+	// Create embedding profile store.
+	profileStore, err := embedder.NewEmbeddingProfileStore(db)
+	if err != nil {
+		log.Fatalf("create embedding profile store: %v", err)
+	}
+	profile := embedder.ProfileFromConfig(embCfg)
+	if existing, err := profileStore.Get(context.Background(), profile.ProfileID); err != nil || existing == nil {
+		if regErr := profileStore.Register(context.Background(), profile); regErr != nil {
+			log.Printf("warning: register embedding profile: %v", regErr)
+		}
+	}
+	_ = profileStore // available for future use
 
 	librarians := make(map[string]*librarian.Librarian)
 	for _, project := range cfg.Projects {

@@ -10,7 +10,7 @@ import (
 )
 
 func TestDetectDuplicates(t *testing.T) {
-	emb := embedder.NewNoopEmbedder(16)
+	emb := embedder.ZeroEmbedder{Dims: 16}
 	store := vectordb.NewStore(emb)
 	ctx := context.Background()
 
@@ -46,7 +46,7 @@ func TestDetectDuplicates(t *testing.T) {
 }
 
 func TestDetectDuplicatesExcludesSelf(t *testing.T) {
-	emb := embedder.NewNoopEmbedder(16)
+	emb := embedder.ZeroEmbedder{Dims: 16}
 	store := vectordb.NewStore(emb)
 	ctx := context.Background()
 

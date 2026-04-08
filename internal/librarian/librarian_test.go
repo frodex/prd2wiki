@@ -31,7 +31,7 @@ func setupLibrarian(t *testing.T) (*librarian.Librarian, *wgit.Repo) {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	emb := embedder.NewNoopEmbedder(16)
+	emb := embedder.ZeroEmbedder{Dims: 16}
 	vstore := vectordb.NewStore(emb)
 	vocab := vocabulary.NewStore(db)
 	ix := index.NewIndexer(db)

@@ -1,53 +1,80 @@
 package embedder
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
-// Embedder converts text into dense float vectors for semantic search.
+// DefaultLanguage is the default language code for embedding operations.
+const DefaultLanguage = "en"
+
+var ErrEmbedderNotConfigured = errors.New("embedder: embedder not configured")
+
+// Embedder converts text into vectors. Implementations can be local or remote,
+// but must honor context cancellation.
+//
+// Embed/EmbedBatch encode passage (document) text. EmbedQuery encodes query
+// text — instruction-tuned models use different prefixes for each direction.
 type Embedder interface {
-	// Embed encodes a batch of passage texts into vectors.
-	Embed(ctx context.Context, texts []string) ([][]float32, error)
-
-	// EmbedQuery encodes a single search query into a vector.
-	EmbedQuery(ctx context.Context, query string) ([]float32, error)
-
-	// Dimensions returns the length of vectors produced by this embedder.
-	Dimensions() int
-
-	// Available reports whether the embedding backend is reachable and ready.
-	Available() bool
+	Embed(ctx context.Context, text, language string) ([]float32, error)
+	EmbedBatch(ctx context.Context, texts []string, language string) ([][]float32, error)
+	EmbedQuery(ctx context.Context, query, language string) ([]float32, error)
 }
 
-// ---------------------------------------------------------------------------
-// NoopEmbedder
-// ---------------------------------------------------------------------------
-
-// NoopEmbedder is a zero-value fallback that returns zero vectors.
-// Available() always returns false so callers can degrade gracefully.
-type NoopEmbedder struct {
-	dims int
+// EmbedBatchHelper is a convenience helper that always uses context-aware embedding.
+func EmbedBatchHelper(ctx context.Context, e Embedder, texts []string, language string) ([][]float32, error) {
+	if e == nil {
+		return nil, ErrEmbedderNotConfigured
+	}
+	if len(texts) == 0 {
+		return [][]float32{}, nil
+	}
+	return e.EmbedBatch(ctx, texts, language)
 }
 
-// NewNoopEmbedder creates a NoopEmbedder that produces zero vectors of length dims.
-func NewNoopEmbedder(dims int) *NoopEmbedder {
-	return &NoopEmbedder{dims: dims}
+// NoopEmbedder is a safe default for bootstrapping when no provider exists yet.
+type NoopEmbedder struct{}
+
+func (NoopEmbedder) Embed(ctx context.Context, text, language string) ([]float32, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	return nil, ErrEmbedderNotConfigured
 }
 
-// Available always returns false for the noop implementation.
-func (n *NoopEmbedder) Available() bool { return false }
+func (NoopEmbedder) EmbedBatch(ctx context.Context, texts []string, language string) ([][]float32, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	return nil, ErrEmbedderNotConfigured
+}
 
-// Dimensions returns the configured vector length.
-func (n *NoopEmbedder) Dimensions() int { return n.dims }
+func (n NoopEmbedder) EmbedQuery(ctx context.Context, query, language string) ([]float32, error) {
+	return n.Embed(ctx, query, language)
+}
 
-// Embed returns one zero vector per input text.
-func (n *NoopEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
+// ZeroEmbedder returns zero vectors of a fixed dimension. Useful for tests
+// where the embedder must succeed but the actual vectors don't matter.
+type ZeroEmbedder struct {
+	Dims int
+}
+
+func (z ZeroEmbedder) Embed(_ context.Context, text, language string) ([]float32, error) {
+	return make([]float32, z.Dims), nil
+}
+
+func (z ZeroEmbedder) EmbedBatch(_ context.Context, texts []string, language string) ([][]float32, error) {
 	out := make([][]float32, len(texts))
 	for i := range out {
-		out[i] = make([]float32, n.dims)
+		out[i] = make([]float32, z.Dims)
 	}
 	return out, nil
 }
 
-// EmbedQuery returns a single zero vector.
-func (n *NoopEmbedder) EmbedQuery(_ context.Context, _ string) ([]float32, error) {
-	return make([]float32, n.dims), nil
+func (z ZeroEmbedder) EmbedQuery(_ context.Context, query, language string) ([]float32, error) {
+	return make([]float32, z.Dims), nil
 }

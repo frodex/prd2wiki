@@ -39,7 +39,7 @@ func setupTestServer(t *testing.T) *Server {
 	}
 
 	indexer := index.NewIndexer(db)
-	emb := embedder.NewNoopEmbedder(768)
+	emb := embedder.ZeroEmbedder{Dims: 768}
 	vstore := vectordb.NewStore(emb)
 	vocab := vocabulary.NewStore(db)
 	lib := librarian.New(repo, indexer, vstore, vocab)

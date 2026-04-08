@@ -33,7 +33,7 @@ func (s *Store) IndexPage(ctx context.Context, project, pageID, typ, tags string
 		texts[i] = c.Text
 	}
 
-	vectors, err := s.emb.Embed(ctx, texts)
+	vectors, err := s.emb.EmbedBatch(ctx, texts, embedder.DefaultLanguage)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ type scoredResult struct {
 
 // Search embeds the query, computes fused cosine + keyword scores, and returns the top N results.
 func (s *Store) Search(ctx context.Context, project, query string, limit int) ([]SearchResult, error) {
-	queryVec, err := s.emb.EmbedQuery(ctx, query)
+	queryVec, err := s.emb.EmbedQuery(ctx, query, embedder.DefaultLanguage)
 	if err != nil {
 		return nil, err
 	}

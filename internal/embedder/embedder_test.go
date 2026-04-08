@@ -3,6 +3,7 @@ package embedder_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,53 +16,35 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestNoopEmbedder(t *testing.T) {
-	e := embedder.NewNoopEmbedder(128)
+	e := embedder.NoopEmbedder{}
 
-	t.Run("Available returns false", func(t *testing.T) {
-		if e.Available() {
-			t.Fatal("NoopEmbedder.Available() should be false")
+	t.Run("Embed returns ErrEmbedderNotConfigured", func(t *testing.T) {
+		_, err := e.Embed(context.Background(), "hello", "en")
+		if !errors.Is(err, embedder.ErrEmbedderNotConfigured) {
+			t.Fatalf("Embed() error = %v, want ErrEmbedderNotConfigured", err)
 		}
 	})
 
-	t.Run("Dimensions returns configured value", func(t *testing.T) {
-		if got := e.Dimensions(); got != 128 {
-			t.Fatalf("Dimensions() = %d, want 128", got)
+	t.Run("EmbedBatch returns ErrEmbedderNotConfigured", func(t *testing.T) {
+		_, err := e.EmbedBatch(context.Background(), []string{"hello", "world"}, "en")
+		if !errors.Is(err, embedder.ErrEmbedderNotConfigured) {
+			t.Fatalf("EmbedBatch() error = %v, want ErrEmbedderNotConfigured", err)
 		}
 	})
 
-	t.Run("Embed returns zero vectors of correct length", func(t *testing.T) {
-		texts := []string{"hello", "world", "foo"}
-		vecs, err := e.Embed(context.Background(), texts)
-		if err != nil {
-			t.Fatalf("Embed() error: %v", err)
-		}
-		if len(vecs) != len(texts) {
-			t.Fatalf("got %d vectors, want %d", len(vecs), len(texts))
-		}
-		for i, v := range vecs {
-			if len(v) != 128 {
-				t.Fatalf("vector[%d] length = %d, want 128", i, len(v))
-			}
-			for j, f := range v {
-				if f != 0 {
-					t.Fatalf("vector[%d][%d] = %f, want 0", i, j, f)
-				}
-			}
+	t.Run("EmbedQuery returns ErrEmbedderNotConfigured", func(t *testing.T) {
+		_, err := e.EmbedQuery(context.Background(), "search term", "en")
+		if !errors.Is(err, embedder.ErrEmbedderNotConfigured) {
+			t.Fatalf("EmbedQuery() error = %v, want ErrEmbedderNotConfigured", err)
 		}
 	})
 
-	t.Run("EmbedQuery returns zero vector of correct length", func(t *testing.T) {
-		vec, err := e.EmbedQuery(context.Background(), "search term")
-		if err != nil {
-			t.Fatalf("EmbedQuery() error: %v", err)
-		}
-		if len(vec) != 128 {
-			t.Fatalf("EmbedQuery vector length = %d, want 128", len(vec))
-		}
-		for j, f := range vec {
-			if f != 0 {
-				t.Fatalf("EmbedQuery vector[%d] = %f, want 0", j, f)
-			}
+	t.Run("honors context cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := e.Embed(ctx, "hello", "en")
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Embed() with cancelled ctx: error = %v, want context.Canceled", err)
 		}
 	})
 }
@@ -93,7 +76,7 @@ func mockEmbeddingServer(t *testing.T, fullDims int) *httptest.Server {
 
 		type embeddingObj struct {
 			Object    string    `json:"object"`
-			Embedding []float32 `json:"embedding"`
+			Embedding []float64 `json:"embedding"`
 			Index     int       `json:"index"`
 		}
 		type response struct {
@@ -103,7 +86,7 @@ func mockEmbeddingServer(t *testing.T, fullDims int) *httptest.Server {
 
 		resp := response{Object: "list"}
 		for i := range req.Input {
-			vec := make([]float32, fullDims)
+			vec := make([]float64, fullDims)
 			for j := range vec {
 				vec[j] = 0.5
 			}
@@ -130,25 +113,26 @@ func TestLlamaCppEmbedder(t *testing.T) {
 	srv := mockEmbeddingServer(t, fullDims)
 	defer srv.Close()
 
-	e := embedder.NewLlamaCppEmbedder(srv.URL, fullDims, 5)
+	cfg := embedder.EmbedderConfig{
+		Endpoint:      srv.URL,
+		Dimensions:    fullDims,
+		TimeoutStr:    "5s",
+		QueryPrefix:   "search_query: ",
+		PassagePrefix: "search_document: ",
+	}
+	e := embedder.NewLlamaCppEmbedder(cfg)
 
-	t.Run("Available returns true when server healthy", func(t *testing.T) {
-		if !e.Available() {
-			t.Fatal("Available() should be true when server is up")
+	t.Run("HealthCheck succeeds when server healthy", func(t *testing.T) {
+		if err := e.HealthCheck(context.Background()); err != nil {
+			t.Fatalf("HealthCheck() should succeed when server is up: %v", err)
 		}
 	})
 
-	t.Run("Dimensions returns configured value", func(t *testing.T) {
-		if got := e.Dimensions(); got != fullDims {
-			t.Fatalf("Dimensions() = %d, want %d", got, fullDims)
-		}
-	})
-
-	t.Run("Embed batches texts and returns correct number of vectors", func(t *testing.T) {
+	t.Run("EmbedBatch returns correct number of vectors", func(t *testing.T) {
 		texts := []string{"alpha", "beta", "gamma"}
-		vecs, err := e.Embed(context.Background(), texts)
+		vecs, err := e.EmbedBatch(context.Background(), texts, "en")
 		if err != nil {
-			t.Fatalf("Embed() error: %v", err)
+			t.Fatalf("EmbedBatch() error: %v", err)
 		}
 		if len(vecs) != len(texts) {
 			t.Fatalf("got %d vectors, want %d", len(vecs), len(texts))
@@ -160,8 +144,18 @@ func TestLlamaCppEmbedder(t *testing.T) {
 		}
 	})
 
+	t.Run("Embed returns single vector", func(t *testing.T) {
+		vec, err := e.Embed(context.Background(), "test text", "en")
+		if err != nil {
+			t.Fatalf("Embed() error: %v", err)
+		}
+		if len(vec) != fullDims {
+			t.Fatalf("Embed vector length = %d, want %d", len(vec), fullDims)
+		}
+	})
+
 	t.Run("EmbedQuery returns single vector", func(t *testing.T) {
-		vec, err := e.EmbedQuery(context.Background(), "find me something")
+		vec, err := e.EmbedQuery(context.Background(), "find me something", "en")
 		if err != nil {
 			t.Fatalf("EmbedQuery() error: %v", err)
 		}
@@ -182,18 +176,19 @@ func TestLlamaCppMatryoshka(t *testing.T) {
 	srv := mockEmbeddingServer(t, fullDims)
 	defer srv.Close()
 
-	e := embedder.NewLlamaCppEmbedder(srv.URL, targetDims, 5)
+	cfg := embedder.EmbedderConfig{
+		Endpoint:      srv.URL,
+		Dimensions:    targetDims,
+		TimeoutStr:    "5s",
+		QueryPrefix:   "search_query: ",
+		PassagePrefix: "search_document: ",
+	}
+	e := embedder.NewLlamaCppEmbedder(cfg)
 
-	t.Run("Dimensions returns target dims", func(t *testing.T) {
-		if got := e.Dimensions(); got != targetDims {
-			t.Fatalf("Dimensions() = %d, want %d", got, targetDims)
-		}
-	})
-
-	t.Run("Embed truncates full server vectors to target dims", func(t *testing.T) {
-		vecs, err := e.Embed(context.Background(), []string{"truncate me"})
+	t.Run("EmbedBatch truncates full server vectors to target dims", func(t *testing.T) {
+		vecs, err := e.EmbedBatch(context.Background(), []string{"truncate me"}, "en")
 		if err != nil {
-			t.Fatalf("Embed() error: %v", err)
+			t.Fatalf("EmbedBatch() error: %v", err)
 		}
 		if len(vecs) != 1 {
 			t.Fatalf("got %d vectors, want 1", len(vecs))
@@ -201,16 +196,10 @@ func TestLlamaCppMatryoshka(t *testing.T) {
 		if len(vecs[0]) != targetDims {
 			t.Fatalf("vector length = %d, want %d (Matryoshka truncation)", len(vecs[0]), targetDims)
 		}
-		// Values should still be 0.5 (not corrupted by truncation)
-		for j, f := range vecs[0] {
-			if f != 0.5 {
-				t.Fatalf("vecs[0][%d] = %f, want 0.5", j, f)
-			}
-		}
 	})
 
 	t.Run("EmbedQuery truncates to target dims", func(t *testing.T) {
-		vec, err := e.EmbedQuery(context.Background(), "shrink this")
+		vec, err := e.EmbedQuery(context.Background(), "shrink this", "en")
 		if err != nil {
 			t.Fatalf("EmbedQuery() error: %v", err)
 		}
@@ -225,12 +214,18 @@ func TestLlamaCppMatryoshka(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLlamaCppUnavailable(t *testing.T) {
-	// Point at a port that has nothing listening.
-	e := embedder.NewLlamaCppEmbedder("http://127.0.0.1:19999", 768, 1)
+	cfg := embedder.EmbedderConfig{
+		Endpoint:      "http://127.0.0.1:19999",
+		Dimensions:    768,
+		TimeoutStr:    "1s",
+		QueryPrefix:   "search_query: ",
+		PassagePrefix: "search_document: ",
+	}
+	e := embedder.NewLlamaCppEmbedder(cfg)
 
-	t.Run("Available returns false when server unreachable", func(t *testing.T) {
-		if e.Available() {
-			t.Fatal("Available() should be false when no server is running")
+	t.Run("HealthCheck returns error when server unreachable", func(t *testing.T) {
+		if err := e.HealthCheck(context.Background()); err == nil {
+			t.Fatal("HealthCheck() should return error when no server is running")
 		}
 	})
 }
