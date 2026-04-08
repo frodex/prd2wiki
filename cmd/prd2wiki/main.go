@@ -14,6 +14,8 @@ import (
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
+	"github.com/frodex/prd2wiki/internal/mcp"
+	"github.com/frodex/prd2wiki/internal/steward"
 	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
 	"github.com/frodex/prd2wiki/internal/web"
@@ -31,6 +33,11 @@ type Config struct {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "steward" {
+		runSteward(os.Args[2:])
+		return
+	}
+
 	configPath := flag.String("config", "config/prd2wiki.yaml", "path to config file")
 	flag.Parse()
 
@@ -123,6 +130,103 @@ func main() {
 	log.Printf("  API:    http://localhost%s/api/", cfg.Server.Addr)
 	if err := http.ListenAndServe(cfg.Server.Addr, mux); err != nil {
 		log.Fatalf("server: %v", err)
+	}
+}
+
+func runSteward(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: prd2wiki steward <lint|resolve|ingest|all> [--project PROJECT]")
+		os.Exit(1)
+	}
+
+	cmd := args[0]
+	project := "default"
+
+	// Parse --project flag.
+	for i, a := range args {
+		if a == "--project" && i+1 < len(args) {
+			project = args[i+1]
+		}
+	}
+
+	apiURL := os.Getenv("PRDWIKI_API_URL")
+	if apiURL == "" {
+		apiURL = "http://localhost:8080"
+	}
+
+	client := mcp.NewWikiClient(apiURL)
+
+	var reports []*steward.Report
+
+	switch cmd {
+	case "lint":
+		s := steward.NewLintSteward(client)
+		r, err := s.Run(project)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "lint steward error: %v\n", err)
+			os.Exit(1)
+		}
+		reports = append(reports, r)
+
+	case "resolve":
+		s := steward.NewResolveSteward(client)
+		r, err := s.Run(project)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "resolve steward error: %v\n", err)
+			os.Exit(1)
+		}
+		reports = append(reports, r)
+
+	case "ingest":
+		s := steward.NewIngestSteward(client)
+		r, err := s.Run(project)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ingest steward error: %v\n", err)
+			os.Exit(1)
+		}
+		reports = append(reports, r)
+
+	case "all":
+		lintSteward := steward.NewLintSteward(client)
+		r, err := lintSteward.Run(project)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "lint steward error: %v\n", err)
+			os.Exit(1)
+		}
+		reports = append(reports, r)
+
+		resolveSteward := steward.NewResolveSteward(client)
+		r, err = resolveSteward.Run(project)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "resolve steward error: %v\n", err)
+			os.Exit(1)
+		}
+		reports = append(reports, r)
+
+		ingestSteward := steward.NewIngestSteward(client)
+		r, err = ingestSteward.Run(project)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ingest steward error: %v\n", err)
+			os.Exit(1)
+		}
+		reports = append(reports, r)
+
+	default:
+		fmt.Fprintf(os.Stderr, "unknown steward command: %s\n", cmd)
+		os.Exit(1)
+	}
+
+	hasErrors := false
+	for _, r := range reports {
+		data, _ := r.JSON()
+		fmt.Println(string(data))
+		if r.HasErrors() {
+			hasErrors = true
+		}
+	}
+
+	if hasErrors {
+		os.Exit(1)
 	}
 }
 
