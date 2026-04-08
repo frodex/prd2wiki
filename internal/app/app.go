@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/frodex/prd2wiki/internal/api"
+	"github.com/frodex/prd2wiki/internal/auth"
 	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
@@ -48,6 +49,7 @@ type App struct {
 	Searcher   *index.Searcher
 	VStore     *vectordb.Store
 	Librarians map[string]*librarian.Librarian
+	Keys       *auth.ServiceKeyStore
 	Handler    http.Handler
 }
 
@@ -91,6 +93,13 @@ func New(cfg Config) (*App, error) {
 	db, err := index.OpenDatabase(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open database %q: %w", dbPath, err)
+	}
+
+	// Initialize service key store (uses the same DB, migrations are idempotent).
+	keyStore, err := auth.NewServiceKeyStore(db)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("init service key store: %w", err)
 	}
 
 	// Rebuild index from repos on startup (sequential — SQLite only allows one writer).
@@ -237,6 +246,7 @@ func New(cfg Config) (*App, error) {
 		Searcher:   index.NewSearcher(db),
 		VStore:     vstore,
 		Librarians: librarians,
+		Keys:       keyStore,
 		Handler:    handler,
 	}, nil
 }
