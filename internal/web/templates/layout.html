@@ -11,9 +11,13 @@
     <nav class="wiki-nav">
         <a href="/" class="logo">prd2wiki</a>
         <div class="nav-links">
+            {{if .Project}}
             <a href="/projects/{{.Project}}/pages">Pages</a>
             <a href="/projects/{{.Project}}/pages/new">New Page</a>
             <a href="/projects/{{.Project}}/search">Search</a>
+            {{else}}
+            <a href="/">Projects</a>
+            {{end}}
         </div>
     </nav>
     <main class="wiki-main">
