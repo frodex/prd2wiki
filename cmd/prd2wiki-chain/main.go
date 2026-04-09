@@ -106,7 +106,10 @@ var versionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`-NOTES-\d+[a-z]?$`),
 	regexp.MustCompile(`-NOTES-[a-z]+$`),
 	regexp.MustCompile(`-NOTES$`),
-	regexp.MustCompile(`-v\d+\.\d+$`),
+	regexp.MustCompile(`-v\d+\.\d+$`),       // trailing: foo-v0.1
+	regexp.MustCompile(`^v\d+\.\d+-`),        // leading: v0.1-foo (after date strip)
+	regexp.MustCompile(`\.\d+\.\d+\.\d+\.backup$`), // foo.0.0.1.backup (before semver!)
+	regexp.MustCompile(`\.\d+\.\d+\.\d+$`),  // trailing semver: foo.0.0.1
 	regexp.MustCompile(`-\d{2,}$`), // trailing 2+ digit number (NOT single digit like plan1)
 }
 
@@ -142,7 +145,10 @@ func baseIDFromFile(file string) string {
 	// Strip leading date prefix for grouping purposes.
 	name = datePrefix.ReplaceAllString(name, "")
 
-	return stripVersionSuffix(name)
+	base := stripVersionSuffix(name)
+	// Clean up leading/trailing dashes from stripping
+	base = strings.Trim(base, "-")
+	return base
 }
 
 // detectAuthor returns "greg" for files with "NOTES" in the name, "claude" otherwise.
