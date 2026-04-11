@@ -1,6 +1,8 @@
-# prd2wiki System Dashboard Implementation Plan
+> **Cross-references:** Canonical design wiki page **`f7f7bd1`** (*DESIGN: prd2wiki System Dashboard*). Repository copy: `docs/superpowers/plans/2026-04-11-system-dashboard.md` (commit with code changes; this page can be updated via API or ingest).
 
-> **Wiki mirror:** prd2wiki page **`48c86ff`** (*PLAN: prd2wiki System Dashboard Implementation*). Design spec: **`f7f7bd1`**.
+---
+
+# prd2wiki System Dashboard Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
