@@ -1,5 +1,7 @@
 # prd2wiki System Dashboard Implementation Plan
 
+> **Wiki mirror:** prd2wiki page **`48c86ff`** (*PLAN: prd2wiki System Dashboard Implementation*). Design spec: **`f7f7bd1`**.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship an **operations dashboard** inside **prd2wiki**: JSON snapshot API, optional SSE stream for live host metrics, loopback-only access, HTTP + unix-dial probes for WIKI / Database / Embedder / Vault placeholder / GPU, wired to the architecture in wiki page **`f7f7bd1`** (“DESIGN: prd2wiki System Dashboard”).
