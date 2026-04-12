@@ -16,7 +16,7 @@ func TestPageHistory(t *testing.T) {
 	// Write three versions of the same page.
 	for i, content := range []string{"v1", "v2", "v3"} {
 		msg := "version " + content
-		err := repo.WritePage("main", "pages/test.md", []byte(content), msg, "Author")
+		_, err := repo.WritePage("main", "pages/test.md", []byte(content), msg, "Author")
 		if err != nil {
 			t.Fatalf("WritePage %d failed: %v", i, err)
 		}
@@ -61,7 +61,7 @@ func TestPageHistory_Limit(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		content := fmt.Sprintf("content version %d", i)
-		err := repo.WritePage("main", "pages/test.md", []byte(content), "commit", "Author")
+		_, err := repo.WritePage("main", "pages/test.md", []byte(content), "commit", "Author")
 		if err != nil {
 			t.Fatalf("WritePage %d failed: %v", i, err)
 		}
@@ -85,13 +85,13 @@ func TestPageHistory_OnlyTracksTargetFile(t *testing.T) {
 	}
 
 	// Write to two different files.
-	if err := repo.WritePage("main", "pages/a.md", []byte("a1"), "add a", "Author"); err != nil {
+	if _, err := repo.WritePage("main", "pages/a.md", []byte("a1"), "add a", "Author"); err != nil {
 		t.Fatalf("WritePage a failed: %v", err)
 	}
-	if err := repo.WritePage("main", "pages/b.md", []byte("b1"), "add b", "Author"); err != nil {
+	if _, err := repo.WritePage("main", "pages/b.md", []byte("b1"), "add b", "Author"); err != nil {
 		t.Fatalf("WritePage b failed: %v", err)
 	}
-	if err := repo.WritePage("main", "pages/a.md", []byte("a2"), "update a", "Author"); err != nil {
+	if _, err := repo.WritePage("main", "pages/a.md", []byte("a2"), "update a", "Author"); err != nil {
 		t.Fatalf("WritePage a2 failed: %v", err)
 	}
 
@@ -114,7 +114,7 @@ func TestReadPageAtCommit(t *testing.T) {
 	}
 
 	// Write v1.
-	err = repo.WritePage("main", "pages/test.md", []byte("version one"), "v1", "Author")
+	_, err = repo.WritePage("main", "pages/test.md", []byte("version one"), "v1", "Author")
 	if err != nil {
 		t.Fatalf("WritePage v1 failed: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestReadPageAtCommit(t *testing.T) {
 	v1Hash := commits1[0].Hash
 
 	// Write v2.
-	err = repo.WritePage("main", "pages/test.md", []byte("version two"), "v2", "Author")
+	_, err = repo.WritePage("main", "pages/test.md", []byte("version two"), "v2", "Author")
 	if err != nil {
 		t.Fatalf("WritePage v2 failed: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestFindBranchForPage(t *testing.T) {
 	}
 
 	// Write to draft branch only.
-	err = repo.WritePage("draft/incoming", "pages/draft-only.md", []byte("draft"), "add draft", "Author")
+	_, err = repo.WritePage("draft/incoming", "pages/draft-only.md", []byte("draft"), "add draft", "Author")
 	if err != nil {
 		t.Fatalf("WritePage failed: %v", err)
 	}
@@ -176,5 +176,39 @@ func TestFindBranchForPage(t *testing.T) {
 	_, err = repo.FindBranchForPage("pages/nonexistent.md")
 	if err == nil {
 		t.Fatal("expected error for nonexistent page, got nil")
+	}
+}
+
+func TestFirstCommitDate(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := InitRepo(dir, "wiki")
+	if err != nil {
+		t.Fatalf("InitRepo failed: %v", err)
+	}
+	if _, err := repo.WritePage("main", "pages/p.md", []byte("a"), "first", "A"); err != nil {
+		t.Fatalf("WritePage: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if _, err := repo.WritePage("main", "pages/p.md", []byte("b"), "second", "A"); err != nil {
+		t.Fatalf("WritePage: %v", err)
+	}
+
+	commits, err := repo.PageHistory("main", "pages/p.md", 100)
+	if err != nil {
+		t.Fatalf("PageHistory: %v", err)
+	}
+	var want time.Time
+	for _, c := range commits {
+		if want.IsZero() || c.Date.Before(want) {
+			want = c.Date.UTC()
+		}
+	}
+
+	got, err := repo.FirstCommitDate("pages/p.md")
+	if err != nil {
+		t.Fatalf("FirstCommitDate: %v", err)
+	}
+	if !got.UTC().Equal(want) {
+		t.Errorf("FirstCommitDate %v want %v (min author date from history)", got.UTC(), want)
 	}
 }

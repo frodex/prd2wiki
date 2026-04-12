@@ -156,7 +156,7 @@ func main() {
 		pagePath := fmt.Sprintf("pages/%s.md", p.ID)
 		msg := fmt.Sprintf("ingest: %s from %s", p.ID, p.File)
 
-		err = repo.WritePageWithDate(*branch, pagePath, serialized, msg, "scan-ingest@prd2wiki", modTime)
+		_, err = repo.WritePageWithDate(*branch, pagePath, serialized, msg, "scan-ingest@prd2wiki", modTime)
 		if err != nil {
 			log.Printf("FAIL %s: %v", p.File, err)
 			skipped++
@@ -207,5 +207,6 @@ func createProjectPage(repo *wgit.Repo, branch string, info ProjectInfo, proj st
 	}
 
 	pagePath := fmt.Sprintf("pages/PROJECT-%s.md", proj)
-	return repo.WritePage(branch, pagePath, serialized, "ingest: create project page for "+proj, "scan-ingest@prd2wiki")
+	_, err = repo.WritePage(branch, pagePath, serialized, "ingest: create project page for "+proj, "scan-ingest@prd2wiki")
+	return err
 }

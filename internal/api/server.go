@@ -8,7 +8,7 @@ import (
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
-	"github.com/frodex/prd2wiki/internal/schema"
+	"github.com/frodex/prd2wiki/internal/pagepath"
 	"github.com/frodex/prd2wiki/internal/web"
 )
 
@@ -67,31 +67,34 @@ func (s *Server) ListenAndServe() error {
 	return http.ListenAndServe(s.addr, s.Handler())
 }
 
+// projectRepo returns the git repo for project or writes 404 and false.
+func (s *Server) projectRepo(w http.ResponseWriter, project string) (*wgit.Repo, bool) {
+	repo, ok := s.repos[project]
+	if !ok {
+		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
+		return nil, false
+	}
+	return repo, true
+}
+
+// projectLibrarian returns the librarian for project or writes 404 and false.
+func (s *Server) projectLibrarian(w http.ResponseWriter, project string) (*librarian.Librarian, bool) {
+	lib, ok := s.librarians[project]
+	if !ok {
+		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
+		return nil, false
+	}
+	return lib, true
+}
+
 // resolvePagePath looks up the stored path for a page ID from the SQLite index.
 // Falls back to hash-prefix path for hash IDs, or flat path for legacy IDs.
 func (s *Server) resolvePagePath(project, id string) string {
-	results, err := s.search.ByID(project, id)
-	if err == nil && len(results) > 0 && results[0].Path != "" {
-		return results[0].Path
-	}
-	sanitized := schema.SanitizePathSegment(id)
-	if schema.IsHashID(sanitized) && len(sanitized) >= 2 {
-		return fmt.Sprintf("pages/%s/%s.md", sanitized[:2], sanitized[2:])
-	}
-	return fmt.Sprintf("pages/%s.md", sanitized)
+	return pagepath.Resolve(s.search, project, id)
 }
 
 // alternatePagePath returns the other path format for an ID (hash-prefix vs flat).
 // Returns "" if there is no meaningful alternate.
 func (s *Server) alternatePagePath(id, currentPath string) string {
-	sanitized := schema.SanitizePathSegment(id)
-	flat := fmt.Sprintf("pages/%s.md", sanitized)
-	if len(sanitized) >= 2 {
-		hashPrefix := fmt.Sprintf("pages/%s/%s.md", sanitized[:2], sanitized[2:])
-		if currentPath == hashPrefix {
-			return flat
-		}
-		return hashPrefix
-	}
-	return ""
+	return pagepath.Alternate(id, currentPath)
 }

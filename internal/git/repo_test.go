@@ -61,7 +61,7 @@ func TestWriteAndReadPage(t *testing.T) {
 	}
 
 	content := []byte("# Hello World\n\nThis is a test page.\n")
-	err = repo.WritePage("main", "pages/test.md", content, "add test page", "Test User")
+	_, err = repo.WritePage("main", "pages/test.md", content, "add test page", "Test User")
 	if err != nil {
 		t.Fatalf("WritePage failed: %v", err)
 	}
@@ -84,13 +84,13 @@ func TestWriteAndReadPage_Update(t *testing.T) {
 	}
 
 	// Write initial content
-	err = repo.WritePage("main", "pages/test.md", []byte("v1"), "initial", "Author")
+	_, err = repo.WritePage("main", "pages/test.md", []byte("v1"), "initial", "Author")
 	if err != nil {
 		t.Fatalf("WritePage v1 failed: %v", err)
 	}
 
 	// Update
-	err = repo.WritePage("main", "pages/test.md", []byte("v2"), "update", "Author")
+	_, err = repo.WritePage("main", "pages/test.md", []byte("v2"), "update", "Author")
 	if err != nil {
 		t.Fatalf("WritePage v2 failed: %v", err)
 	}
@@ -112,11 +112,11 @@ func TestWritePreservesExistingFiles(t *testing.T) {
 	}
 
 	// Write two files
-	err = repo.WritePage("main", "pages/a.md", []byte("aaa"), "add a", "Author")
+	_, err = repo.WritePage("main", "pages/a.md", []byte("aaa"), "add a", "Author")
 	if err != nil {
 		t.Fatalf("WritePage a failed: %v", err)
 	}
-	err = repo.WritePage("main", "pages/b.md", []byte("bbb"), "add b", "Author")
+	_, err = repo.WritePage("main", "pages/b.md", []byte("bbb"), "add b", "Author")
 	if err != nil {
 		t.Fatalf("WritePage b failed: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestListBranches(t *testing.T) {
 	}
 
 	// Write to a branch, it should appear
-	err = repo.WritePage("main", "pages/test.md", []byte("hi"), "init", "Author")
+	_, err = repo.WritePage("main", "pages/test.md", []byte("hi"), "init", "Author")
 	if err != nil {
 		t.Fatalf("WritePage failed: %v", err)
 	}
@@ -177,15 +177,15 @@ func TestListPages(t *testing.T) {
 		t.Fatalf("InitRepo failed: %v", err)
 	}
 
-	err = repo.WritePage("main", "pages/hello.md", []byte("h"), "add hello", "Author")
+	_, err = repo.WritePage("main", "pages/hello.md", []byte("h"), "add hello", "Author")
 	if err != nil {
 		t.Fatalf("WritePage hello failed: %v", err)
 	}
-	err = repo.WritePage("main", "pages/world.md", []byte("w"), "add world", "Author")
+	_, err = repo.WritePage("main", "pages/world.md", []byte("w"), "add world", "Author")
 	if err != nil {
 		t.Fatalf("WritePage world failed: %v", err)
 	}
-	err = repo.WritePage("main", "README.md", []byte("r"), "add readme", "Author")
+	_, err = repo.WritePage("main", "README.md", []byte("r"), "add readme", "Author")
 	if err != nil {
 		t.Fatalf("WritePage readme failed: %v", err)
 	}
@@ -215,13 +215,13 @@ func TestMultipleBranches(t *testing.T) {
 	}
 
 	// Write to truth branch
-	err = repo.WritePage("truth", "pages/main.md", []byte("truth content"), "truth commit", "Author")
+	_, err = repo.WritePage("truth", "pages/main.md", []byte("truth content"), "truth commit", "Author")
 	if err != nil {
 		t.Fatalf("WritePage truth failed: %v", err)
 	}
 
 	// Write to draft branch
-	err = repo.WritePage("draft/test", "pages/draft.md", []byte("draft content"), "draft commit", "Author")
+	_, err = repo.WritePage("draft/test", "pages/draft.md", []byte("draft content"), "draft commit", "Author")
 	if err != nil {
 		t.Fatalf("WritePage draft failed: %v", err)
 	}

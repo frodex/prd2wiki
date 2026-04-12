@@ -127,7 +127,7 @@ func TestViewPageOnNonDefaultBranch(t *testing.T) {
 		Title: "Agent Page",
 		Type:  "concept",
 	}
-	if err := repo.WritePageWithMeta("draft/agent", "pages/agent-page-001.md", fm, []byte("# Agent Page\n\nCreated by MCP.\n"), "add page", "test"); err != nil {
+	if _, err := repo.WritePageWithMeta("draft/agent", "pages/agent-page-001.md", fm, []byte("# Agent Page\n\nCreated by MCP.\n"), "add page", "test"); err != nil {
 		t.Fatalf("WritePageWithMeta: %v", err)
 	}
 

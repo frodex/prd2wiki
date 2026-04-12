@@ -411,7 +411,7 @@ func runIngest(manifestFile, dataDir, branch string, dryRun bool) {
 			}
 			author := v.Author + "@prd2wiki"
 
-			err = repo.WritePageWithDate(branch, pagePath, serialized, msg, author, commitDate)
+			_, err = repo.WritePageWithDate(branch, pagePath, serialized, msg, author, commitDate)
 			if err != nil {
 				log.Printf("FAIL %s: %v", v.File, err)
 				continue
@@ -466,7 +466,7 @@ func runIngest(manifestFile, dataDir, branch string, dryRun bool) {
 		msg := fmt.Sprintf("ingest: %s from %s", s.ID, s.File)
 		author := s.Author + "@prd2wiki"
 
-		err = repo.WritePageWithDate(branch, pagePath, serialized, msg, author, commitDate)
+		_, err = repo.WritePageWithDate(branch, pagePath, serialized, msg, author, commitDate)
 		if err != nil {
 			log.Printf("FAIL %s: %v", s.File, err)
 			continue
@@ -523,5 +523,6 @@ func createProjectPage(repo *wgit.Repo, branch string, info ManifestProject) err
 	}
 
 	pagePath := fmt.Sprintf("pages/PROJECT-%s.md", info.ID)
-	return repo.WritePage(branch, pagePath, serialized, "ingest: create project page for "+info.ID, "chain-ingest@prd2wiki")
+	_, err = repo.WritePage(branch, pagePath, serialized, "ingest: create project page for "+info.ID, "chain-ingest@prd2wiki")
+	return err
 }

@@ -108,6 +108,54 @@ func (r *Repo) PageHistoryAllBranches(path string, limit int) ([]CommitInfo, err
 	return all, nil
 }
 
+// FirstCommitDate returns the author date of the earliest commit that touched path on any branch.
+func (r *Repo) FirstCommitDate(path string) (time.Time, error) {
+	branches, err := r.ListBranches()
+	if err != nil {
+		return time.Time{}, err
+	}
+	var oldest time.Time
+	found := false
+	seen := make(map[string]bool)
+	for _, branch := range branches {
+		refName := plumbing.NewBranchReferenceName(branch)
+		ref, err := r.repo.Reference(refName, true)
+		if err != nil {
+			continue
+		}
+		logOpts := &gogit.LogOptions{
+			From:     ref.Hash(),
+			FileName: &path,
+			Order:    gogit.LogOrderCommitterTime,
+		}
+		iter, err := r.repo.Log(logOpts)
+		if err != nil {
+			continue
+		}
+		ferr := iter.ForEach(func(c *object.Commit) error {
+			h := c.Hash.String()
+			if seen[h] {
+				return nil
+			}
+			seen[h] = true
+			d := c.Author.When
+			if !found || d.Before(oldest) {
+				oldest = d
+				found = true
+			}
+			return nil
+		})
+		iter.Close()
+		if ferr != nil {
+			return time.Time{}, ferr
+		}
+	}
+	if !found {
+		return time.Time{}, fmt.Errorf("no commits for %q", path)
+	}
+	return oldest, nil
+}
+
 // ReadPageAtCommit reads a file's content at a specific commit hash.
 func (r *Repo) ReadPageAtCommit(commitHash, path string) ([]byte, error) {
 	h := plumbing.NewHash(commitHash)

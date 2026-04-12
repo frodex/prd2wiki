@@ -21,7 +21,7 @@ func TestWriteAndReadPageWithMeta(t *testing.T) {
 	}
 	body := []byte("# My Test Page\n\nThis is the body content.\n")
 
-	err = repo.WritePageWithMeta("truth", "pages/test.md", fm, body, "add test page", "Test Author")
+	_, err = repo.WritePageWithMeta("truth", "pages/test.md", fm, body, "add test page", "Test Author")
 	if err != nil {
 		t.Fatalf("WritePageWithMeta failed: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestDeletePage(t *testing.T) {
 	}
 	body := []byte("This page will be deleted.\n")
 
-	err = repo.WritePageWithMeta("truth", "pages/delete-me.md", fm, body, "add page to delete", "Author")
+	_, err = repo.WritePageWithMeta("truth", "pages/delete-me.md", fm, body, "add page to delete", "Author")
 	if err != nil {
 		t.Fatalf("WritePageWithMeta failed: %v", err)
 	}
@@ -101,10 +101,10 @@ func TestDeletePage_PreservesOtherFiles(t *testing.T) {
 	fmA := &schema.Frontmatter{ID: "a", Title: "A", Type: "concept", Status: "active"}
 	fmB := &schema.Frontmatter{ID: "b", Title: "B", Type: "concept", Status: "active"}
 
-	if err := repo.WritePageWithMeta("truth", "pages/a.md", fmA, []byte("body a"), "add a", "Author"); err != nil {
+	if _, err := repo.WritePageWithMeta("truth", "pages/a.md", fmA, []byte("body a"), "add a", "Author"); err != nil {
 		t.Fatalf("WritePageWithMeta a failed: %v", err)
 	}
-	if err := repo.WritePageWithMeta("truth", "pages/b.md", fmB, []byte("body b"), "add b", "Author"); err != nil {
+	if _, err := repo.WritePageWithMeta("truth", "pages/b.md", fmB, []byte("body b"), "add b", "Author"); err != nil {
 		t.Fatalf("WritePageWithMeta b failed: %v", err)
 	}
 

@@ -147,7 +147,7 @@ func main() {
 		path := fmt.Sprintf("pages/%s.md", e.id)
 
 		// Write directly with the backdated timestamp
-		err = repo.WritePageWithDate(branch, path, data, e.msg, e.author+"@prd2wiki", t)
+		_, err = repo.WritePageWithDate(branch, path, data, e.msg, e.author+"@prd2wiki", t)
 		if err != nil {
 			log.Printf("FAIL %s: %v", e.id, err)
 			continue
