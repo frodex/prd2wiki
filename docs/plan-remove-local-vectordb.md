@@ -11,6 +11,7 @@
 - `plan-remove-local-vectordb-REVIEW-4-in-chat.md` — fourth pass: namespace mapping (repo key vs wiki:uuid), vocabulary normalization parity, write latency table correction
 - `plan-remove-local-vectordb-REVIEW-5-stepped-dual-repo.md` — fifth pass (DUAL REPO): memory_delete takes id not page_uuid (BLOCKER), Step 4 contradicts Part 5 Option B, vocab normalization differs between repos, firstLineTitle vs frontmatter title
 - `plan-remove-local-vectordb-REVIEW-6-stepped-dual-repo.md` — sixth pass: confirms Review 5 fixes landed, meta_json vs ext_json naming, empty LibrarianID fallback, Part 9 checklist stale wording
+- `plan-remove-local-vectordb-REVIEW-7-big-picture.md` — seventh pass (BIG PICTURE): plan is two projects in one trenchcoat, Part 10 belongs in pippi-librarian repo, Part 10.5 is scope creep, ChunkByHeadings is dead after removal (skip Step 16b), backfill creates version churn, second delete path in pages.go orphans records
 
 **Reviewer instructions:** This plan must be examined for anything missing that would prevent the intended outcome. If a step, dependency, or integration point is missing, flag it as a BLOCKER. Every claim has been verified against source code as of 2026-04-12. Function names are used as anchors (not line numbers, which drift).
 
@@ -85,6 +86,7 @@ User searches → wiki calls librarian memory_search via unix socket
 | 15 | **`DedupDetector`** | `dedup.go` `Check()`: `d.store.Search()` | 59 lines, 0.85 threshold — **BUT NEVER CALLED** | **REMOVE** (dead code) |
 | 16 | **`flags.dedup`** | `librarian.go` `submitFlagsForIntent()` | Set true for integrate intent — **BUT NEVER READ** in `submit()` | **REMOVE** (dead code) |
 | 17 | **API search: parallel FTS+vector merge** | `api/search.go` `searchPages()` | Runs FTS and `lib.Search()` in parallel goroutines, merges results (FTS first, then vector hits not in FTS) | **REWRITE** — lib.Search() must go through librarian |
+| 22 | **Pages API delete (pre-existing orphan)** | `api/pages.go:212` `s.indexer.RemovePage(id)` | Deletes from SQLite only — does NOT call `Librarian.RemoveFromIndexes` or notify librarian | **PRE-EXISTING BUG** — not caused by this plan, but not fixed either. Documented for awareness. |
 | 18 | Web search: vector-first, FTS only if empty | `web/search.go` `searchPages()` | Calls `lib.Search()` (local vector); **only if `len(items)==0`** falls back to FTS. **NOT the same merge behavior as API.** | **REWRITE** — lib.Search() through librarian; **NOTE: web and API have different search semantics (see Part 5b)** |
 | 19 | Embedder config in prd2wiki.yaml | `config/prd2wiki.yaml` `embedder:` section | TEI endpoint, dims, timeout | **REMOVE** |
 | 20 | `normalizer.go` imports `vectordb.TextChunk` | `librarian/normalizer.go` `ChunkByHeadings()` | Returns `[]vectordb.TextChunk` — **blocks deletion** of `internal/vectordb/` | **MOVE** `TextChunk` type to `librarian` package or a neutral package before deleting `vectordb` |
@@ -327,18 +329,21 @@ After Step 15 (all code changes done), before declaring the work complete.
 
 **Step 16:** Update tests: `web_test.go`, `librarian_test.go`, `pages_test.go` — pass nil for vstore or update `New()` call. Delete `vectordb/store_test.go`.
 
-**Step 16b:** Move `vectordb.TextChunk` type to `internal/librarian/` package
-- `normalizer.go` `ChunkByHeadings()` returns `[]vectordb.TextChunk`
-- Cannot delete `internal/vectordb/` until this type is moved
-- Move the struct definition, update `normalizer.go` import
+**Step 16b:** ~~Move `TextChunk`~~ **SIMPLIFIED (Review 7):** `ChunkByHeadings()` is ONLY called from `indexInVectorStore()` (removed in Step 7). After Step 7, `ChunkByHeadings` and `TextChunk` are dead code with no callers. Delete them WITH the package — no move needed.
+- Delete `ChunkByHeadings()` from `normalizer.go`
+- Delete `ChunkByHeadings` tests from `normalizer_test.go`
+- Then delete `internal/vectordb/` including `TextChunk` type
 
-**Step 17:** Delete `internal/vectordb/` package (now safe — `TextChunk` moved in Step 16b)
+**Step 17:** Delete `internal/vectordb/` package (safe — no remaining callers after Steps 7 + 16b)
 
 **Step 18:** Delete `data/vectors/` directory and `pages.json`
 
 ### Phase 3: Backfill + Verify
 
 **Step 19:** Run bulk backfill — send all pages to librarian
+- **Version churn warning (Review 7):** `StoreWiki` creates a new version on EVERY call, even if content is identical. Pages already synced via `maybeSyncToLibrarian` will get a redundant version row. For a wiki with N pages where M were already synced, backfill creates M unnecessary superseded rows.
+- **Mitigation options:** (a) Call `memory_get` by page_uuid first, compare content hash, skip if identical. (b) Accept the noise — superseded rows are filtered from search, just wasteful. (c) Add idempotency to `StoreWiki` in pippi-librarian (separate work).
+- **Recommendation:** Option (b) for now — accept the noise. It's one-time. Add idempotency as a follow-up in pippi-librarian.
 
 **Step 20:** End-to-end verification:
 - Edit a page, search for it — results come from librarian
@@ -350,9 +355,11 @@ After Step 15 (all code changes done), before declaring the work complete.
 
 ---
 
-## Part 10: Librarian Prerequisites (pippi-librarian changes, BLOCKER)
+## Part 10: Librarian Prerequisites (BLOCKER — separate project in pippi-librarian repo)
 
-The following changes must be made in `/srv/pippi-librarian/` BEFORE this plan can be implemented. Without them, removing the local vector store degrades search quality because the librarian cannot match on title, tags, or type.
+**This section describes what pippi-librarian must do. It is NOT implementable from this repo.** A separate plan/ticket must be created in `/srv/pippi-librarian/` with its own constraint declaration, review, and verification. This plan REFERENCES the requirement; it does not DEFINE the implementation.
+
+**If Part 10 does not ship, this plan cannot ship.** Without librarian metadata support, removing the local vector store degrades search quality (body-only embeddings, no title/tag enrichment, firstLineTitle instead of frontmatter title).
 
 **Verified against `/srv/pippi-librarian` commit `cc96c4b`:**
 
@@ -393,9 +400,9 @@ Option B is better for search (BM25 can index individual columns; `meta_json` re
 
 When the librarian embeds content for vector search, it must prepend title and tags to the content text. This ensures vector similarity matches on page identity, not just body content. The metadata for this is available from 10.2.
 
-### 10.5: Search must support metadata filtering
+### ~~10.5: Search must support metadata filtering~~ DROPPED (Review 7)
 
-`SearchWiki` should support filtering by type, status, tags when the caller requests it. This enables the wiki's structured search (filter by type, filter by status) to work through the librarian.
+~~`SearchWiki` should support filtering by type, status, tags.~~ **Dropped as scope creep.** The wiki already has structured filtering via SQLite FTS (ByType, ByStatus, ByTag). These work today and are untouched by this plan. Adding duplicate filtering to the librarian serves no purpose for this plan's stated goal. If needed later, it's a separate effort.
 
 ### 10.6: Bulk backfill must include metadata
 
@@ -461,7 +468,7 @@ If JSON file was deleted:
 - [ ] Dead dedup code removed
 - [ ] `RemoveFromIndexes()` keeps SQLite, replaces vstore with async `memory_delete`
 - [ ] `MemoryDelete()` added to libclient
-- [ ] `TextChunk` type moved to librarian package before vectordb deletion
+- [ ] `ChunkByHeadings` + `TextChunk` deleted (dead code after Step 7 — no move needed)
 - [ ] libclient startup logging is accurate (not "enabled" when socket is dead)
 - [ ] Namespace mapping: `Librarian.Search()` resolves repo key → tree project UUID → `wiki:{uuid}` for `MemorySearch` call
 - [ ] Query vocabulary normalization applied before `MemorySearch` call
