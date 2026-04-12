@@ -4,9 +4,29 @@
 **Status:** DRAFT — REQUIRES REVIEW BEFORE IMPLEMENTATION
 **Priority:** Critical
 **Author:** Claude Opus 4.6
-**Verification review:** `plan-remove-local-vectordb-RESPONSE-verification.md` — corrections incorporated below
+**Verification review:** `plan-remove-local-vectordb-RESPONSE-verification.md` — corrections incorporated
+**Deep review:** `plan-remove-local-vectordb-REVIEW-2-deep.md` — additional corrections incorporated
 
 **Reviewer instructions:** This plan must be examined for anything missing that would prevent the intended outcome. If a step, dependency, or integration point is missing, flag it as a BLOCKER. Every claim has been verified against source code as of 2026-04-12. Function names are used as anchors (not line numbers, which drift).
+
+### Codebase scope (required)
+
+Reviews and verification passes are **invalid for comparison** unless they state **exactly** which trees were read. Different clones, branches, or repos produce different conclusions.
+
+**Requirement — every review MUST include a table like this (fill in at review time):**
+
+| Field | Value |
+|--------|--------|
+| **Wiki / prd2wiki root** | e.g. `/srv/prd2wiki` |
+| **Remote** | e.g. `https://github.com/frodex/prd2wiki.git` |
+| **Branch** | e.g. `main` |
+| **Commit** | full `git rev-parse HEAD` at time of review |
+| **Librarian / pippi-librarian root** (if any claim references its source) | path + branch + commit, or **“not consulted”** |
+| **Other repos** (import tools, MCP servers, etc.) | path + commit or **“not consulted”** |
+
+- Claims about **this** repository must be checked only against the **prd2wiki** row above.
+- Claims about **pippi-librarian** (e.g. Part 1 “Verified against pippi-librarian source”) must name that repo’s path and commit; do not assume it matches another reviewer’s checkout.
+- Design-only docs under `docs/wiki-local/` are **not** implementation; cite Go code in the scoped tree when asserting behavior.
 
 ---
 
@@ -42,24 +62,25 @@ User searches → wiki calls librarian memory_search via unix socket
 
 | # | What | Function/Location | What it does | Action |
 |---|------|-------------------|-------------|--------|
-| 1 | Wiki embedder creation | `app.go` `Run()`: `embedder.NewOpenAIEmbedder(embCfg)` | Connects to TEI independently | **REMOVE** |
-| 2 | JSON vector store creation | `app.go` `Run()`: `vectordb.NewStore(emb)` | Creates in-memory vector store | **REMOVE** |
-| 3 | Load vectors from disk | `app.go` `Run()`: `vstore.LoadFromDisk(vectorPath)` | Loads `data/vectors/pages.json` | **REMOVE** |
-| 4 | Auto-save persist path | `app.go` `Run()`: `vstore.SetPersistPath(vectorPath)` | Saves JSON on every IndexPage | **REMOVE** |
-| 5 | Vector rebuild goroutine | `app.go` `Run()`: `if vstore.Count() == 0` block | Re-embeds ALL pages via TEI | **REMOVE** |
-| 6 | Embedding profile store | `app.go` `Run()`: `embedder.NewEmbeddingProfileStore(db)` | Tracks model versions | **REMOVE** |
+| 1 | Wiki embedder creation | `app.go` `New()`: `embedder.NewOpenAIEmbedder(embCfg)` | Connects to TEI independently | **REMOVE** |
+| 2 | JSON vector store creation | `app.go` `New()`: `vectordb.NewStore(emb)` | Creates in-memory vector store | **REMOVE** |
+| 3 | Load vectors from disk | `app.go` `New()`: `vstore.LoadFromDisk(vectorPath)` | Loads `data/vectors/pages.json` | **REMOVE** |
+| 4 | Auto-save persist path | `app.go` `New()`: `vstore.SetPersistPath(vectorPath)` | Saves JSON on every IndexPage | **REMOVE** |
+| 5 | Vector rebuild goroutine | `app.go` `New()`: `if vstore.Count() == 0` block | Re-embeds ALL pages via TEI | **REMOVE** |
+| 6 | Embedding profile store | `app.go` `New()`: `embedder.NewEmbeddingProfileStore(db)` | Tracks model versions | **REMOVE** |
 | 7 | `VStore` on App struct | `app.go` struct `App`: `VStore *vectordb.Store` | Exposes store — **no external readers** (grep verified) | **REMOVE** |
 | 8 | `vstore` on Librarian struct | `librarian.go` struct `Librarian`: `vstore` field | Local vector store reference | **REMOVE** |
 | 9 | `Librarian.Search()` → local store | `librarian.go` `Search()`: `l.vstore.Search()` | JSON array cosine scan | **REWRITE** → call librarian |
 | 10 | `Librarian.FindSimilar()` → local store | `librarian.go` `FindSimilar()`: `l.vstore.FindSimilar()` | Find similar pages locally | **REWRITE** → call librarian MemorySearch with page content |
-| 11 | `Librarian.RemoveFromIndexes()` → local store | `librarian.go` `RemoveFromIndexes()`: `l.vstore.RemovePage()` + `l.indexer.RemovePage()` | Called from `tree_api.go` delete handler | **FIX** — keep SQLite `indexer.RemovePage()`, remove vstore call |
+| 11 | `Librarian.RemoveFromIndexes()` → local store | `librarian.go` `RemoveFromIndexes()`: `l.vstore.RemovePage()` + `l.indexer.RemovePage()` | Called from `tree_api.go` delete handler | **FIX** — keep SQLite `indexer.RemovePage()`, replace vstore call with async `memory_delete` via libclient (or deletes orphan librarian records) |
 | 12 | `indexInVectorStore()` | `librarian.go` `indexInVectorStore()` | Chunks page, **prepends title+tags+type**, embeds, stores in JSON | **REMOVE** — but see Part 5 on content prefixing |
 | 13 | `RebuildVectorIndex()` | `librarian.go` `RebuildVectorIndex()` | Iterates all pages, embeds each | **REMOVE** |
 | 14 | Async local embed on write | `librarian.go` `submit()`: goroutine calling `indexInVectorStore` | Embeds in background after git | **REMOVE** — librarian does this via syncToLibrarian |
 | 15 | **`DedupDetector`** | `dedup.go` `Check()`: `d.store.Search()` | 59 lines, 0.85 threshold — **BUT NEVER CALLED** | **REMOVE** (dead code) |
 | 16 | **`flags.dedup`** | `librarian.go` `submitFlagsForIntent()` | Set true for integrate intent — **BUT NEVER READ** in `submit()` | **REMOVE** (dead code) |
 | 17 | **API search: parallel FTS+vector merge** | `api/search.go` `searchPages()` | Runs FTS and `lib.Search()` in parallel goroutines, merges results (FTS first, then vector hits not in FTS) | **REWRITE** — lib.Search() must go through librarian |
-| 18 | Web search: vector then FTS fallback | `web/search.go` `searchPages()` | Calls `lib.Search()` (local vector), falls back to FTS | **REWRITE** — same as #17 |
+| 18 | Web search: vector-first, FTS only if empty | `web/search.go` `searchPages()` | Calls `lib.Search()` (local vector); **only if `len(items)==0`** falls back to FTS. **NOT the same merge behavior as API.** | **REWRITE** — lib.Search() through librarian; **NOTE: web and API have different search semantics (see Part 5b)** |
+| 20 | `normalizer.go` imports `vectordb.TextChunk` | `librarian/normalizer.go` `ChunkByHeadings()` | Returns `[]vectordb.TextChunk` — **blocks deletion** of `internal/vectordb/` | **MOVE** `TextChunk` type to `librarian` package or a neutral package before deleting `vectordb` |
 | 19 | Embedder config in prd2wiki.yaml | `config/prd2wiki.yaml` `embedder:` section | TEI endpoint, dims, timeout | **REMOVE** |
 
 ### What uses the librarian (complete)
@@ -163,6 +184,29 @@ This is a **relevance contract** — without it, vector search matches on body c
 
 ---
 
+## Part 5b: Web vs API Search Behavior (deep review correction)
+
+The web UI and API have **different** search behavior. This is NOT "the same merge logic":
+
+| Surface | Current behavior | After migration |
+|---------|-----------------|----------------|
+| **API** (`api/search.go`) | Runs FTS and `lib.Search()` **in parallel**, merges (FTS rows first, then vector hits not in FTS) | Same merge — `lib.Search()` now calls librarian instead of local store |
+| **Web** (`web/search.go`) | Calls `lib.Search()` first; **only if zero results** falls back to FTS | Same pattern — `lib.Search()` now calls librarian; FTS fallback only if librarian returns nothing |
+
+**Implication:** API always shows FTS+vector merged results. Web only shows vector OR FTS, never both. This is an existing behavior difference, not introduced by this migration. The plan does not change this — it just routes `lib.Search()` through the librarian instead of the local store.
+
+**[REVIEWER: Decide if this UX difference should be aligned (both merge) or preserved (web = vector-first, API = merged). Not a blocker for this plan but should be documented.]**
+
+### Search ranking will change
+
+The local `vectordb.Store.Search` uses `0.7*cosine + 0.3*keywordScore` fusion. The librarian uses BM25 + vector + RRF (k=60). These are **different ranking algorithms**. Search results will be ordered differently after migration. This is **intended** — the librarian's ranking is better — but implementers should not claim "identical behavior."
+
+### Vocabulary normalization
+
+`Librarian.Search()` currently normalizes query tokens via `l.vocab.Normalize()` before searching. Whether the librarian's `memory_search` applies equivalent normalization is **unknown from this repo alone** (pippi-librarian is a separate codebase). Flag as a **parity assumption** — if search quality degrades for normalized terms, this is the place to look.
+
+---
+
 ## Part 6: Bulk Backfill Strategy
 
 ### The problem
@@ -174,9 +218,13 @@ Removing the local vector store means search depends entirely on the librarian h
 After removing the local vector store, run a bulk backfill that sends every page to the librarian:
 
 ```bash
-# For each project, for each page, call memory_store via the librarian socket
-# This is what prd2wiki-import already does (Phase 5)
-# Or: a simpler script that walks git and calls the MCP tool
+# For each project, for each page, call memory_store via the librarian socket.
+# NOTE: prd2wiki-import does NOT exist in this repo (design-only in wiki docs).
+# Implement a one-off backfill script or binary that:
+#   1. Walks each project's git repo for all pages
+#   2. Reads frontmatter (title, type, status, tags) + body
+#   3. Calls libclient.MemoryStore() for each page
+#   4. Reports progress and failures
 ```
 
 This is NOT optional. Without it, only recently-edited pages appear in vector search.
@@ -230,7 +278,15 @@ After Step 15 (all code changes done), before declaring the work complete.
 
 **Step 10:** Remove `vstore` from Librarian struct and `New()` signature. Update all callers.
 
-**Step 11:** Fix `RemoveFromIndexes()`: keep `indexer.RemovePage()`, remove `vstore.RemovePage()`
+**Step 11:** Fix `RemoveFromIndexes()`:
+- Keep `indexer.RemovePage()` (SQLite — legitimate)
+- Replace `vstore.RemovePage()` with async `libclient.MemoryDelete()` call (if libclient connected)
+- This ensures page deletes via tree API also remove from the librarian, preventing orphan records
+- If libclient is nil (librarian down), log warning — orphan will be cleaned by compactor or next reconcile
+
+**Step 11b:** Add `MemoryDelete()` to `internal/libclient/client.go`
+- Calls librarian's `memory_delete` MCP tool over socket
+- Takes page_uuid, calls delete by page_uuid
 
 **Step 12:** Remove embedder + vector store creation from `app.go`: `NewOpenAIEmbedder()`, `vectordb.NewStore()`, `LoadFromDisk()`, `SetPersistPath()`, embedding profile store, `VStore` from App struct
 
@@ -242,7 +298,12 @@ After Step 15 (all code changes done), before declaring the work complete.
 
 **Step 16:** Update tests: `web_test.go`, `librarian_test.go`, `pages_test.go` — pass nil for vstore or update `New()` call. Delete `vectordb/store_test.go`.
 
-**Step 17:** Delete `internal/vectordb/` package
+**Step 16b:** Move `vectordb.TextChunk` type to `internal/librarian/` package
+- `normalizer.go` `ChunkByHeadings()` returns `[]vectordb.TextChunk`
+- Cannot delete `internal/vectordb/` until this type is moved
+- Move the struct definition, update `normalizer.go` import
+
+**Step 17:** Delete `internal/vectordb/` package (now safe — `TextChunk` moved in Step 16b)
 
 **Step 18:** Delete `data/vectors/` directory and `pages.json`
 
@@ -305,7 +366,9 @@ If JSON file was deleted:
 - [ ] Search falls back to SQLite FTS when librarian is down (with warning log)
 - [ ] API search parallel merge works with librarian results
 - [ ] Dead dedup code removed
-- [ ] `RemoveFromIndexes()` keeps SQLite, drops vstore
+- [ ] `RemoveFromIndexes()` keeps SQLite, replaces vstore with async `memory_delete`
+- [ ] `MemoryDelete()` added to libclient
+- [ ] `TextChunk` type moved to librarian package before vectordb deletion
 - [ ] Content sent to librarian includes title/tags prefix
 - [ ] libclient startup logging is accurate (not "enabled" when socket is dead)
 - [ ] Bulk backfill completed — all pages in librarian
