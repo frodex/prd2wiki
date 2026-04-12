@@ -419,12 +419,10 @@ func TestLibrarianIntegrate(t *testing.T) {
 		t.Fatalf("second page: expected saved=true; issues: %v", res2.Issues)
 	}
 
-	// With NoopEmbedder all vectors are zero, so no candidates will exceed the 0.85 threshold.
-	// Verify the result is structurally sound regardless.
-	for _, w := range res2.Warnings {
-		if !strings.HasPrefix(w, "potential duplicate: ") {
-			t.Errorf("unexpected warning format: %q", w)
-		}
+	// Dedup was removed (dead code — DedupDetector never called in production).
+	// Integrate intent now behaves like conform. No duplicate warnings expected.
+	if len(res2.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", res2.Warnings)
 	}
 }
 
