@@ -72,13 +72,15 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 		DCCreated: schema.Date{Time: time.Now().UTC()},
 	}
 
+	useFlat := schema.IsUUIDPageID(req.ID)
 	result, err := lib.Submit(r.Context(), librarian.SubmitRequest{
-		Project:     project,
-		Branch:      req.Branch,
-		Frontmatter: fm,
-		Body:        []byte(req.Body),
-		Intent:      intent,
-		Author:      req.Author,
+		Project:         project,
+		Branch:          req.Branch,
+		Frontmatter:     fm,
+		Body:            []byte(req.Body),
+		Intent:          intent,
+		Author:          req.Author,
+		UseFlatUUIDPath: useFlat,
 	})
 
 	if err != nil {
@@ -99,7 +101,11 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 		cache.Touch(result.Path, req.Author)
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
+	status := http.StatusOK
+	if isCreate {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, map[string]interface{}{
 		"id":          fm.ID,
 		"title":       fm.Title,
 		"status":      fm.Status,

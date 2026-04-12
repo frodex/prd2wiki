@@ -163,7 +163,7 @@ func (h *Handler) viewPageAtGitPath(w http.ResponseWriter, project, gitPath stri
 }
 
 func (h *Handler) treeLegacyRedirectLocation(project, id string) (string, bool) {
-	if h.treeIdx == nil {
+	if h.treeHolder == nil || h.treeHolder.Get() == nil {
 		return "", false
 	}
 	repo, ok := h.repos[project]
@@ -179,7 +179,7 @@ func (h *Handler) treeLegacyRedirectLocation(project, id string) (string, bool) 
 	if uuid == "" {
 		return "", false
 	}
-	ent, ok := h.treeIdx.PageByUUID(uuid)
+	ent, ok := h.treeHolder.Get().PageByUUID(uuid)
 	if !ok {
 		return "", false
 	}

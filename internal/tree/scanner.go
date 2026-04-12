@@ -304,3 +304,56 @@ func (x *Index) PageByUUID(pageUUID string) (*PageEntry, bool) {
 	e, ok := x.byPageUUID[strings.TrimSpace(pageUUID)]
 	return e, ok
 }
+
+// ProjectByRepoKey finds a project by git repo key (e.g. "default").
+func (x *Index) ProjectByRepoKey(repoKey string) (*Project, bool) {
+	if x == nil {
+		return nil, false
+	}
+	for _, p := range x.Projects {
+		if p.RepoKey == repoKey {
+			return p, true
+		}
+	}
+	return nil, false
+}
+
+// ProjectByTreePath finds a project by its tree path (e.g. "prd2wiki" or "games/battletech").
+func (x *Index) ProjectByTreePath(treePath string) (*Project, bool) {
+	if x == nil {
+		return nil, false
+	}
+	treePath = strings.Trim(treePath, "/")
+	for _, p := range x.Projects {
+		if p.Path == treePath {
+			return p, true
+		}
+	}
+	return nil, false
+}
+
+// UsedSlugs returns all slugs already taken under a project tree path.
+func (x *Index) UsedSlugs(projectTreePath string) map[string]bool {
+	m := make(map[string]bool)
+	if x == nil {
+		return m
+	}
+	for _, e := range x.byPageUUID {
+		if e.Project.Path == projectTreePath {
+			m[e.Page.Slug] = true
+		}
+	}
+	return m
+}
+
+// AllPageEntries returns every page (deduplicated by UUID).
+func (x *Index) AllPageEntries() []*PageEntry {
+	if x == nil {
+		return nil
+	}
+	var out []*PageEntry
+	for _, e := range x.byPageUUID {
+		out = append(out, e)
+	}
+	return out
+}

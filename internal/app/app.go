@@ -14,6 +14,7 @@ import (
 
 	"github.com/frodex/prd2wiki/internal/api"
 	"github.com/frodex/prd2wiki/internal/auth"
+	"github.com/frodex/prd2wiki/internal/blob"
 	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
@@ -268,9 +269,21 @@ func New(cfg Config) (*App, error) {
 
 	_ = cfg.Librarian.Socket // reserved for librarian integration (Phase 3a.7+)
 
+	treeHolder := tree.NewIndexHolder(treeAbs, dataAbs, treeIdx)
+	blobStore := blob.NewStore(dataAbs)
+
 	// Create web handler first (builds edit caches), then API server shares the caches.
-	webHandler := web.NewHandler(repos, db, librarians, treeIdx)
-	apiSrv := api.NewServer(cfg.Server.Addr, repos, db, librarians, webHandler.EditCaches())
+	webHandler := web.NewHandler(repos, db, librarians, treeHolder)
+	apiSrv := api.NewServer(api.ServerConfig{
+		Addr:       cfg.Server.Addr,
+		Repos:      repos,
+		DB:         db,
+		Librarians: librarians,
+		Edits:      webHandler.EditCaches(),
+		Tree:       treeHolder,
+		Blob:       blobStore,
+		Keys:       keyStore,
+	})
 
 	// Compose both into a single root mux.
 	mux := http.NewServeMux()
@@ -282,9 +295,10 @@ func New(cfg Config) (*App, error) {
 	})
 
 	mux.Handle("/api/", apiSrv.Handler())
+	mux.HandleFunc("GET /blobs/{hash}", api.GetBlob(blobStore))
 	webHandler.Register(mux)
 
-	treeWrapped := webHandler.WithTreeRouter(treeAbs, treeIdx, mux)
+	treeWrapped := webHandler.WithTreeRouter(treeAbs, treeHolder, mux)
 
 	// Wrap with middleware.
 	handler := api.RequestLogger(api.RateLimiter(100, 200)(treeWrapped))

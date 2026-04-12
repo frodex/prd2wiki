@@ -41,12 +41,12 @@ type Handler struct {
 	librarians map[string]*librarian.Librarian
 	db         *sql.DB
 	templates  map[string]*template.Template
-	edits      map[string]*EditCache // per-project edit info cache
-	treeIdx    *tree.Index          // optional; tree URLs and legacy redirects
+	edits       map[string]*EditCache  // per-project edit info cache
+	treeHolder  *tree.IndexHolder      // optional; tree URLs and legacy redirects
 }
 
 // NewHandler creates a Handler with pre-parsed templates.
-func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, treeIdx *tree.Index) *Handler {
+func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, treeHolder *tree.IndexHolder) *Handler {
 	h := &Handler{
 		repos:      repos,
 		search:     index.NewSearcher(db),
@@ -54,7 +54,7 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		db:         db,
 		templates:  make(map[string]*template.Template),
 		edits:      make(map[string]*EditCache),
-		treeIdx:    treeIdx,
+		treeHolder: treeHolder,
 	}
 
 	// Build edit caches in background so startup isn't blocked.

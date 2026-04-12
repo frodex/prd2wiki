@@ -13,9 +13,9 @@ import (
 )
 
 // WithTreeRouter wraps inner so GET requests for non-reserved paths are served from the
-// on-disk tree (.link → git page) when treeIndex is non-nil.
-func (h *Handler) WithTreeRouter(treeRootAbs string, treeIndex *tree.Index, inner http.Handler) http.Handler {
-	if treeIndex == nil {
+// on-disk tree (.link → git page) when the tree index is available.
+func (h *Handler) WithTreeRouter(treeRootAbs string, holder *tree.IndexHolder, inner http.Handler) http.Handler {
+	if holder == nil {
 		return inner
 	}
 	root := filepath.Clean(treeRootAbs)
@@ -29,7 +29,12 @@ func (h *Handler) WithTreeRouter(treeRootAbs string, treeIndex *tree.Index, inne
 			inner.ServeHTTP(w, r)
 			return
 		}
-		if handled := h.serveTreePage(w, r, root, treeIndex); handled {
+		idx := holder.Get()
+		if idx == nil {
+			inner.ServeHTTP(w, r)
+			return
+		}
+		if handled := h.serveTreePage(w, r, root, idx); handled {
 			return
 		}
 		inner.ServeHTTP(w, r)

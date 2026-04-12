@@ -8,12 +8,27 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/frodex/prd2wiki/internal/auth"
+	"github.com/frodex/prd2wiki/internal/blob"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/pagepath"
+	"github.com/frodex/prd2wiki/internal/tree"
 	"github.com/frodex/prd2wiki/internal/web"
 )
+
+// ServerConfig wires the API server (repos, index, tree holder for CRUD, optional blobs and keys).
+type ServerConfig struct {
+	Addr       string
+	Repos      map[string]*wgit.Repo
+	DB         *sql.DB
+	Librarians map[string]*librarian.Librarian
+	Edits      map[string]*web.EditCache
+	Tree       *tree.IndexHolder
+	Blob       *blob.Store
+	Keys       *auth.ServiceKeyStore
+}
 
 // Server holds application state and serves the REST API.
 type Server struct {
@@ -24,19 +39,24 @@ type Server struct {
 	search     *index.Searcher
 	librarians map[string]*librarian.Librarian
 	edits      map[string]*web.EditCache
+	treeHolder *tree.IndexHolder
+	blobStore  *blob.Store
+	keys       *auth.ServiceKeyStore
 }
 
-// NewServer creates a Server with the given address, repos, database, and librarians.
-// All vector search and content operations go through the librarians.
-func NewServer(addr string, repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, edits map[string]*web.EditCache) *Server {
+// NewServer creates a Server from config.
+func NewServer(cfg ServerConfig) *Server {
 	return &Server{
-		addr:       addr,
-		repos:      repos,
-		db:         db,
-		indexer:    index.NewIndexer(db),
-		search:     index.NewSearcher(db),
-		librarians: librarians,
-		edits:      edits,
+		addr:       cfg.Addr,
+		repos:      cfg.Repos,
+		db:         cfg.DB,
+		indexer:    index.NewIndexer(cfg.DB),
+		search:     index.NewSearcher(cfg.DB),
+		librarians: cfg.Librarians,
+		edits:      cfg.Edits,
+		treeHolder: cfg.Tree,
+		blobStore:  cfg.Blob,
+		keys:       cfg.Keys,
 	}
 }
 
@@ -62,7 +82,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/attachments", s.listAttachments)
 	mux.HandleFunc("GET /api/projects/{project}/pages/{id}/attachments/{filename}", s.getAttachment)
 
-	return mux
+	mux.HandleFunc("GET /api/tree", s.handleTreeAPI)
+	mux.HandleFunc("GET /api/tree/{path...}", s.handleTreeAPI)
+	mux.HandleFunc("POST /api/tree/{path...}", s.handleTreeAPI)
+	mux.HandleFunc("PUT /api/tree/{path...}", s.handleTreeAPI)
+	mux.HandleFunc("DELETE /api/tree/{path...}", s.handleTreeAPI)
+
+	mux.HandleFunc("POST /api/blobs", s.postBlob)
+
+	return s.wrapProjectsAPILegacyRedirect(mux)
 }
 
 // ListenAndServe starts the HTTP server.

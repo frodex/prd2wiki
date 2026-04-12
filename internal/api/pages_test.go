@@ -47,7 +47,13 @@ func setupTestServer(t *testing.T) *Server {
 	librarians := map[string]*librarian.Librarian{"test-project": lib}
 	edits := map[string]*web.EditCache{"test-project": web.NewEditCache()}
 
-	return NewServer(":0", repos, db, librarians, edits)
+	return NewServer(ServerConfig{
+		Addr:       ":0",
+		Repos:      repos,
+		DB:         db,
+		Librarians: librarians,
+		Edits:      edits,
+	})
 }
 
 func TestCreateAndGetPage(t *testing.T) {

@@ -10,6 +10,8 @@ import (
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
+	"github.com/google/uuid"
+
 	"github.com/frodex/prd2wiki/internal/schema"
 	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
@@ -40,6 +42,8 @@ type SubmitRequest struct {
 	// syncToLibrarian (future libclient) is a no-op.
 	PageUUID    string
 	ProjectUUID string
+	// UseFlatUUIDPath stores the page at pages/{uuid}.md (tree-backed pages). Ignores module/category layout.
+	UseFlatUUIDPath bool
 }
 
 // SubmitResult describes the outcome of a submission.
@@ -106,7 +110,11 @@ func generateID(title string) string {
 func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
 	// Auto-generate ID if empty
 	if req.Frontmatter.ID == "" {
-		req.Frontmatter.ID = generateID(req.Frontmatter.Title)
+		if req.UseFlatUUIDPath {
+			req.Frontmatter.ID = uuid.New().String()
+		} else {
+			req.Frontmatter.ID = generateID(req.Frontmatter.Title)
+		}
 	}
 
 	// Extract base64 images on ALL intents — binary data doesn't belong in markdown.
@@ -212,6 +220,15 @@ func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch stri
 	return count, nil
 }
 
+// RemoveFromIndexes drops a page from SQLite and vector indexes without modifying git.
+func (l *Librarian) RemoveFromIndexes(pageID string) error {
+	if err := l.indexer.RemovePage(pageID); err != nil {
+		return err
+	}
+	l.vstore.RemovePage(pageID)
+	return nil
+}
+
 // pagePath returns the canonical git path for a page.
 //
 // For hash IDs (7 hex chars, no module/category): uses git-style hash-prefix
@@ -222,6 +239,10 @@ func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch stri
 //
 // All path segments are sanitized to prevent traversal and injection attacks.
 func pagePath(fm *schema.Frontmatter) string {
+	if schema.IsUUIDPageID(fm.ID) {
+		return fmt.Sprintf("pages/%s.md", strings.ToLower(strings.TrimSpace(fm.ID)))
+	}
+
 	id := schema.SanitizePathSegment(fm.ID)
 
 	// If module or category is set, use the module/category layout (unchanged).
@@ -340,7 +361,15 @@ func (l *Librarian) submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 		bodyToWrite = []byte(NormalizeMarkdown(string(req.Body)))
 	}
 
-	path := pagePath(req.Frontmatter)
+	var path string
+	if req.UseFlatUUIDPath {
+		if !schema.IsUUIDPageID(req.Frontmatter.ID) {
+			return nil, fmt.Errorf("UseFlatUUIDPath requires a UUID page id")
+		}
+		path = fmt.Sprintf("pages/%s.md", strings.ToLower(strings.TrimSpace(req.Frontmatter.ID)))
+	} else {
+		path = pagePath(req.Frontmatter)
+	}
 	msg := commitMessage(req.Intent, req.Frontmatter.Title)
 
 	commitHash, err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, bodyToWrite, msg, req.Author)
