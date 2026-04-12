@@ -41,7 +41,7 @@ func setupTestHandler(t *testing.T) (*Handler, http.Handler) {
 	lib := librarian.New(repo, indexr, vstore, vocab)
 	librarians := map[string]*librarian.Librarian{"test-project": lib}
 
-	h := NewHandler(repos, db, librarians)
+	h := NewHandler(repos, db, librarians, nil)
 
 	mux := http.NewServeMux()
 	h.Register(mux)
@@ -116,7 +116,7 @@ func TestViewPageOnNonDefaultBranch(t *testing.T) {
 	lib := librarian.New(repo, indexr, vstore, vocab)
 	librarians := map[string]*librarian.Librarian{"test-project": lib}
 
-	h := NewHandler(repos, db, librarians)
+	h := NewHandler(repos, db, librarians, nil)
 	localMux := http.NewServeMux()
 	h.Register(localMux)
 	_ = mux // use local mux instead

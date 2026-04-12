@@ -5,16 +5,16 @@ server:
 data:
   dir: "./data"
 
+tree:
+  dir: "./tree"
+
+librarian:
+  socket: ""
+
 embedder:
   endpoint: "http://localhost:8081"  # llama.cpp server (install via scripts/install-embedder.sh)
   dimensions: 768                    # nomic-embed-text-v1.5 full dimensions
   timeout: 30                        # seconds per request
-
-projects:
-  - default
-  - battletech
-  - phat-toad-with-trails
-  - svg-terminal
 
 logging:
   level: "info"

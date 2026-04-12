@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"golang.org/x/sync/errgroup"
 
@@ -17,6 +18,7 @@ import (
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
+	"github.com/frodex/prd2wiki/internal/tree"
 	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
 	"github.com/frodex/prd2wiki/internal/web"
@@ -24,10 +26,23 @@ import (
 
 // Config holds all application configuration.
 type Config struct {
-	Server   ServerConfig            `yaml:"server"`
-	Data     DataConfig              `yaml:"data"`
-	Embedder embedder.EmbedderConfig `yaml:"embedder"`
-	Projects []string                `yaml:"projects"`
+	Server    ServerConfig            `yaml:"server"`
+	Data      DataConfig              `yaml:"data"`
+	Tree      TreeConfig              `yaml:"tree"`
+	Librarian LibrarianConfig         `yaml:"librarian"`
+	Embedder  embedder.EmbedderConfig `yaml:"embedder"`
+	// Projects is deprecated: projects are discovered from the tree scan. Ignored if present.
+	Projects []string `yaml:"projects"`
+}
+
+// TreeConfig holds the on-disk wiki tree directory (UUID projects and .link pages).
+type TreeConfig struct {
+	Dir string `yaml:"dir"`
+}
+
+// LibrarianConfig holds optional librarian integration settings (used in later phases).
+type LibrarianConfig struct {
+	Socket string `yaml:"socket"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -62,22 +77,54 @@ func New(cfg Config) (*App, error) {
 	if cfg.Data.Dir == "" {
 		cfg.Data.Dir = "./data"
 	}
-	if len(cfg.Projects) == 0 {
-		cfg.Projects = []string{"default"}
+	if cfg.Tree.Dir == "" {
+		cfg.Tree.Dir = "./tree"
+	}
+
+	dataAbs, err := filepath.Abs(cfg.Data.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("data dir: %w", err)
+	}
+	treeAbs, err := filepath.Abs(cfg.Tree.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("tree dir: %w", err)
 	}
 
 	// Create data directory if needed.
-	if err := os.MkdirAll(cfg.Data.Dir, 0o755); err != nil {
-		return nil, fmt.Errorf("create data dir %q: %w", cfg.Data.Dir, err)
+	if err := os.MkdirAll(dataAbs, 0o755); err != nil {
+		return nil, fmt.Errorf("create data dir %q: %w", dataAbs, err)
 	}
 
-	// Open or initialize git bare repos for each project.
-	repos := make(map[string]*wgit.Repo, len(cfg.Projects))
-	for _, project := range cfg.Projects {
-		repo, err := wgit.OpenRepo(cfg.Data.Dir, project)
+	treeIdx, err := tree.Scan(treeAbs, dataAbs)
+	if err != nil {
+		return nil, fmt.Errorf("tree scan: %w", err)
+	}
+	if len(treeIdx.Projects) == 0 {
+		return nil, fmt.Errorf("no projects under tree %q (need directories with .uuid)", treeAbs)
+	}
+
+	// Stable unique repo keys from the tree (e.g. default, battletech).
+	seen := make(map[string]bool)
+	var projectKeys []string
+	for _, p := range treeIdx.Projects {
+		if p.RepoKey == "" || seen[p.RepoKey] {
+			continue
+		}
+		seen[p.RepoKey] = true
+		projectKeys = append(projectKeys, p.RepoKey)
+	}
+	sort.Strings(projectKeys)
+	for _, pk := range projectKeys {
+		slog.Info("discovered project from tree", "repo_key", pk)
+	}
+
+	// Open or initialize git bare repos for each discovered project.
+	repos := make(map[string]*wgit.Repo, len(projectKeys))
+	for _, project := range projectKeys {
+		repo, err := wgit.OpenRepo(dataAbs, project)
 		if err != nil {
 			// Repo doesn't exist yet -- initialize it.
-			repo, err = wgit.InitRepo(cfg.Data.Dir, project)
+			repo, err = wgit.InitRepo(dataAbs, project)
 			if err != nil {
 				return nil, fmt.Errorf("init repo %q: %w", project, err)
 			}
@@ -89,7 +136,7 @@ func New(cfg Config) (*App, error) {
 	}
 
 	// Open SQLite index database.
-	dbPath := fmt.Sprintf("%s/index.db", cfg.Data.Dir)
+	dbPath := filepath.Join(dataAbs, "index.db")
 	db, err := index.OpenDatabase(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open database %q: %w", dbPath, err)
@@ -104,7 +151,7 @@ func New(cfg Config) (*App, error) {
 
 	// Rebuild index from repos on startup (sequential — SQLite only allows one writer).
 	indexer := index.NewIndexer(db)
-	for _, project := range cfg.Projects {
+	for _, project := range projectKeys {
 		repo := repos[project]
 		branches, err := repo.ListBranches()
 		if err != nil {
@@ -156,7 +203,7 @@ func New(cfg Config) (*App, error) {
 	vstore := vectordb.NewStore(emb)
 
 	// Load persisted vector index from disk (avoids re-embedding on restart).
-	vectorPath := filepath.Join(cfg.Data.Dir, "vectors", "pages.json")
+	vectorPath := filepath.Join(dataAbs, "vectors", "pages.json")
 	if err := vstore.LoadFromDisk(vectorPath); err != nil {
 		slog.Info("vector index: no persisted data, will embed on first write", "path", vectorPath)
 	} else {
@@ -181,7 +228,7 @@ func New(cfg Config) (*App, error) {
 	_ = profileStore // available for future use
 
 	librarians := make(map[string]*librarian.Librarian)
-	for _, project := range cfg.Projects {
+	for _, project := range projectKeys {
 		vocab := vocabulary.NewStore(db)
 		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab)
 	}
@@ -190,7 +237,7 @@ func New(cfg Config) (*App, error) {
 	if vstore.Count() == 0 {
 		slog.Info("vector index empty, rebuilding from git")
 		vg, vctx := errgroup.WithContext(context.Background())
-		for _, project := range cfg.Projects {
+		for _, project := range projectKeys {
 			project := project // capture
 			lib := librarians[project]
 			repo := repos[project]
@@ -219,8 +266,10 @@ func New(cfg Config) (*App, error) {
 		slog.Info("vector index loaded, skipping rebuild", "entries", vstore.Count())
 	}
 
+	_ = cfg.Librarian.Socket // reserved for librarian integration (Phase 3a.7+)
+
 	// Create web handler first (builds edit caches), then API server shares the caches.
-	webHandler := web.NewHandler(repos, db, librarians)
+	webHandler := web.NewHandler(repos, db, librarians, treeIdx)
 	apiSrv := api.NewServer(cfg.Server.Addr, repos, db, librarians, webHandler.EditCaches())
 
 	// Compose both into a single root mux.
@@ -235,8 +284,10 @@ func New(cfg Config) (*App, error) {
 	mux.Handle("/api/", apiSrv.Handler())
 	webHandler.Register(mux)
 
+	treeWrapped := webHandler.WithTreeRouter(treeAbs, treeIdx, mux)
+
 	// Wrap with middleware.
-	handler := api.RequestLogger(api.RateLimiter(100, 200)(mux))
+	handler := api.RequestLogger(api.RateLimiter(100, 200)(treeWrapped))
 
 	return &App{
 		Config:     cfg,

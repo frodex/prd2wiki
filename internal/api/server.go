@@ -1,3 +1,6 @@
+// Package api serves JSON and binary resources under /api/ only. The application root mux
+// may register other top-level routes (wiki tree URLs, static files); those must use reserved
+// prefixes so they are not conflated with API handlers — see internal/tree.IsReservedRequestPath.
 package api
 
 import (

@@ -93,10 +93,20 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if loc, ok := h.treeLegacyRedirectLocation(project, id); ok {
+		http.Redirect(w, r, loc, http.StatusMovedPermanently)
+		return
+	}
+
 	// Determine the page path from the index (supports subdirectories).
 	path := h.resolvePagePath(project, id)
 
-	fm, body, pageBranch, err := readPageNewest(repo, path)
+	h.viewPageAtGitPath(w, project, path, repo)
+}
+
+// viewPageAtGitPath renders a page from a resolved git path (used by /projects/... and tree routes).
+func (h *Handler) viewPageAtGitPath(w http.ResponseWriter, project, gitPath string, repo *wgit.Repo) {
+	fm, body, pageBranch, err := readPageNewest(repo, gitPath)
 	if err != nil {
 		h.renderError(w, http.StatusNotFound, "Page not found.")
 		return
@@ -104,7 +114,7 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 
 	// Get last edit info from git history
 	var lastEditBy, lastEditDate string
-	commits, _ := repo.PageHistoryAllBranches(path, 1)
+	commits, _ := repo.PageHistoryAllBranches(gitPath, 1)
 	if len(commits) > 0 {
 		lastEditBy = commits[0].Author
 		lastEditDate = commits[0].Date.Format("2006-01-02 15:04")
@@ -150,6 +160,30 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (h *Handler) treeLegacyRedirectLocation(project, id string) (string, bool) {
+	if h.treeIdx == nil {
+		return "", false
+	}
+	repo, ok := h.repos[project]
+	if !ok {
+		return "", false
+	}
+	gitPath := h.resolvePagePath(project, id)
+	fm, _, _, err := readPageNewest(repo, gitPath)
+	if err != nil || fm == nil {
+		return "", false
+	}
+	uuid := strings.TrimSpace(fm.ID)
+	if uuid == "" {
+		return "", false
+	}
+	ent, ok := h.treeIdx.PageByUUID(uuid)
+	if !ok {
+		return "", false
+	}
+	return "/" + ent.URLPath(), true
 }
 
 // editPage renders the page edit form with existing page content.

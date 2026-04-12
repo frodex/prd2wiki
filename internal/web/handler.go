@@ -5,11 +5,13 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
+	"sort"
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/pagepath"
+	"github.com/frodex/prd2wiki/internal/tree"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 )
@@ -40,10 +42,11 @@ type Handler struct {
 	db         *sql.DB
 	templates  map[string]*template.Template
 	edits      map[string]*EditCache // per-project edit info cache
+	treeIdx    *tree.Index          // optional; tree URLs and legacy redirects
 }
 
 // NewHandler creates a Handler with pre-parsed templates.
-func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian) *Handler {
+func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, treeIdx *tree.Index) *Handler {
 	h := &Handler{
 		repos:      repos,
 		search:     index.NewSearcher(db),
@@ -51,6 +54,7 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		db:         db,
 		templates:  make(map[string]*template.Template),
 		edits:      make(map[string]*EditCache),
+		treeIdx:    treeIdx,
 	}
 
 	// Build edit caches in background so startup isn't blocked.
@@ -121,6 +125,7 @@ func (h *Handler) projects() []string {
 	for name := range h.repos {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
 }
 
