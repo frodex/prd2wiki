@@ -14,6 +14,7 @@ import (
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
+	"github.com/frodex/prd2wiki/internal/web"
 )
 
 func setupTestServer(t *testing.T) *Server {
@@ -44,8 +45,9 @@ func setupTestServer(t *testing.T) *Server {
 	vocab := vocabulary.NewStore(db)
 	lib := librarian.New(repo, indexer, vstore, vocab)
 	librarians := map[string]*librarian.Librarian{"test-project": lib}
+	edits := map[string]*web.EditCache{"test-project": web.NewEditCache()}
 
-	return NewServer(":0", repos, db, librarians)
+	return NewServer(":0", repos, db, librarians, edits)
 }
 
 func TestCreateAndGetPage(t *testing.T) {

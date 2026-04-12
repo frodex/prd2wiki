@@ -36,14 +36,40 @@ type SubmitRequest struct {
 	Body        []byte
 	Intent      string
 	Author      string
+	// PageUUID and ProjectUUID are optional until tree migration; when empty,
+	// syncToLibrarian (future libclient) is a no-op.
+	PageUUID    string
+	ProjectUUID string
 }
 
 // SubmitResult describes the outcome of a submission.
 type SubmitResult struct {
-	Saved    bool           `json:"saved"`
-	Path     string         `json:"path"`
-	Issues   []schema.Issue `json:"issues,omitempty"`
-	Warnings []string       `json:"warnings,omitempty"`
+	Saved      bool           `json:"saved"`
+	Path       string         `json:"path"`
+	Issues     []schema.Issue `json:"issues,omitempty"`
+	Warnings   []string       `json:"warnings,omitempty"`
+	CommitHash string         `json:"commit_hash,omitempty"` // filled when git layer returns hash (pre-flight item 5)
+}
+
+// submitFlags selects behavior for the unified submit path.
+type submitFlags struct {
+	blockOnErrors bool
+	normalize     bool
+	dedup         bool
+	logVectorWarn bool
+}
+
+func submitFlagsForIntent(intent string) (submitFlags, error) {
+	switch intent {
+	case IntentVerbatim:
+		return submitFlags{logVectorWarn: true}, nil
+	case IntentConform:
+		return submitFlags{blockOnErrors: true, normalize: true}, nil
+	case IntentIntegrate:
+		return submitFlags{blockOnErrors: true, normalize: true, dedup: true}, nil
+	default:
+		return submitFlags{}, fmt.Errorf("unknown intent %q", intent)
+	}
 }
 
 // Librarian orchestrates page submission: validation, normalization, persistence, and indexing.
@@ -97,16 +123,17 @@ func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 		}
 	}
 
-	switch req.Intent {
-	case IntentVerbatim:
-		return l.submitVerbatim(ctx, req)
-	case IntentConform:
-		return l.submitConform(ctx, req)
-	case IntentIntegrate:
-		return l.submitIntegrate(ctx, req)
-	default:
-		return nil, fmt.Errorf("unknown intent %q", req.Intent)
+	return l.submit(ctx, req)
+}
+
+// maybeSyncToLibrarian is reserved for Phase 3a (libclient → pippi-librarian). It no-ops
+// until both UUIDs are set.
+func (l *Librarian) maybeSyncToLibrarian(ctx context.Context, req SubmitRequest, res *SubmitResult) {
+	if req.PageUUID == "" || req.ProjectUUID == "" {
+		return
 	}
+	_ = ctx
+	_ = res
 }
 
 // SearchResult holds a search result with page ID and relevance.
@@ -223,7 +250,9 @@ func pagePath(fm *schema.Frontmatter) string {
 // It checks the hash-prefix directory first, then falls back to the flat layout.
 // The repo is checked to see which path actually has content.
 // If neither exists, returns the canonical path for the ID format.
-func ResolvePagePath(repo interface{ HasPage(branch, path string) bool }, branch, id string) string {
+func ResolvePagePath(repo interface {
+	HasPage(branch, path string) bool
+}, branch, id string) string {
 	sanitized := schema.SanitizePathSegment(id)
 
 	// Try hash-prefix path first (for hash IDs).
@@ -273,137 +302,80 @@ func (l *Librarian) indexInVectorStore(ctx context.Context, project string, fm *
 	return l.vstore.IndexPage(ctx, project, fm.ID, fm.Type, tags, chunks)
 }
 
-// submitVerbatim handles verbatim submissions.
-func (l *Librarian) submitVerbatim(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
-	// Validate — flag issues but do not block.
+// submit persists a page for verbatim, conform, or integrate intents.
+func (l *Librarian) submit(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
+	flags, err := submitFlagsForIntent(req.Intent)
+	if err != nil {
+		return nil, err
+	}
+
 	issues := schema.Validate(req.Frontmatter)
-	if schema.HasErrors(issues) {
-		req.Frontmatter.Conformance = "pending"
+
+	if flags.blockOnErrors && schema.HasErrors(issues) {
+		return &SubmitResult{
+			Saved:  false,
+			Issues: issues,
+		}, nil
+	}
+
+	if !flags.blockOnErrors {
+		if schema.HasErrors(issues) {
+			req.Frontmatter.Conformance = "pending"
+		} else {
+			req.Frontmatter.Conformance = "valid"
+		}
 	} else {
+		normalizedTags := make([]string, len(req.Frontmatter.Tags))
+		for i, tag := range req.Frontmatter.Tags {
+			n := l.vocab.Normalize(tag)
+			normalizedTags[i] = n
+			_ = l.vocab.Add(n, "tag")
+		}
+		req.Frontmatter.Tags = normalizedTags
 		req.Frontmatter.Conformance = "valid"
 	}
 
-	path := pagePath(req.Frontmatter)
-	msg := commitMessage(IntentVerbatim, req.Frontmatter.Title)
+	bodyToWrite := req.Body
+	if flags.normalize {
+		bodyToWrite = []byte(NormalizeMarkdown(string(req.Body)))
+	}
 
-	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, req.Body, msg, req.Author); err != nil {
+	path := pagePath(req.Frontmatter)
+	msg := commitMessage(req.Intent, req.Frontmatter.Title)
+
+	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, bodyToWrite, msg, req.Author); err != nil {
 		return nil, fmt.Errorf("write page: %w", err)
 	}
 
-	if err := l.indexer.IndexPage(req.Project, req.Branch, path, req.Frontmatter, req.Body); err != nil {
+	if err := l.indexer.IndexPage(req.Project, req.Branch, path, req.Frontmatter, bodyToWrite); err != nil {
 		return nil, fmt.Errorf("index page: %w", err)
 	}
 
-	if err := l.indexInVectorStore(ctx, req.Project, req.Frontmatter, req.Body); err != nil {
-		slog.Warn("vector index failed", "page", req.Frontmatter.ID, "error", err)
-	}
-
-	return &SubmitResult{
-		Saved:  true,
-		Path:   path,
-		Issues: issues,
-	}, nil
-}
-
-// submitConform handles conform submissions.
-func (l *Librarian) submitConform(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
-	// Validate — block on errors.
-	issues := schema.Validate(req.Frontmatter)
-	if schema.HasErrors(issues) {
-		return &SubmitResult{
-			Saved:  false,
-			Issues: issues,
-		}, nil
-	}
-
-	// Normalize tags.
-	normalized := make([]string, len(req.Frontmatter.Tags))
-	for i, tag := range req.Frontmatter.Tags {
-		n := l.vocab.Normalize(tag)
-		normalized[i] = n
-		_ = l.vocab.Add(n, "tag")
-	}
-	req.Frontmatter.Tags = normalized
-
-	// Normalize body.
-	normalizedBody := NormalizeMarkdown(string(req.Body))
-	req.Frontmatter.Conformance = "valid"
-
-	path := pagePath(req.Frontmatter)
-	msg := commitMessage(IntentConform, req.Frontmatter.Title)
-
-	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, []byte(normalizedBody), msg, req.Author); err != nil {
-		return nil, fmt.Errorf("write page: %w", err)
-	}
-
-	if err := l.indexer.IndexPage(req.Project, req.Branch, path, req.Frontmatter, []byte(normalizedBody)); err != nil {
-		return nil, fmt.Errorf("index page: %w", err)
-	}
-
-	if err := l.indexInVectorStore(ctx, req.Project, req.Frontmatter, []byte(normalizedBody)); err != nil {
-		_ = err
-	}
-
-	return &SubmitResult{
-		Saved:  true,
-		Path:   path,
-		Issues: issues,
-	}, nil
-}
-
-// submitIntegrate handles integrate submissions (conform + dedup check).
-func (l *Librarian) submitIntegrate(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
-	// Validate — block on errors.
-	issues := schema.Validate(req.Frontmatter)
-	if schema.HasErrors(issues) {
-		return &SubmitResult{
-			Saved:  false,
-			Issues: issues,
-		}, nil
-	}
-
-	// Normalize tags.
-	normalized := make([]string, len(req.Frontmatter.Tags))
-	for i, tag := range req.Frontmatter.Tags {
-		n := l.vocab.Normalize(tag)
-		normalized[i] = n
-		_ = l.vocab.Add(n, "tag")
-	}
-	req.Frontmatter.Tags = normalized
-
-	// Normalize body.
-	normalizedBody := NormalizeMarkdown(string(req.Body))
-	req.Frontmatter.Conformance = "valid"
-
-	path := pagePath(req.Frontmatter)
-	msg := commitMessage(IntentIntegrate, req.Frontmatter.Title)
-
-	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, []byte(normalizedBody), msg, req.Author); err != nil {
-		return nil, fmt.Errorf("write page: %w", err)
-	}
-
-	if err := l.indexer.IndexPage(req.Project, req.Branch, path, req.Frontmatter, []byte(normalizedBody)); err != nil {
-		return nil, fmt.Errorf("index page: %w", err)
-	}
-
-	if err := l.indexInVectorStore(ctx, req.Project, req.Frontmatter, []byte(normalizedBody)); err != nil {
-		_ = err
-	}
-
-	// Dedup check.
-	detector := NewDedupDetector(l.vstore)
-	dedupResult, err := detector.Check(ctx, req.Project, req.Frontmatter.ID, normalizedBody)
-	var warnings []string
-	if err == nil && dedupResult != nil {
-		for _, c := range dedupResult.Candidates {
-			warnings = append(warnings, fmt.Sprintf("potential duplicate: %s (similarity: %.2f)", c.PageID, c.Similarity))
+	if err := l.indexInVectorStore(ctx, req.Project, req.Frontmatter, bodyToWrite); err != nil {
+		if flags.logVectorWarn {
+			slog.Warn("vector index failed", "page", req.Frontmatter.ID, "error", err)
+		} else {
+			_ = err
 		}
 	}
 
-	return &SubmitResult{
+	var warnings []string
+	if flags.dedup {
+		detector := NewDedupDetector(l.vstore)
+		dedupResult, err := detector.Check(ctx, req.Project, req.Frontmatter.ID, string(bodyToWrite))
+		if err == nil && dedupResult != nil {
+			for _, c := range dedupResult.Candidates {
+				warnings = append(warnings, fmt.Sprintf("potential duplicate: %s (similarity: %.2f)", c.PageID, c.Similarity))
+			}
+		}
+	}
+
+	res := &SubmitResult{
 		Saved:    true,
 		Path:     path,
 		Issues:   issues,
 		Warnings: warnings,
-	}, nil
+	}
+	l.maybeSyncToLibrarian(ctx, req, res)
+	return res, nil
 }
