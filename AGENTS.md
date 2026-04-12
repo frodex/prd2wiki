@@ -12,7 +12,8 @@ The **WebFetch / browser fetch tool** blocks private IPs, so it cannot load LAN 
 
 **This machine can:** use the shell to `curl` LAN pages, e.g.  
 `curl -sS "http://192.168.22.56:8082/projects/default/pages/8634f02"`  
-(or save to a file under `docs/` if you want a pinned offline copy).
+
+**Offline mirror (when wiki is stopped):** plan + architecture pages under **`docs/wiki-local/`** (`*.md` body, `*.json` full API). Refresh with **`scripts/fetch-wiki-local.sh`** while the wiki is up.
 
 **Cross-repo (prd2wiki ↔ pippi-librarian):** Read **`docs/constraints-prd2wiki-pippi.md`** before Phase 2, Phase 3a.7 (`libclient` / `syncToLibrarian`), or any code that opens the librarian socket — binding with the Master Plan § Cross-Repo Boundary.
 
