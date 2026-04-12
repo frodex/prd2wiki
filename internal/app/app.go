@@ -8,8 +8,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+
+	"golang.org/x/sync/errgroup"
+
 	"github.com/frodex/prd2wiki/internal/api"
 	"github.com/frodex/prd2wiki/internal/auth"
 	"github.com/frodex/prd2wiki/internal/blob"
@@ -257,22 +261,33 @@ func New(cfg Config) (*App, error) {
 	if vstore.Count() == 0 {
 		slog.Info("vector index empty, will rebuild from git in background")
 		go func() {
-			// Sequential per project/branch — don't overwhelm embedder
+			workers := runtime.NumCPU()
+			if workers > 4 {
+				workers = 4 // cap to avoid overwhelming embedder
+			}
+			g, ctx := errgroup.WithContext(context.Background())
+			g.SetLimit(workers)
+
 			for _, project := range projectKeys {
 				lib := librarians[project]
 				repo := repos[project]
 				branches, _ := repo.ListBranches()
 				for _, branch := range branches {
-					n, err := lib.RebuildVectorIndex(context.Background(), project, branch)
-					if err != nil {
-						slog.Error("vector rebuild failed", "project", project, "branch", branch, "error", err)
-						continue
-					}
-					if n > 0 {
-						slog.Info("vector index rebuilt", "project", project, "branch", branch, "pages", n)
-					}
+					project, branch := project, branch
+					g.Go(func() error {
+						n, err := lib.RebuildVectorIndex(ctx, project, branch)
+						if err != nil {
+							slog.Error("vector rebuild failed", "project", project, "branch", branch, "error", err)
+							return nil // don't cancel other work
+						}
+						if n > 0 {
+							slog.Info("vector index rebuilt", "project", project, "branch", branch, "pages", n)
+						}
+						return nil
+					})
 				}
 			}
+			_ = g.Wait()
 			slog.Info("vector index rebuild complete", "entries", vstore.Count())
 		}()
 	} else {
