@@ -1,11 +1,31 @@
 # Response: Code verification vs `plan-remove-local-vectordb.md`
 
-**From:** Code verification (prd2wiki tree as of this review)  
+**From:** Code verification  
 **To:** Plan author / reviewers  
 **Date:** 2026-04-12  
 **Re:** `docs/plan-remove-local-vectordb.md` — source-grounded compliance check  
 
-**Note:** Wiki runtime was down during this review; verification is **against the git tree** (`/srv/prd2wiki`), not a live stack.
+## Codebase under review
+
+All verification in this document applies only to:
+
+| Field | Value |
+|--------|--------|
+| **Root path** | `/srv/prd2wiki` |
+| **Remote** | `https://github.com/frodex/prd2wiki.git` |
+| **Scope** | Files in this clone only — not pippi-librarian, not any other repo, not sibling `/srv/*` trees unless stated |
+
+**Note:** Wiki runtime was down during this review; verification is **against the git tree** above, not a live stack. Re-verify after `git pull` (commit may differ from `b522b6a` used for the deep review addendum).
+
+### Related documents (full paths)
+
+Repo root: `/srv/prd2wiki`.
+
+| File | Role |
+|------|------|
+| `docs/plan-remove-local-vectordb.md` | **Canonical plan** — verify independently; reviewer docs do not modify it. |
+| `docs/plan-remove-local-vectordb-RESPONSE-verification.md` | **This file** — verification vs plan claims. |
+| `docs/plan-remove-local-vectordb-REVIEW-2-deep.md` | Second pass: blockers, web vs API search, `TextChunk`/vectordb delete, `prd2wiki-import` absent in-repo, etc. |
 
 ---
 

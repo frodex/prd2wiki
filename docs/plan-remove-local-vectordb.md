@@ -4,8 +4,10 @@
 **Status:** DRAFT — REQUIRES REVIEW BEFORE IMPLEMENTATION
 **Priority:** Critical
 **Author:** Claude Opus 4.6
-**Verification review:** `plan-remove-local-vectordb-RESPONSE-verification.md` — corrections incorporated
-**Deep review:** `plan-remove-local-vectordb-REVIEW-2-deep.md` — additional corrections incorporated
+**Reviews (corrections from all three incorporated below):**
+- `plan-remove-local-vectordb-RESPONSE-verification.md` — first verification: dead dedup, API merge behavior, content prefixing
+- `plan-remove-local-vectordb-REVIEW-2-deep.md` — deep review: TextChunk dependency, prd2wiki-import absent, web≠API search, local scoring formula
+- `plan-remove-local-vectordb-REVIEW-3-verification.md` — third pass: Librarian has no Searcher (FTS fallback in handlers not Librarian), search logging is new work, grep patterns incomplete
 
 **Reviewer instructions:** This plan must be examined for anything missing that would prevent the intended outcome. If a step, dependency, or integration point is missing, flag it as a BLOCKER. Every claim has been verified against source code as of 2026-04-12. Function names are used as anchors (not line numbers, which drift).
 
@@ -70,7 +72,7 @@ User searches → wiki calls librarian memory_search via unix socket
 | 6 | Embedding profile store | `app.go` `New()`: `embedder.NewEmbeddingProfileStore(db)` | Tracks model versions | **REMOVE** |
 | 7 | `VStore` on App struct | `app.go` struct `App`: `VStore *vectordb.Store` | Exposes store — **no external readers** (grep verified) | **REMOVE** |
 | 8 | `vstore` on Librarian struct | `librarian.go` struct `Librarian`: `vstore` field | Local vector store reference | **REMOVE** |
-| 9 | `Librarian.Search()` → local store | `librarian.go` `Search()`: `l.vstore.Search()` | JSON array cosine scan | **REWRITE** → call librarian |
+| 9 | `Librarian.Search()` → local store | `librarian.go` `Search()`: `l.vstore.Search()` | In-memory fused search: 0.7×cosine + 0.3×keyword (NOT pure cosine) | **REWRITE** → call librarian |
 | 10 | `Librarian.FindSimilar()` → local store | `librarian.go` `FindSimilar()`: `l.vstore.FindSimilar()` | Find similar pages locally | **REWRITE** → call librarian MemorySearch with page content |
 | 11 | `Librarian.RemoveFromIndexes()` → local store | `librarian.go` `RemoveFromIndexes()`: `l.vstore.RemovePage()` + `l.indexer.RemovePage()` | Called from `tree_api.go` delete handler | **FIX** — keep SQLite `indexer.RemovePage()`, replace vstore call with async `memory_delete` via libclient (or deletes orphan librarian records) |
 | 12 | `indexInVectorStore()` | `librarian.go` `indexInVectorStore()` | Chunks page, **prepends title+tags+type**, embeds, stores in JSON | **REMOVE** — but see Part 5 on content prefixing |
@@ -82,6 +84,7 @@ User searches → wiki calls librarian memory_search via unix socket
 | 18 | Web search: vector-first, FTS only if empty | `web/search.go` `searchPages()` | Calls `lib.Search()` (local vector); **only if `len(items)==0`** falls back to FTS. **NOT the same merge behavior as API.** | **REWRITE** — lib.Search() through librarian; **NOTE: web and API have different search semantics (see Part 5b)** |
 | 20 | `normalizer.go` imports `vectordb.TextChunk` | `librarian/normalizer.go` `ChunkByHeadings()` | Returns `[]vectordb.TextChunk` — **blocks deletion** of `internal/vectordb/` | **MOVE** `TextChunk` type to `librarian` package or a neutral package before deleting `vectordb` |
 | 19 | Embedder config in prd2wiki.yaml | `config/prd2wiki.yaml` `embedder:` section | TEI endpoint, dims, timeout | **REMOVE** |
+| 21 | Stale comment in `app.go` | `app.go` `New()`: comment says "LlamaCpp" but code uses `NewOpenAIEmbedder` | Misleading — stale from rename | **FIX** comment during embedder removal |
 
 ### What uses the librarian (complete)
 
@@ -133,7 +136,7 @@ User searches → wiki calls librarian memory_search via unix socket
 ### Known anti-patterns
 
 1. Adding alongside instead of replacing — this plan must REMOVE
-2. Silent fallback — FTS fallback must LOG when it activates
+2. Silent fallback — FTS fallback must LOG when it activates. **Note: neither `api/search.go` nor `web/search.go` have any `slog` calls today. Logging is NEW WORK, not "already satisfied."**
 3. "Sync enabled" log when socket is dead — misleading, must be fixed
 
 ### Test invariants (files that reference vectordb and must be updated)
@@ -246,8 +249,11 @@ After Step 15 (all code changes done), before declaring the work complete.
 
 **Step 2:** Rewrite `Librarian.Search()` in `librarian.go`
 - When `libClient != nil`: call `libClient.MemorySearch()`
-- When `libClient == nil` or call fails: fall back to SQLite FTS with `slog.Warn("librarian search unavailable, using FTS fallback")`
-- Do NOT call `l.vstore.Search()` anymore
+- When `libClient == nil` or call fails: **return error** (not FTS fallback — `Librarian` does not have an `index.Searcher`)
+- FTS fallback happens in the **handlers** (`api/search.go` and `web/search.go`), NOT in `Librarian.Search()`
+- API handler: already runs FTS in parallel — if `lib.Search()` errors, the vector leg is empty but FTS results still display
+- Web handler: if `lib.Search()` errors, `items` stays empty, existing FTS fallback runs
+- Both handlers must `slog.Warn("librarian search unavailable, FTS only")` when `lib.Search()` fails (new logging — does not exist today)
 
 **Step 3:** Rewrite `Librarian.FindSimilar()` in `librarian.go`
 - Call `libClient.MemorySearch()` with the page's content as query
@@ -328,7 +334,7 @@ If partially done and search is broken:
 2. Restart wiki — old vector store code rebuilds from persisted JSON
 
 If JSON file was deleted:
-1. Revert code, restart — wiki re-embeds all pages (~5 min)
+1. Revert code, restart — wiki re-embeds all pages (~5 min estimate, varies with corpus size and TEI speed)
 
 ---
 
@@ -336,7 +342,9 @@ If JSON file was deleted:
 
 **Each must be checked against source code:**
 
-1. **Is the inventory complete?** Run: `grep -rn "vstore\|vectordb\|FindSimilar\|RemovePage\|IndexPage\|EmbedBatch" internal/ --include="*.go" | grep -v _test | grep -v ".bak"` — every result must appear in a step.
+1. **Is the inventory complete?** Run both greps — every result must appear in a step:
+   - `grep -rn "vstore\|vectordb\|FindSimilar\|RemovePage\|IndexPage\|EmbedBatch" internal/ --include="*.go" | grep -v _test | grep -v ".bak"`
+   - `grep -rn "TextChunk\|PageEmbedding" internal/ --include="*.go" | grep -v _test | grep -v ".bak"`
 
 2. **Does syncToLibrarian send everything the librarian needs?** Verify: namespace, page_uuid, content (with title prefix per Part 5), title, type, status, tags.
 
