@@ -404,7 +404,15 @@ When the librarian embeds content for vector search, it must prepend title and t
 
 ~~`SearchWiki` should support filtering by type, status, tags.~~ **Dropped as scope creep.** The wiki already has structured filtering via SQLite FTS (ByType, ByStatus, ByTag). These work today and are untouched by this plan. Adding duplicate filtering to the librarian serves no purpose for this plan's stated goal. If needed later, it's a separate effort.
 
-### 10.6: Bulk backfill must include metadata
+### 10.6: StoreWiki must skip version bump when content is unchanged
+
+`StoreWiki` creates a new version on every call even if content is identical to the current head. The legacy `Store()` method already has the right pattern — it checks if the record exists and does an in-place update (same ID, no new version).
+
+`StoreWiki` should compare `content` with the existing head's `Content` before creating a new version. If identical, return the existing head ID, version, and `created=false` without creating a superseded row.
+
+This is required for backfill (Step 19) — without it, re-sending already-synced pages creates unnecessary version churn. It also makes `syncToLibrarian` idempotent for cases where the wiki fires a sync but the content hasn't actually changed (e.g., status change without body edit).
+
+### 10.7: Bulk backfill must include metadata
 
 Step 19 (bulk backfill) must send metadata WITH each page. Without it, records in the librarian will have title/tags = empty even after re-ingestion.
 
@@ -485,4 +493,5 @@ If JSON file was deleted:
 - [ ] `StoreWiki` stores title, tags, type, status on the record
 - [ ] LanceDB Arrow schema includes metadata columns
 - [ ] Embedding text includes title + tags (search "pippi readme" → README in top 3)
+- [ ] `StoreWiki` skips version bump when content is identical to current head
 - [ ] Reviewer has verified Part 10 claims against `/srv/pippi-librarian` at commit `cc96c4b` or later
