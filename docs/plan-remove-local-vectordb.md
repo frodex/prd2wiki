@@ -10,6 +10,7 @@
 - `plan-remove-local-vectordb-REVIEW-3-verification.md` — third pass: Librarian has no Searcher (FTS fallback in handlers not Librarian), search logging is new work, grep patterns incomplete
 - `plan-remove-local-vectordb-REVIEW-4-in-chat.md` — fourth pass: namespace mapping (repo key vs wiki:uuid), vocabulary normalization parity, write latency table correction
 - `plan-remove-local-vectordb-REVIEW-5-stepped-dual-repo.md` — fifth pass (DUAL REPO): memory_delete takes id not page_uuid (BLOCKER), Step 4 contradicts Part 5 Option B, vocab normalization differs between repos, firstLineTitle vs frontmatter title
+- `plan-remove-local-vectordb-REVIEW-6-stepped-dual-repo.md` — sixth pass: confirms Review 5 fixes landed, meta_json vs ext_json naming, empty LibrarianID fallback, Part 9 checklist stale wording
 
 **Reviewer instructions:** This plan must be examined for anything missing that would prevent the intended outcome. If a step, dependency, or integration point is missing, flag it as a BLOCKER. Every claim has been verified against source code as of 2026-04-12. Function names are used as anchors (not line numbers, which drift).
 
@@ -85,8 +86,8 @@ User searches → wiki calls librarian memory_search via unix socket
 | 16 | **`flags.dedup`** | `librarian.go` `submitFlagsForIntent()` | Set true for integrate intent — **BUT NEVER READ** in `submit()` | **REMOVE** (dead code) |
 | 17 | **API search: parallel FTS+vector merge** | `api/search.go` `searchPages()` | Runs FTS and `lib.Search()` in parallel goroutines, merges results (FTS first, then vector hits not in FTS) | **REWRITE** — lib.Search() must go through librarian |
 | 18 | Web search: vector-first, FTS only if empty | `web/search.go` `searchPages()` | Calls `lib.Search()` (local vector); **only if `len(items)==0`** falls back to FTS. **NOT the same merge behavior as API.** | **REWRITE** — lib.Search() through librarian; **NOTE: web and API have different search semantics (see Part 5b)** |
-| 20 | `normalizer.go` imports `vectordb.TextChunk` | `librarian/normalizer.go` `ChunkByHeadings()` | Returns `[]vectordb.TextChunk` — **blocks deletion** of `internal/vectordb/` | **MOVE** `TextChunk` type to `librarian` package or a neutral package before deleting `vectordb` |
 | 19 | Embedder config in prd2wiki.yaml | `config/prd2wiki.yaml` `embedder:` section | TEI endpoint, dims, timeout | **REMOVE** |
+| 20 | `normalizer.go` imports `vectordb.TextChunk` | `librarian/normalizer.go` `ChunkByHeadings()` | Returns `[]vectordb.TextChunk` — **blocks deletion** of `internal/vectordb/` | **MOVE** `TextChunk` type to `librarian` package or a neutral package before deleting `vectordb` |
 | 21 | Stale comment in `app.go` | `app.go` `New()`: comment says "LlamaCpp" but code uses `NewOpenAIEmbedder` | Misleading — stale from rename | **FIX** comment during embedder removal |
 
 ### What uses the librarian (complete)
@@ -308,7 +309,8 @@ After Step 15 (all code changes done), before declaring the work complete.
   - **A:** Read `.link` line 2 to get the current `mem_` head ID, pass that to `memory_delete`
   - **B:** Call `memory_get` by `page_uuid` first to get `record_id`, then `memory_delete` by `record_id`
   - **C:** Add a new librarian operation `DeleteByPageUUID` that handles the lookup internally
-- **Recommendation:** Option A (read .link line 2) — simplest, no extra RPC, data is already on disk
+- **Recommendation:** Option A (read .link line 2) — simplest, no extra RPC. Use `treeHolder.Get().PageByUUID(pageUUID).Page.LibrarianID` to get the mem_ ID from the tree index.
+- **Empty line 2 (Review 6):** If `LibrarianID == ""` (page never synced to librarian), there's nothing to delete. Log warning and skip — no orphan because the record never existed.
 - If libclient is nil (librarian down), log warning — orphan cleaned by compactor
 
 **Step 11b:** Add `MemoryDelete()` to `internal/libclient/client.go`
@@ -375,12 +377,13 @@ Where `metadata = args["metadata"]` (the map the wiki already sends).
 
 ### 10.3: LanceDB Arrow schema must include metadata columns
 
-`internal/librarian/memory_lance.go` must add to the Arrow schema:
-- `page_title` (string) — for BM25 + embedding enrichment
-- `page_tags` (string) — for BM25 + embedding enrichment + filtering
-- `page_type` (string) — for filtering
-- `page_status` (string) — for filtering
-- `ext_json` (string) — for additional metadata (author, source_repo, source_commit)
+`internal/librarian/memory_lance.go` already has a `meta_json` column (used for internal metadata like language, pinned, importance). **Do NOT add a separate `ext_json` column** (Review 6 correction) — either:
+- **A:** Store wiki metadata IN `meta_json` alongside existing fields, or
+- **B:** Add dedicated columns: `page_title` (string), `page_tags` (string), `page_type` (string), `page_status` (string)
+
+Option B is better for search (BM25 can index individual columns; `meta_json` requires JSON parsing at query time). But Option A is less schema churn.
+
+**[IMPLEMENTER: reconcile with existing `meta_json` — do not create a duplicate JSON column.]**
 
 ### 10.3b: Search title derivation (nuance from Review 5)
 
@@ -428,7 +431,7 @@ If JSON file was deleted:
    - `grep -rn "vstore\|vectordb\|FindSimilar\|RemovePage\|IndexPage\|EmbedBatch" internal/ --include="*.go" | grep -v _test | grep -v ".bak"`
    - `grep -rn "TextChunk\|PageEmbedding" internal/ --include="*.go" | grep -v _test | grep -v ".bak"`
 
-2. **Does syncToLibrarian send everything the librarian needs?** Verify: namespace, page_uuid, content (with title prefix per Part 5), title, type, status, tags.
+2. **Does syncToLibrarian send everything the librarian needs?** Verify: namespace, page_uuid, content (raw body — NO title prefix, per Part 5 Option B), AND metadata map with title, type, status, tags, author. The metadata map is what the librarian will use for enrichment after Part 10 ships.
 
 3. **Does memory_search return enough for the wiki?** Verify: page_uuid, score, title, snippet at minimum.
 
