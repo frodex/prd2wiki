@@ -67,6 +67,26 @@ func (s *Server) ListenAndServe() error {
 	return http.ListenAndServe(s.addr, s.Handler())
 }
 
+// projectRepo returns the git repo for project or writes 404 and false.
+func (s *Server) projectRepo(w http.ResponseWriter, project string) (*wgit.Repo, bool) {
+	repo, ok := s.repos[project]
+	if !ok {
+		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
+		return nil, false
+	}
+	return repo, true
+}
+
+// projectLibrarian returns the librarian for project or writes 404 and false.
+func (s *Server) projectLibrarian(w http.ResponseWriter, project string) (*librarian.Librarian, bool) {
+	lib, ok := s.librarians[project]
+	if !ok {
+		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
+		return nil, false
+	}
+	return lib, true
+}
+
 // resolvePagePath looks up the stored path for a page ID from the SQLite index.
 // Falls back to hash-prefix path for hash IDs, or flat path for legacy IDs.
 func (s *Server) resolvePagePath(project, id string) string {

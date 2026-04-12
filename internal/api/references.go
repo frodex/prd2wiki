@@ -20,8 +20,7 @@ type RefNode struct {
 
 func (s *Server) getReferences(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	if _, ok := s.repos[project]; !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
+	if _, ok := s.projectRepo(w, project); !ok {
 		return
 	}
 

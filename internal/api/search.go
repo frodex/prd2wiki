@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"sync"
 
@@ -11,8 +10,7 @@ import (
 
 func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	if _, ok := s.repos[project]; !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
+	if _, ok := s.projectRepo(w, project); !ok {
 		return
 	}
 
@@ -46,9 +44,8 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Text queries: run SQL full-text and vector semantic search concurrently.
-	lib, ok := s.librarians[project]
+	lib, ok := s.projectLibrarian(w, project)
 	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
 		return
 	}
 

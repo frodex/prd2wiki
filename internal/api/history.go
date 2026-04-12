@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,9 +22,8 @@ type DiffResult struct {
 
 func (s *Server) pageHistory(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
@@ -51,9 +49,8 @@ func (s *Server) pageHistory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) pageAtCommit(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
@@ -80,9 +77,8 @@ func (s *Server) pageAtCommit(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) pageDiff(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 

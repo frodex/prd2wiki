@@ -12,9 +12,8 @@ func (s *Server) deprecatePage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	id := r.PathValue("id")
 
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
 		return
 	}
 
@@ -56,9 +55,8 @@ func (s *Server) approvePage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	id := r.PathValue("id")
 
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
 		return
 	}
 
@@ -98,9 +96,8 @@ func (s *Server) restorePage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	id := r.PathValue("id")
 
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, "project not found", http.StatusNotFound)
 		return
 	}
 

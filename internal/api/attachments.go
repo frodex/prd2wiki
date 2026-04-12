@@ -26,9 +26,8 @@ var allowedTypes = map[string]string{
 
 func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
@@ -96,9 +95,8 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getAttachment(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
@@ -151,9 +149,8 @@ func (s *Server) getAttachment(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listAttachments(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 

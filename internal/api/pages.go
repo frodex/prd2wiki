@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -35,9 +34,8 @@ func (s *Server) updatePage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate bool) {
 	project := r.PathValue("project")
 
-	lib, ok := s.librarians[project]
+	lib, ok := s.projectLibrarian(w, project)
 	if !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
@@ -117,9 +115,8 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 
 func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
@@ -186,9 +183,8 @@ func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deletePage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	repo, ok := s.repos[project]
+	repo, ok := s.projectRepo(w, project)
 	if !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
 		return
 	}
 
@@ -221,8 +217,7 @@ func (s *Server) deletePage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listPages(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	if _, ok := s.repos[project]; !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
+	if _, ok := s.projectRepo(w, project); !ok {
 		return
 	}
 
