@@ -38,7 +38,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 		var items []PageListItem
 
 		if query != "" {
-			// Text queries go through the librarian → vector store
+			// Try vector search first, fall back to SQLite FTS
 			lib, ok := h.librarians[project]
 			if ok {
 				vresults, err := lib.Search(r.Context(), project, query, 20)
@@ -55,7 +55,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 							item := PageListItem{
 								ID: pr.ID, Title: pr.Title, Type: pr.Type,
 								Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
-								Score: fmt.Sprintf("%.0f%%", vr.Similarity*100),
+								Score: fmt.Sprintf("%.0f%% [vector]", vr.Similarity*100),
 							}
 							if h.treeHolder != nil && h.treeHolder.Get() != nil {
 								if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
@@ -64,6 +64,25 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 							}
 							items = append(items, item)
 						}
+					}
+				}
+			}
+			// Fallback: if vector search returned nothing, use SQLite FTS
+			if len(items) == 0 {
+				ftsResults, err := h.search.Search(project, query, typ, status, tag)
+				if err == nil {
+					for _, pr := range ftsResults {
+						item := PageListItem{
+							ID: pr.ID, Title: pr.Title, Type: pr.Type,
+							Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
+							Score: "[sql]",
+						}
+						if h.treeHolder != nil && h.treeHolder.Get() != nil {
+							if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
+								item.TreeHref = "/" + ent.URLPath()
+							}
+						}
+						items = append(items, item)
 					}
 				}
 			}

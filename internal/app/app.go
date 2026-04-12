@@ -262,8 +262,8 @@ func New(cfg Config) (*App, error) {
 		slog.Info("vector index empty, will rebuild from git in background")
 		go func() {
 			workers := runtime.NumCPU()
-			if workers > 4 {
-				workers = 4 // cap to avoid overwhelming embedder
+			if workers > 14 {
+				workers = 14
 			}
 			g, ctx := errgroup.WithContext(context.Background())
 			g.SetLimit(workers)
