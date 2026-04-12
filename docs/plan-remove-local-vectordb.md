@@ -18,11 +18,11 @@ Reviews and verification passes are **invalid for comparison** unless they state
 | Field | Value |
 |--------|--------|
 | **Wiki / prd2wiki root** | `/srv/prd2wiki` |
-| **Remote** | local only (not yet pushed to GitHub) |
+| **Remote** | `origin` → `https://github.com/frodex/prd2wiki.git` (local is ahead of remote) |
 | **Branch** | `main` |
 | **Commit** | run `git rev-parse HEAD` at review time |
-| **Librarian / pippi-librarian root** (if any claim references its source) | path + branch + commit, or **“not consulted”** |
-| **Other repos** (import tools, MCP servers, etc.) | path + commit or **“not consulted”** |
+| **Librarian / pippi-librarian root** | `/srv/pippi-librarian` — branch `main` — commit `cc96c4b` |
+| **Other repos** | none consulted |
 
 - Claims about **this** repository must be checked only against the **prd2wiki** row above.
 - Claims about **pippi-librarian** (e.g. Part 1 “Verified against pippi-librarian source”) must name that repo’s path and commit; do not assume it matches another reviewer’s checkout.
@@ -44,9 +44,9 @@ User searches → wiki calls librarian memory_search via unix socket
     → wiki renders results
 ```
 
-**Verified against pippi-librarian source:**
-- `table.go` function `SearchWithFilter`: `fused := rrfFuse(lexRanked, vecRanked, 60)` — BM25 + vector + RRF k=60 confirmed
-- `memsvc.go` type `WikiSearchHit`: returns `PageUUID`, `RecordID`, `Title`, `Snippet`, `Score`, `HistoryCount`
+**Verified against pippi-librarian source** (`/srv/pippi-librarian`, branch `main`, commit `cc96c4b`):
+- `internal/librarian/table.go` function `SearchWithFilter`: `fused := rrfFuse(lexRanked, vecRanked, 60)` — BM25 + vector + RRF k=60 confirmed
+- `internal/librarian/memsvc.go` type `WikiSearchHit`: returns `PageUUID`, `RecordID`, `Title`, `Snippet`, `Score`, `HistoryCount`
 - `cmd/pippi-librarian/main.go` memory_search handler: serializes matches array with all WikiSearchHit fields
 
 **One embedder (TEI).** Called by the librarian only. The wiki never embeds.
