@@ -297,9 +297,10 @@ type SearchResult struct {
 	Similarity float64 `json:"similarity"`
 }
 
-// Search runs hybrid semantic search: prefers pippi-librarian memory_search (wiki:{projectUUID} namespace)
-// when configured and healthy; falls back to the local vector store and logs a warning.
-// The query is normalized through the vocabulary before sending to either backend.
+// Search calls pippi-librarian memory_search (wiki:{projectUUID} namespace).
+// Returns an error when the librarian is unavailable — callers (api/search.go, web/search.go)
+// handle FTS fallback at the HTTP layer.
+// The query is normalized through the vocabulary before sending.
 func (l *Librarian) Search(ctx context.Context, project, query string, limit int) ([]SearchResult, error) {
 	normalizedQuery := normalizeQueryWithVocab(l.vocab, query)
 
@@ -316,8 +317,9 @@ func (l *Librarian) Search(ctx context.Context, project, query string, limit int
 	return nil, fmt.Errorf("librarian search unavailable")
 }
 
-// FindSimilar finds pages similar to the given page, preferring pippi-librarian memory_search
-// with the page body as query (metadata-enriched embeddings live in the librarian); falls back to the local vector store.
+// FindSimilar finds pages similar to the given page via pippi-librarian memory_search,
+// using the page body as query (metadata-enriched embeddings live in the librarian).
+// Returns nil, nil when the librarian is unavailable or no matches survive filtering.
 func (l *Librarian) FindSimilar(ctx context.Context, project, pageID string, limit int) ([]SearchResult, error) {
 	if l.libClient != nil && l.projectUUID != "" {
 		body, err := l.readPageBodyAcrossBranches(pageID)

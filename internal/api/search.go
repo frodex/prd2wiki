@@ -42,7 +42,7 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Text queries: run SQL full-text and vector semantic search concurrently.
+	// Text queries: run SQL full-text and librarian semantic search concurrently.
 	lib, ok := s.projectLibrarian(w, project)
 	if !ok {
 		return
@@ -64,7 +64,7 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 		sqlResults, sqlErr = s.search.FullText(project, query)
 	}()
 
-	// Vector semantic search
+	// Librarian semantic search
 	go func() {
 		defer wg.Done()
 		vresults, err := lib.Search(r.Context(), project, query, 20)

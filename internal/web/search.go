@@ -39,7 +39,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 		var items []PageListItem
 
 		if query != "" {
-			// Try vector search first, fall back to SQLite FTS
+			// Try librarian semantic search first, fall back to SQLite FTS
 			lib, ok := h.librarians[project]
 			if ok {
 				vresults, err := lib.Search(r.Context(), project, query, 20)
@@ -70,7 +70,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			// Fallback: if vector search returned nothing, use SQLite FTS
+			// Fallback: if librarian search returned nothing, use SQLite FTS
 			if len(items) == 0 {
 				ftsResults, err := h.search.Search(project, query, typ, status, tag)
 				if err == nil {
