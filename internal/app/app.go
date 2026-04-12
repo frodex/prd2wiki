@@ -219,9 +219,9 @@ func New(cfg Config) (*App, error) {
 		slog.Info("vector index loaded, skipping rebuild", "entries", vstore.Count())
 	}
 
-	// Create API server and web handler.
-	apiSrv := api.NewServer(cfg.Server.Addr, repos, db, librarians)
+	// Create web handler first (builds edit caches), then API server shares the caches.
 	webHandler := web.NewHandler(repos, db, librarians)
+	apiSrv := api.NewServer(cfg.Server.Addr, repos, db, librarians, webHandler.EditCaches())
 
 	// Compose both into a single root mux.
 	mux := http.NewServeMux()

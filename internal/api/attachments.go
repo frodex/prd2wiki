@@ -69,7 +69,7 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	// Store in git.
 	branch := r.URL.Query().Get("branch")
 	if branch == "" {
-		branch = "truth"
+		branch = "draft/incoming"
 	}
 
 	gitPath := fmt.Sprintf("pages/%s/_attachments/%s", id, filename)
@@ -106,11 +106,26 @@ func (s *Server) getAttachment(w http.ResponseWriter, r *http.Request) {
 	filename := r.PathValue("filename")
 
 	branch := r.URL.Query().Get("branch")
-	if branch == "" {
-		branch = "truth"
-	}
 
 	gitPath := fmt.Sprintf("pages/%s/_attachments/%s", id, filename)
+
+	// If no branch specified, search all branches for the attachment.
+	if branch == "" {
+		branches, _ := repo.ListBranches()
+		found := false
+		for _, b := range branches {
+			if repo.HasPage(b, gitPath) {
+				branch = b
+				found = true
+				break
+			}
+		}
+		if !found {
+			http.Error(w, "attachment not found", http.StatusNotFound)
+			return
+		}
+	}
+
 	data, err := repo.ReadPage(branch, gitPath)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {

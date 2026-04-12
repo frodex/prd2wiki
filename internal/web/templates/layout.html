@@ -28,6 +28,22 @@
     <main class="wiki-main">
         {{template "content" .}}
     </main>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs';
+        mermaid.registerLayoutLoaders(elkLayouts);
+        // Goldmark renders ```mermaid as <pre><code class="language-mermaid">
+        // Mermaid.js expects <pre class="mermaid"> or <div class="mermaid">
+        // Convert before mermaid.initialize runs.
+        document.querySelectorAll('code.language-mermaid').forEach(code => {
+            const pre = code.parentElement;
+            const div = document.createElement('pre');
+            div.className = 'mermaid';
+            div.textContent = code.textContent;
+            pre.replaceWith(div);
+        });
+        mermaid.initialize({ startOnLoad: true, theme: 'neutral', layout: 'elk' });
+    </script>
 </body>
 </html>
 {{end}}

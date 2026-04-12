@@ -63,7 +63,7 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo := h.repos[project]
+	cache := h.edits[project]
 
 	allItems := make([]PageListItem, len(results))
 	for i, pr := range results {
@@ -77,11 +77,10 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 			Module:     pr.Module,
 			Category:   pr.Category,
 		}
-		if repo != nil {
-			commits, _ := repo.PageHistoryAllBranches(pr.Path, 1)
-			if len(commits) > 0 {
-				allItems[i].LastEditBy = commits[0].Author
-				allItems[i].LastEditDate = commits[0].Date.Format("2006-01-02 15:04")
+		if cache != nil {
+			if info, ok := cache.Get(pr.Path); ok {
+				allItems[i].LastEditBy = info.Author
+				allItems[i].LastEditDate = info.Date
 			}
 		}
 	}

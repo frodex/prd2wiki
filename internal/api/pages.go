@@ -98,6 +98,11 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 		return
 	}
 
+	// Update edit cache so page list shows current info without restart.
+	if cache, ok := s.edits[project]; ok && cache != nil {
+		cache.Touch(result.Path, req.Author)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{

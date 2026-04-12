@@ -9,6 +9,7 @@ import (
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/schema"
+	"github.com/frodex/prd2wiki/internal/web"
 )
 
 // Server holds application state and serves the REST API.
@@ -19,11 +20,12 @@ type Server struct {
 	indexer    *index.Indexer
 	search     *index.Searcher
 	librarians map[string]*librarian.Librarian
+	edits      map[string]*web.EditCache
 }
 
 // NewServer creates a Server with the given address, repos, database, and librarians.
 // All vector search and content operations go through the librarians.
-func NewServer(addr string, repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian) *Server {
+func NewServer(addr string, repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, edits map[string]*web.EditCache) *Server {
 	return &Server{
 		addr:       addr,
 		repos:      repos,
@@ -31,6 +33,7 @@ func NewServer(addr string, repos map[string]*wgit.Repo, db *sql.DB, librarians 
 		indexer:    index.NewIndexer(db),
 		search:     index.NewSearcher(db),
 		librarians: librarians,
+		edits:      edits,
 	}
 }
 

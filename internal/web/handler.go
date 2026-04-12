@@ -40,6 +40,7 @@ type Handler struct {
 	librarians map[string]*librarian.Librarian
 	db         *sql.DB
 	templates  map[string]*template.Template
+	edits      map[string]*EditCache // per-project edit info cache
 }
 
 // NewHandler creates a Handler with pre-parsed templates.
@@ -50,6 +51,25 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		librarians: librarians,
 		db:         db,
 		templates:  make(map[string]*template.Template),
+		edits:      make(map[string]*EditCache),
+	}
+
+	// Build edit caches in background so startup isn't blocked.
+	for project, repo := range repos {
+		cache := NewEditCache()
+		h.edits[project] = cache
+		go func(proj string, r *wgit.Repo, c *EditCache) {
+			searcher := index.NewSearcher(db)
+			pages, err := searcher.ListAll(proj)
+			if err != nil {
+				return
+			}
+			paths := make([]string, len(pages))
+			for i, p := range pages {
+				paths[i] = p.Path
+			}
+			c.Build(r, paths)
+		}(project, repo, cache)
 	}
 
 	// Parse each page template together with the layout.
@@ -75,6 +95,11 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 	}
 
 	return h
+}
+
+// EditCaches returns the per-project edit caches so the API server can call Touch on writes.
+func (h *Handler) EditCaches() map[string]*EditCache {
+	return h.edits
 }
 
 // Register adds web routes to the given ServeMux.

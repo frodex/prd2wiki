@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -294,8 +295,7 @@ func (l *Librarian) submitVerbatim(ctx context.Context, req SubmitRequest) (*Sub
 	}
 
 	if err := l.indexInVectorStore(ctx, req.Project, req.Frontmatter, req.Body); err != nil {
-		// Non-fatal: log but continue.
-		_ = err
+		slog.Warn("vector index failed", "page", req.Frontmatter.ID, "error", err)
 	}
 
 	return &SubmitResult{

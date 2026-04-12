@@ -359,10 +359,12 @@ func runIngest(manifestFile, dataDir, branch string, dryRun bool) {
 	idx := 0
 
 	// Ingest chains: each chain becomes ONE page with sequential commits.
+	// The page is stored at the source directory path of the first version,
+	// preserving the original project's directory structure (DECISION-004).
 	for _, c := range manifest.Chains {
 		idx++
 		pageID := c.BaseID
-		pagePath := fmt.Sprintf("pages/%s.md", pageID)
+		pagePath := sourceRelativePath(c.Versions[0].File, pageID)
 
 		for vi, v := range c.Versions {
 			srcPath := filepath.Join(sourceDir, v.File)
@@ -460,7 +462,7 @@ func runIngest(manifestFile, dataDir, branch string, dryRun bool) {
 			continue
 		}
 
-		pagePath := fmt.Sprintf("pages/%s.md", s.ID)
+		pagePath := sourceRelativePath(s.File, s.ID)
 		msg := fmt.Sprintf("ingest: %s from %s", s.ID, s.File)
 		author := s.Author + "@prd2wiki"
 
@@ -486,6 +488,18 @@ func openOrInitRepo(dataDir, project string) (*wgit.Repo, error) {
 		}
 	}
 	return repo, nil
+}
+
+// sourceRelativePath builds a git path that preserves the source directory structure.
+// Given a source file like "docs/solutions/foo-v0.2.md" and pageID "foo",
+// it returns "pages/docs/solutions/foo.md" — keeping the directory hierarchy
+// but using the canonical pageID as the filename (DECISION-004).
+func sourceRelativePath(sourceFile, pageID string) string {
+	dir := filepath.Dir(sourceFile)
+	if dir == "." || dir == "" {
+		return fmt.Sprintf("pages/%s.md", pageID)
+	}
+	return fmt.Sprintf("pages/%s/%s.md", filepath.ToSlash(dir), pageID)
 }
 
 // createProjectPage creates a type=project page.

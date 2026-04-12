@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/frodex/prd2wiki/internal/index"
 )
@@ -44,37 +45,75 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Text queries go through the librarian → vector store (semantic search)
+	// Text queries: run SQL full-text and vector semantic search concurrently.
 	lib, ok := s.librarians[project]
 	if !ok {
 		http.Error(w, "project not found", http.StatusNotFound)
 		return
 	}
 
-	vresults, err := lib.Search(r.Context(), project, query, 20)
-	if err != nil {
-		http.Error(w, "search: "+err.Error(), http.StatusInternalServerError)
-		return
+	var (
+		wg         sync.WaitGroup
+		sqlResults []index.PageResult
+		sqlErr     error
+		vecIDs     []string
+		vecErr     error
+	)
+
+	wg.Add(2)
+
+	// SQL FTS5 search
+	go func() {
+		defer wg.Done()
+		sqlResults, sqlErr = s.search.FullText(project, query)
+	}()
+
+	// Vector semantic search
+	go func() {
+		defer wg.Done()
+		vresults, err := lib.Search(r.Context(), project, query, 20)
+		if err != nil {
+			vecErr = err
+			return
+		}
+		seen := make(map[string]bool)
+		for _, vr := range vresults {
+			if !seen[vr.PageID] {
+				seen[vr.PageID] = true
+				vecIDs = append(vecIDs, vr.PageID)
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	// Merge: SQL results first (exact matches), then vector results not already seen.
+	seen := make(map[string]bool)
+	var results []index.PageResult
+
+	if sqlErr == nil {
+		for _, r := range sqlResults {
+			seen[r.ID] = true
+			results = append(results, r)
+		}
 	}
 
-	// Enrich vector results with metadata from SQLite
-	var results []index.PageResult
-	seen := make(map[string]bool)
-	for _, vr := range vresults {
-		if seen[vr.PageID] {
-			continue
-		}
-		seen[vr.PageID] = true
-
-		pages, err := s.search.ByID(project, vr.PageID)
-		if err == nil && len(pages) > 0 {
-			results = append(results, pages[0])
-		} else {
-			results = append(results, index.PageResult{
-				ID:      vr.PageID,
-				Title:   vr.PageID,
-				Project: project,
-			})
+	if vecErr == nil {
+		for _, id := range vecIDs {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			pages, err := s.search.ByID(project, id)
+			if err == nil && len(pages) > 0 {
+				results = append(results, pages[0])
+			} else {
+				results = append(results, index.PageResult{
+					ID:      id,
+					Title:   id,
+					Project: project,
+				})
+			}
 		}
 	}
 
