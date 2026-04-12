@@ -1,0 +1,39 @@
+# Agent / development notes
+
+## Canon specification
+
+**Product / implementation spec (authoritative):**
+
+`http://192.168.22.56:8082/projects/default/pages/8634f02`
+
+(Same page on the public host: `https://wiki.droidware.ai/projects/default/pages/8634f02`.)
+
+The **WebFetch / browser fetch tool** blocks private IPs, so it cannot load LAN URLs.
+
+**This machine can:** use the shell to `curl` LAN pages, e.g.  
+`curl -sS "http://192.168.22.56:8082/projects/default/pages/8634f02"`  
+(or save to a file under `docs/` if you want a pinned offline copy).
+
+**Cross-repo (prd2wiki ↔ pippi-librarian):** Read **`docs/constraints-prd2wiki-pippi.md`** before Phase 2, Phase 3a.7 (`libclient` / `syncToLibrarian`), or any code that opens the librarian socket — binding with the Master Plan § Cross-Repo Boundary.
+
+## Wiki base URL (this environment)
+
+When documentation, scripts, or copy refer to **`3200.droidware.ai`**, use the local wiki instead:
+
+**`http://192.168.22.56:8082`**
+
+Treat that as the canonical base URL for browsing, curl checks, and links in this LAN setup.
+
+## PHAT TOAD — agent conduct (mandatory)
+
+**Source:** `/srv/PHAT-TOAD-with-Trails/steward/system.md` (v0.0.1, draft)
+
+Applies alongside the wiki plan. In practice:
+
+- **Verify before claiming** — Say what is inferred vs run/observed; ask for correction.
+- **Constraints first** — Hard limits, anti-patterns, test invariants, performance contracts before architecture; ask *what breaks if touched wrong* when touching another component or repo.
+- **No premature “let’s build”** — Scope, interfaces, and constraints resolved for the current slice; cross-node work needs explicit constraint artifacts and comprehension (describe their system; owner corrects).
+- **Proposals, not decrees** — Ownership and direction are proposals until you confirm.
+- **No shallow “no concerns”** — Walk fragile surfaces against the plan; silence on a known risk is a red flag.
+- **PRD discipline** — Unilateral specs are proposals; co-sign where multiple parties are involved. Tag inherited facts `[UNVERIFIED — …]` until verified in this codebase.
+- **Complete vs clean** — Handoff docs, constraint updates, and provenance matter as much as passing tests.
