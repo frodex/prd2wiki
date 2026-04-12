@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/frodex/prd2wiki/internal/tree"
@@ -49,6 +50,12 @@ func (h *Handler) serveTreePage(w http.ResponseWriter, r *http.Request, treeRoot
 	}
 	if len(parts) == 0 {
 		return false
+	}
+
+	urlPath := strings.Join(parts, "/")
+	if proj, ok := idx.ProjectByTreePath(urlPath); ok {
+		h.serveTreeDirectory(w, r, proj, idx, urlPath)
+		return true
 	}
 
 	cur := treeRoot
@@ -98,6 +105,38 @@ func (h *Handler) serveTreePage(w http.ResponseWriter, r *http.Request, treeRoot
 	gitPath := "pages/" + strings.TrimSpace(ent.Page.UUID) + ".md"
 	h.viewPageAtGitPath(w, ent.Project.RepoKey, gitPath, repo)
 	return true
+}
+
+func (h *Handler) serveTreeDirectory(w http.ResponseWriter, r *http.Request, proj *tree.Project, idx *tree.Index, urlPath string) {
+	var entries []TreeDirEntry
+	for _, e := range idx.AllPageEntries() {
+		if e.Project.Path != proj.Path {
+			continue
+		}
+		title := strings.TrimSpace(e.Page.Title)
+		if title == "" {
+			title = e.Page.Slug
+		}
+		entries = append(entries, TreeDirEntry{
+			Title: title,
+			Slug:  e.Page.Slug,
+			Href:  "/" + e.Page.TreePath,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return strings.ToLower(entries[i].Title) < strings.ToLower(entries[j].Title)
+	})
+	data := PageData{
+		Project:     proj.RepoKey,
+		Title:       proj.Name + " — wiki",
+		Content:     TreeDirectoryData{ProjectName: proj.Name, TreePath: urlPath, Pages: entries},
+		Breadcrumbs: treeBreadcrumbs(idx, urlPath, ""),
+	}
+	h.preparePageData(&data)
+	t := h.templates["templates/tree_directory.html"]
+	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func splitValidatedPathSegments(raw string) ([]string, error) {

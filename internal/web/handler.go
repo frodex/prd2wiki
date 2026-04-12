@@ -87,6 +87,7 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		"templates/page_history.html",
 		"templates/page_diff.html",
 		"templates/error.html",
+		"templates/tree_directory.html",
 	}
 	for _, pt := range pageTemplates {
 		// page_view needs the page_actions partial
