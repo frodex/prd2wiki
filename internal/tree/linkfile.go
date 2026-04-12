@@ -5,7 +5,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
+
+// linkFileMu serializes updates to the same page's .link file (by page UUID).
+var linkFileMu sync.Map // string -> *sync.Mutex
+
+func lockLinkFile(pageUUID string) func() {
+	v, _ := linkFileMu.LoadOrStore(pageUUID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
 
 // WriteProjectUUIDFile writes .uuid under treeRoot/projectRel (e.g. tree/prd2wiki).
 func WriteProjectUUIDFile(treeRoot, projectRel, projectUUID, displayName string) error {
@@ -78,4 +89,40 @@ func safeSlug(s string) bool {
 		return false
 	}
 	return true
+}
+
+// UpdateLinkFileLibrarianHead sets line 2 to librarianHeadID (volatile mem_ head).
+// Line 1 must be pageUUID; lines 3+ (title and any continuation) are preserved.
+func UpdateLinkFileLibrarianHead(treeRoot, treePath, pageUUID, librarianHeadID string) error {
+	unlock := lockLinkFile(pageUUID)
+	defer unlock()
+
+	treePath = strings.Trim(treePath, "/")
+	if treePath == "" {
+		return fmt.Errorf("empty tree path")
+	}
+	if strings.Contains(treePath, "..") {
+		return fmt.Errorf("invalid tree path")
+	}
+	p := filepath.Join(treeRoot, filepath.FromSlash(treePath)+".link")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	if len(lines) < 1 || strings.TrimSpace(lines[0]) == "" {
+		return fmt.Errorf(".link: missing page UUID on line 1")
+	}
+	if strings.TrimSpace(lines[0]) != strings.TrimSpace(pageUUID) {
+		return fmt.Errorf(".link: page UUID mismatch")
+	}
+	for len(lines) < 3 {
+		lines = append(lines, "")
+	}
+	lines[1] = strings.TrimSpace(librarianHeadID)
+	out := strings.Join(lines, "\n")
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return os.WriteFile(p, []byte(out), 0o644)
 }

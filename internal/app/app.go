@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 
@@ -19,6 +20,7 @@ import (
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
+	"github.com/frodex/prd2wiki/internal/libclient"
 	"github.com/frodex/prd2wiki/internal/tree"
 	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
@@ -103,6 +105,8 @@ func New(cfg Config) (*App, error) {
 	if len(treeIdx.Projects) == 0 {
 		return nil, fmt.Errorf("no projects under tree %q (need directories with .uuid)", treeAbs)
 	}
+
+	treeHolder := tree.NewIndexHolder(treeAbs, dataAbs, treeIdx)
 
 	// Stable unique repo keys from the tree (e.g. default, battletech).
 	seen := make(map[string]bool)
@@ -228,10 +232,22 @@ func New(cfg Config) (*App, error) {
 	}
 	_ = profileStore // available for future use
 
+	var pippi *libclient.Client
+	if socket := strings.TrimSpace(cfg.Librarian.Socket); socket != "" {
+		pippi = libclient.New(socket, "")
+		if pippi != nil {
+			slog.Info("pippi-librarian sync enabled", "socket", socket)
+		}
+	}
+	var libOpts []librarian.Option
+	if pippi != nil {
+		libOpts = append(libOpts, librarian.WithPippiLibrarian(pippi, treeHolder))
+	}
+
 	librarians := make(map[string]*librarian.Librarian)
 	for _, project := range projectKeys {
 		vocab := vocabulary.NewStore(db)
-		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab)
+		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab, libOpts...)
 	}
 
 	// Rebuild vector index only if nothing was loaded from disk (parallel via errgroup).
@@ -267,9 +283,6 @@ func New(cfg Config) (*App, error) {
 		slog.Info("vector index loaded, skipping rebuild", "entries", vstore.Count())
 	}
 
-	_ = cfg.Librarian.Socket // reserved for librarian integration (Phase 3a.7+)
-
-	treeHolder := tree.NewIndexHolder(treeAbs, dataAbs, treeIdx)
 	blobStore := blob.NewStore(dataAbs)
 
 	migrationAliases, err := wgit.LoadMigrationAliases(dataAbs)

@@ -1,0 +1,130 @@
+// Package libclient calls pippi-librarian over a unix HTTP socket (POST /tools/call).
+package libclient
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+)
+
+// Client is a minimal HTTP client for the librarian tool endpoint.
+type Client struct {
+	http     *http.Client
+	socket   string
+	apiKey   string
+	baseURL  string // host part for http.Request (unix transport ignores host)
+}
+
+// toolCallRequest matches pippi-librarian internal/librarian.ToolCallRequest.
+type toolCallRequest struct {
+	Name string         `json:"name"`
+	Args map[string]any `json:"args,omitempty"`
+}
+
+// toolCallResponse matches pippi-librarian ToolCallResponse (partial).
+type toolCallResponse struct {
+	OK      bool `json:"ok"`
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// New returns a client for the given unix socket path, or nil if socketPath is empty.
+func New(socketPath, apiKey string) *Client {
+	socketPath = strings.TrimSpace(socketPath)
+	if socketPath == "" {
+		return nil
+	}
+	tr := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", socketPath)
+		},
+	}
+	return &Client{
+		http: &http.Client{
+			Transport: tr,
+			Timeout:   60 * time.Second,
+		},
+		socket:  socketPath,
+		apiKey:  strings.TrimSpace(apiKey),
+		baseURL: "http://unix",
+	}
+}
+
+// MemoryStore calls memory_store and returns the new head record_id (mem_…).
+func (c *Client) MemoryStore(ctx context.Context, namespace, pageUUID, content string, metadata map[string]any) (string, error) {
+	if c == nil || c.http == nil {
+		return "", fmt.Errorf("libclient: nil client")
+	}
+	if strings.TrimSpace(namespace) == "" || strings.TrimSpace(pageUUID) == "" {
+		return "", fmt.Errorf("libclient: namespace and page_uuid required")
+	}
+	args := map[string]any{
+		"namespace": namespace,
+		"page_uuid": pageUUID,
+		"content":   content,
+	}
+	if metadata != nil {
+		args["metadata"] = metadata
+	}
+	body, err := json.Marshal(toolCallRequest{Name: "memory_store", Args: args})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/tools/call", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	var tcr toolCallResponse
+	if err := json.Unmarshal(raw, &tcr); err != nil {
+		return "", fmt.Errorf("libclient: decode response: %w; body=%s", err, truncate(string(raw), 500))
+	}
+	if !tcr.OK || len(tcr.Content) == 0 {
+		if tcr.Error != "" {
+			return "", fmt.Errorf("libclient: memory_store: %s", tcr.Error)
+		}
+		return "", fmt.Errorf("libclient: memory_store failed (HTTP %d)", resp.StatusCode)
+	}
+	text := tcr.Content[0].Text
+	var payload struct {
+		RecordID string `json:"record_id"`
+		Version  int    `json:"version"`
+		Created  bool   `json:"created"`
+	}
+	if err := json.Unmarshal([]byte(text), &payload); err != nil {
+		return "", fmt.Errorf("libclient: parse tool result JSON: %w", err)
+	}
+	if strings.TrimSpace(payload.RecordID) == "" {
+		return "", fmt.Errorf("libclient: empty record_id in response")
+	}
+	return payload.RecordID, nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}

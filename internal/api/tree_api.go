@@ -10,6 +10,7 @@ import (
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/schema"
 	"github.com/frodex/prd2wiki/internal/tree"
+	"github.com/google/uuid"
 )
 
 const apiTreePrefix = "/api/tree"
@@ -210,14 +211,25 @@ func (s *Server) treeCreatePage(w http.ResponseWriter, r *http.Request, projectT
 		return
 	}
 
-	pageUUID := "" // filled by Submit
+	// Allocate page UUID and write .link before git submit so async librarian sync can update line 2.
+	pageUUID := uuid.New().String()
 	fm := &schema.Frontmatter{
+		ID:        pageUUID,
 		Title:     req.Title,
 		Type:      req.Type,
 		Status:    req.Status,
 		Tags:      req.Tags,
 		DCCreator: req.Author,
 		DCCreated: schema.Date{Time: time.Now().UTC()},
+	}
+
+	if err := tree.WriteLinkFile(s.treeHolder.TreeRoot(), proj.Path, slug, pageUUID, req.Title); err != nil {
+		http.Error(w, "write .link: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := s.treeHolder.Refresh(); err != nil {
+		http.Error(w, "tree refresh: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	res, err := lib.Submit(r.Context(), librarian.SubmitRequest{
@@ -228,23 +240,19 @@ func (s *Server) treeCreatePage(w http.ResponseWriter, r *http.Request, projectT
 		Intent:          intent,
 		Author:          req.Author,
 		UseFlatUUIDPath: true,
+		ProjectUUID:     proj.UUID,
+		PageUUID:        pageUUID,
 	})
 	if err != nil {
+		_ = tree.DeleteLinkFile(s.treeHolder.TreeRoot(), proj.Path, slug)
+		_ = s.treeHolder.Refresh()
 		http.Error(w, "submit failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if !res.Saved {
+		_ = tree.DeleteLinkFile(s.treeHolder.TreeRoot(), proj.Path, slug)
+		_ = s.treeHolder.Refresh()
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]interface{}{"valid": false, "issues": res.Issues})
-		return
-	}
-	pageUUID = strings.TrimSpace(fm.ID)
-
-	if err := tree.WriteLinkFile(s.treeHolder.TreeRoot(), proj.Path, slug, pageUUID, req.Title); err != nil {
-		http.Error(w, "write .link: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := s.treeHolder.Refresh(); err != nil {
-		http.Error(w, "tree refresh: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -313,6 +321,8 @@ func (s *Server) treeUpdatePage(w http.ResponseWriter, r *http.Request, rest str
 		Intent:          intent,
 		Author:          req.Author,
 		UseFlatUUIDPath: true,
+		PageUUID:        ent.Page.UUID,
+		ProjectUUID:     ent.Project.UUID,
 	})
 	if err != nil {
 		http.Error(w, "submit failed: "+err.Error(), http.StatusInternalServerError)

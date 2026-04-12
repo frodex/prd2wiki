@@ -10,6 +10,8 @@ import (
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
+	"github.com/frodex/prd2wiki/internal/libclient"
+	"github.com/frodex/prd2wiki/internal/tree"
 	"github.com/google/uuid"
 
 	"github.com/frodex/prd2wiki/internal/schema"
@@ -82,16 +84,34 @@ type Librarian struct {
 	indexer *index.Indexer
 	vstore  *vectordb.Store
 	vocab   *vocabulary.Store
+
+	libClient  *libclient.Client
+	treeHolder *tree.IndexHolder
+}
+
+// Option configures optional integrations (e.g. pippi-librarian sync).
+type Option func(*Librarian)
+
+// WithPippiLibrarian enables async push to pippi-librarian and .link line 2 updates when cli is non-nil.
+func WithPippiLibrarian(cli *libclient.Client, holder *tree.IndexHolder) Option {
+	return func(l *Librarian) {
+		l.libClient = cli
+		l.treeHolder = holder
+	}
 }
 
 // New creates a new Librarian.
-func New(repo *wgit.Repo, indexer *index.Indexer, vstore *vectordb.Store, vocab *vocabulary.Store) *Librarian {
-	return &Librarian{
+func New(repo *wgit.Repo, indexer *index.Indexer, vstore *vectordb.Store, vocab *vocabulary.Store, opts ...Option) *Librarian {
+	l := &Librarian{
 		repo:    repo,
 		indexer: indexer,
 		vstore:  vstore,
 		vocab:   vocab,
 	}
+	for _, o := range opts {
+		o(l)
+	}
+	return l
 }
 
 // generateID creates a content-addressed hash ID from the title and current time,
@@ -134,14 +154,59 @@ func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 	return l.submit(ctx, req)
 }
 
-// maybeSyncToLibrarian is reserved for Phase 3a (libclient → pippi-librarian). It no-ops
-// until both UUIDs are set.
+func projectGitShard(projectUUID string) string {
+	projectUUID = strings.TrimSpace(projectUUID)
+	if len(projectUUID) >= 8 {
+		return projectUUID[:8]
+	}
+	return projectUUID
+}
+
+// maybeSyncToLibrarian pushes the page to pippi-librarian (async) when configured.
 func (l *Librarian) maybeSyncToLibrarian(ctx context.Context, req SubmitRequest, res *SubmitResult) {
-	if req.PageUUID == "" || req.ProjectUUID == "" {
+	if l == nil || l.libClient == nil || l.treeHolder == nil || res == nil || !res.Saved {
+		return
+	}
+	pageUUID := strings.TrimSpace(req.PageUUID)
+	if pageUUID == "" && req.Frontmatter != nil {
+		pageUUID = strings.TrimSpace(req.Frontmatter.ID)
+	}
+	projectUUID := strings.TrimSpace(req.ProjectUUID)
+	if projectUUID == "" || pageUUID == "" {
 		return
 	}
 	_ = ctx
-	_ = res
+	commitHash := res.CommitHash
+	reqCopy := req
+	go l.runSyncToLibrarian(reqCopy, pageUUID, projectUUID, commitHash)
+}
+
+func (l *Librarian) runSyncToLibrarian(req SubmitRequest, pageUUID, projectUUID, commitHash string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ext := map[string]any{
+		"source_repo":   "proj_" + projectGitShard(projectUUID) + ".git",
+		"source_branch": req.Branch,
+		"source_commit": commitHash,
+		"author":        req.Author,
+	}
+	if req.Frontmatter != nil {
+		ext["page_title"] = req.Frontmatter.Title
+		ext["page_type"] = req.Frontmatter.Type
+		ext["page_status"] = req.Frontmatter.Status
+		ext["page_tags"] = strings.Join(req.Frontmatter.Tags, ",")
+	}
+
+	ns := "wiki:" + projectUUID
+	headID, err := l.libClient.MemoryStore(ctx, ns, pageUUID, string(req.Body), ext)
+	if err != nil {
+		slog.Warn("librarian sync failed", "page", pageUUID, "err", err)
+		return
+	}
+	if err := l.treeHolder.UpdateLibrarianHeadInLink(pageUUID, headID); err != nil {
+		slog.Warn("librarian .link line 2 update failed", "page", pageUUID, "err", err)
+	}
 }
 
 // SearchResult holds a search result with page ID and relevance.

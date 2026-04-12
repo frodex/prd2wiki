@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -49,4 +50,23 @@ func (h *IndexHolder) TreeRoot() string {
 		return ""
 	}
 	return h.treeRoot
+}
+
+// UpdateLibrarianHeadInLink writes librarian head ID to .link line 2 and rescans the tree index.
+func (h *IndexHolder) UpdateLibrarianHeadInLink(pageUUID, librarianHeadID string) error {
+	if h == nil {
+		return fmt.Errorf("tree: nil IndexHolder")
+	}
+	idx := h.Get()
+	if idx == nil {
+		return fmt.Errorf("tree: nil index")
+	}
+	ent, ok := idx.PageByUUID(strings.TrimSpace(pageUUID))
+	if !ok {
+		return fmt.Errorf("tree: unknown page UUID %s", pageUUID)
+	}
+	if err := UpdateLinkFileLibrarianHead(h.treeRoot, ent.Page.TreePath, pageUUID, librarianHeadID); err != nil {
+		return err
+	}
+	return h.Refresh()
 }
