@@ -384,13 +384,27 @@ func commitMessage(intent, title string) string {
 }
 
 // indexInVectorStore indexes the page body into the vector store.
+// Title and tags are prepended to each chunk so vector similarity
+// matches on page identity, not just body content.
 func (l *Librarian) indexInVectorStore(ctx context.Context, project string, fm *schema.Frontmatter, body []byte) error {
 	chunks := ChunkByHeadings(string(body))
 	if len(chunks) == 0 {
-		// Fall back to a single chunk with the whole body.
 		chunks = []vectordb.TextChunk{
 			{Section: fm.Title, Text: string(body)},
 		}
+	}
+	// Prepend title + tags to each chunk for better search relevance.
+	// Without this, vector search only matches on body content and misses
+	// pages where the title/tags are the best match for the query.
+	prefix := fm.Title
+	if len(fm.Tags) > 0 {
+		prefix += " " + strings.Join(fm.Tags, " ")
+	}
+	if fm.Type != "" {
+		prefix += " " + fm.Type
+	}
+	for i := range chunks {
+		chunks[i].Text = prefix + "\n\n" + chunks[i].Text
 	}
 	tags := ""
 	if len(fm.Tags) > 0 {
