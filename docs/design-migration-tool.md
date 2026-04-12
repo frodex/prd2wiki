@@ -1,205 +1,186 @@
 # DESIGN: prd2wiki-migrate — History-Preserving Page Migration
 
 **Date:** 2026-04-12
-**Status:** Draft — needs implementation
-**Problem:** Pre-flight B migration lost all git history (delete+add instead of rename), broke 302 cross-references, and set wrong dates.
+**Status:** Working prototype — tested on live data, needs hardening into production tool
+**Code:** `cmd/prd2wiki-migrate/main.go`, `internal/migrate/`
 
-## Why This Is a Feature, Not a Script
+## What This Tool Does
 
-Page migration happens every time:
+Migrates wiki pages from old hash-prefix IDs (`pages/86/34f02.md`) to UUID-based flat paths (`pages/{uuid}.md`), preserving full git history, fixing cross-references, correcting dates, and creating the tree directory structure.
+
+This is a **feature of the wiki**, not a one-time script. It runs every time:
 - A backup is imported to a new instance
-- Pages move between projects
-- The wiki upgrades from old ID format to UUID format
-- Data is restored from a backup after a failure
+- The wiki upgrades ID format
+- Data is restored after failure
+- Pages are bulk-reorganized
 
-The migration tool must be a reliable, repeatable part of the wiki — not a one-time script that gets thrown away.
+## What We Learned (Failure History)
 
-## What Went Wrong in Pre-flight B
+### Attempt 1: Pre-flight B (FAILED)
 
-| Problem | Cause | Impact |
-|---------|-------|--------|
-| **Git history lost** | Migration did `delete old file` + `add new file` as separate commits. Git sees this as "old file deleted, new file created" — no rename tracking. | Every page shows 1 commit ("phase-b: migrate"). All version history gone. |
-| **Cross-references broken** | 302 links like `/projects/default/pages/8634f02` in page content not updated to new UUIDs or tree paths. | Clicking any cross-reference in any page → 404. |
-| **Dates wrong** | `dc.created` in frontmatter was already set to "today" by `wiki_propose`. Migration didn't fix them from git history. | All pages appear to have the same creation date. Sort by date useless. |
-| **Migration noise in git log** | 2-3 commits per page (migrate, remove old path, move attachment). | 1000+ junk commits burying real edit history. |
+The implementing agent wrote `scripts/run-phase-b.sh` and `cmd/prd2wiki-migrate-phaseb/main.go`. It ran against live data.
 
-## Requirements
+**Failures:**
 
-### R1: Preserve git history
-The rename from `pages/{hash-prefix}/{old-id}.md` → `pages/{uuid}.md` must be a **git rename** (same tree entry, new path) so `git log --follow` traces through the rename. One commit per page, not multiple.
+| Problem | Cause | How we found it |
+|---------|-------|-----------------|
+| **Git history destroyed** | Used delete + add (two commits) instead of rename. `git log` on new path showed only 1 commit — the migration commit. 28 real commits for the master plan page, invisible. | User checked History page — showed single entry. |
+| **All timestamps identical** | EditCache reads latest git commit per page. Latest commit for every page = migration commit. Page list showed same date for all 211 pages. Sort by date useless. | User tried sorting page list — everything had same timestamp. |
+| **Cross-references broken (302 links)** | Page content has links like `/projects/default/pages/8634f02`. Migration renamed IDs to UUIDs but didn't update links in content. | User clicked a cross-reference — 404. |
+| **Multiple commits per page** | Separate commits for rename, delete old path, move attachment. 1000+ junk commits. | Git log showed "phase-b: migrate" / "phase-b: remove old" / "phase-b: move attachment" spam. |
+| **No test copy** | Ran against live `data/`, not a copy. Couldn't roll back without backup. | Wiki was broken in production. Had to restore from backup. |
+| **Repo symlinks missing** | Tree scanner expects `data/repos/proj_{uuid8}.git`. Migration created tree but didn't create repo symlinks. Wiki failed to start. | Error: "could not map UUID prefix to a wiki repo." |
+| **Wiki stopped working** | All of the above combined. Old page list slow (90s), tree routes 404. | User couldn't access any project. |
 
-### R2: Update cross-references
-Every link in every page that references another page by old ID must be updated to the new identifier (tree path URL or UUID) in the **same commit** as the rename. No broken window.
+### Attempt 2: prd2wiki-migrate (SUCCEEDED)
 
-### R3: Fix dates from git history
-`dc.created` must be set from the actual first commit date for that page (using `FirstCommitDate()` from the git package). `dc.modified` set from the latest commit date.
+Built `cmd/prd2wiki-migrate/` with `internal/migrate/`. Tested against `/tmp/migration-test/` first.
 
-### R4: Single commit per page
-Each page migration = one git commit containing: file rename + frontmatter update + cross-reference updates. Clean history, no noise.
+**What worked:**
 
-### R5: Idempotent
-Running the migration twice produces the same result. Already-migrated pages are skipped. Partially-failed migrations can be resumed.
+| Fix | How |
+|-----|-----|
+| **History preserved** | Single commit per page. Content change (frontmatter + cross-refs) is >50% similar to original, so git's rename detection traces through. `git log --follow` shows 28+ commits. |
+| **Cross-references updated** | Second pass replaces all `/projects/{project}/pages/{old-id}` with `/{tree-path}` using the migration map. Zero old-style links remaining. |
+| **Dates from git** | `dc.created` set from `FirstCommitDate()` (actual first git commit, not wiki_propose "today"). |
+| **Tested on copy first** | `cp -a data/ /tmp/migration-test/` → run migration → verify → then run on live data. |
+| **Migration map saved** | `data/migration-map.json` maps old-ID → UUID/path/slug/dates. Used by EditCache for history following. |
 
-### R6: Testable on a second instance
-The tool must work against a **copy** of the data, not the live wiki. Verify the result before cutting over. This is the A=B story from the export/import design.
+**What still needed manual work:**
 
-### R7: Mapping file
-The old-ID → UUID mapping must be written to a file (`data/migration-map.json`) so that:
-- Cross-references can be updated
-- Legacy URL redirects can resolve old IDs
-- The verify tool can compare old and new instances
+| Gap | Manual fix applied |
+|-----|-------------------|
+| **Repo symlinks** | `ln -sf ../default.wiki.git data/repos/proj_{uuid8}.git` — not automated by the tool |
+| **EditCache migration skip** | Separate code fix: `pickLastNonMigrateCommit()` skips "migrate:" commits |
+| **History follow** | Separate code fix: `LoadMigrationAliases()` reads migration map, passes old paths to `PageHistoryAllBranches()` |
+| **Rebuild binary** | Had to `go build` and restart wiki after merging code fixes |
 
-## Design
+## Anti-Patterns Discovered
 
-### Migration map (built first, before any changes)
+### 1. Never migrate in place
+The first attempt ran against live data. When it broke, the wiki was down and we had to restore from a backup that happened to exist. **Always copy first, verify, then swap.**
 
-```json
-{
-  "pages": {
-    "8634f02": {
-      "uuid": "8cf3ce55-5643-4506-b85f-32655be186c0",
-      "old_path": "pages/86/34f02.md",
-      "new_path": "pages/8cf3ce55-5643-4506-b85f-32655be186c0.md",
-      "title": "PLAN: prd2wiki Master Implementation Plan",
-      "slug": "plan-prd2wiki-master-implementation-plan",
-      "tree_path": "prd2wiki/plan-prd2wiki-master-implementation-plan",
-      "first_commit": "2026-04-11T02:15:00Z",
-      "last_commit": "2026-04-12T01:30:00Z"
-    }
-  },
-  "projects": {
-    "default": {
-      "uuid": "ad85faa0-55d2-4498-96f6-5338cfc054ac",
-      "tree_path": "prd2wiki",
-      "display_name": "PRD Wiki"
-    }
-  }
-}
+### 2. Never delete+add when you mean rename
+go-git doesn't have `git mv` for bare repos. The temptation is to delete the old file and add a new one. Git sees this as two unrelated operations — history is severed. The correct approach: write the new file with similar content (>50% match) so git's rename detection kicks in. Or manipulate tree objects directly to preserve the blob hash.
+
+### 3. Test history preservation explicitly
+After migration, run `git log --follow` on the new path. If it only shows the migration commit, the rename wasn't detected. This should be an automated check in the tool, not something the user discovers.
+
+### 4. Migration commits poison EditCache
+Any new git commit becomes the "latest" for that page. EditCache, sort-by-date, and "recently edited" all break. The fix (skip "migrate:" commits) works but is a bandaid — the real solution is to not create migration commits that look like edits. Consider: set the migration commit's author date to the original last-edit date, so even without the skip logic, the timestamp is correct.
+
+### 5. Cross-references are content, not metadata
+Renaming a page ID without updating links in other pages creates 404s. The migration tool must scan ALL pages for references to ANY page being migrated, not just the page being renamed. This requires building the full mapping first, then doing a cross-reference pass.
+
+### 6. Two wikis for testing
+The plan discussed A=B verification with two instances. We should have done that. Future: `prd2wiki-migrate --data /tmp/copy --tree /tmp/copy-tree` → `prd2wiki-verify --source data/ --target /tmp/copy/` → if pass, swap.
+
+### 7. Repo naming must be part of the migration
+The tree scanner maps `.uuid` → `data/repos/proj_{uuid8}.git`. If the migration creates `.uuid` files but doesn't create repo symlinks, the wiki can't start. The migration tool must handle the full chain: git content → repo paths → tree files.
+
+## Current Architecture
+
+```
+cmd/prd2wiki-migrate/main.go     CLI entry: --plan (dry run) or --execute
+internal/migrate/
+    plan.go                       Scan repos, build old-ID→UUID mapping, get git dates
+    execute.go                    Per-page: write new file, delete old, update cross-refs, create tree
+
+internal/git/
+    migration_map.go              LoadMigrationAliases: read mapping, wire to history
+    history.go                    PageHistory/AllBranches with aliasPaths for follow-through
+
+internal/web/
+    editcache.go                  Skip "migrate:" commits, use migrationAliases for old paths
+    handler.go                    aliasPathsFor() used in view, edit, diff, history
 ```
 
-### Per-page migration (single commit)
+## What the Tool Must Do (Production Requirements)
 
-For each page in the mapping:
+### Must have
+- [ ] **Build mapping first** — scan all pages, generate UUIDs, find dates, find cross-refs. No changes yet.
+- [ ] **Single commit per page** — write new file + delete old in one commit. Content similarity >50% for rename detection.
+- [ ] **Update cross-references** — replace all old-ID links with tree-path URLs across ALL pages.
+- [ ] **Fix dc.created from git** — `FirstCommitDate()`, not frontmatter.
+- [ ] **Create repo symlinks** — `data/repos/proj_{uuid8}.git → ../{name}.wiki.git`
+- [ ] **Create tree directory** — `.uuid` files, `.link` files via `tree.WriteProjectUUIDFile`/`tree.WriteLinkFile`
+- [ ] **Save migration map** — `data/migration-map.json` for history following
+- [ ] **Verify after migration** — automated `git log --follow` check on every page
+- [ ] **Idempotent** — skip already-migrated pages. Resume partial migrations.
+- [ ] **Work on copies** — `--data` flag points to a copy, not live data
 
-1. **Read** current content from git at old path
-2. **Generate UUID** (or use existing from mapping if resuming)
-3. **Update frontmatter:**
-   - `id` → UUID
-   - `dc.created` → from `FirstCommitDate()` 
-   - `dc.modified` → from latest commit date
-4. **Update cross-references in body:**
-   - `/projects/default/pages/{old-id}` → `/{tree-path}` (preferred) or `/projects/default/pages/{uuid}`
-   - `](/projects/default/pages/{old-id})` → `](/{tree-path})`
-   - Handle both markdown link formats: `[text](url)` and bare URLs
-5. **Git rename:** `git mv pages/{hash-prefix}/{old-id}.md pages/{uuid}.md` — this is the critical difference. go-git's `worktree.Move()` or equivalent that produces a rename entry in the commit, not delete+add.
-6. **Commit** with message: `migrate: {old-id} → {uuid} ({title})`
+### Should have
+- [ ] **Blob extraction** — move `_attachments/` to `data/blobs/{sha256}`, rewrite markdown refs
+- [ ] **Author date preservation** — set migration commit's author date to original last-edit date so EditCache doesn't need the "migrate:" skip
+- [ ] **Dry run with diff** — show what would change without changing anything
+- [ ] **Progress reporting** — "migrating page 47/211: master-plan..."
+- [ ] **Validation** — check for duplicate slugs, empty titles, broken frontmatter before migrating
 
-### Cross-reference update (all pages, after all renames)
-
-After all pages are renamed, do a second pass:
-- For each page, scan body for any remaining old-ID references
-- Replace with tree-path URLs using the migration map
-- Commit: `migrate: update cross-references`
-
-This two-pass approach (rename first, then cross-ref) avoids circular dependencies where page A references page B which hasn't been renamed yet.
-
-### .link file creation
-
-After git migration is complete:
-- Create `tree/` directory structure with `.uuid` files
-- Create `.link` files (line 1 = UUID, line 2 = empty, line 3 = title)
-- This is the same as Pre-flight B items 8-10, just done after the git work is clean
-
-### Blob extraction
-
-Same as item 11 — extract `_attachments/` to `data/blobs/`, update markdown refs. Can happen in the same commit as the page rename.
+### Won't need (at least not now)
+- Cross-project page moves (different git repos)
+- Incremental migration (some pages old format, some new)
+- Rollback to old format
 
 ## CLI
 
 ```bash
-# Build mapping (dry run — no changes)
-prd2wiki-migrate --config config/prd2wiki.yaml --plan
+# Dry run — build plan, show what would happen
+prd2wiki-migrate --data ./data --tree ./tree --plan
 
-# Execute migration on a COPY
+# Save plan for review
+prd2wiki-migrate --data ./data --tree ./tree --plan --plan-file migration-plan.json
+
+# Execute against a COPY
 cp -a data/ /tmp/migration-test/
-prd2wiki-migrate --data /tmp/migration-test/ --execute
+prd2wiki-migrate --data /tmp/migration-test --tree /tmp/migration-test-tree --execute
 
-# Verify against original
-prd2wiki-verify --source data/ --target /tmp/migration-test/
+# Verify history preserved
+prd2wiki-migrate --data /tmp/migration-test --verify
 
-# If verify passes, swap
+# If good, swap live data
+pkill -f prd2wiki-fast
 mv data/ data.pre-migration/
 mv /tmp/migration-test/ data/
+mv /tmp/migration-test-tree/ tree/
+# Restart wiki
 ```
 
-## Implementation
+## Project Configuration
 
+Projects are configured in the CLI (hardcoded for now, should be a config file):
+
+```go
+projects := []migrate.ProjectConfig{
+    {OldName: "default", TreePath: "prd2wiki", DisplayName: "PRD Wiki"},
+    {OldName: "svg-terminal", TreePath: "svg-terminal", DisplayName: "SVG Terminal"},
+    {OldName: "battletech", TreePath: "games/battletech", DisplayName: "BattleTech"},
+    {OldName: "phat-toad-with-trails", TreePath: "phat-toad", DisplayName: "PHAT-TOAD"},
+}
 ```
-cmd/prd2wiki-migrate/main.go          — CLI entry point
-internal/migrate/
-    plan.go                            — build migration map (scan all pages, generate UUIDs, find dates)
-    execute.go                         — per-page rename + frontmatter + cross-ref
-    crossref.go                        — find and replace old-ID references in markdown
-    tree.go                            — create tree/ directory, .uuid, .link files
-    blobs.go                           — extract attachments to blob store
-    verify.go                          — compare old and new repos (history preserved, content matches)
-```
 
-## go-git Rename
+## Dependencies on Other Code
 
-The critical operation. go-git's worktree doesn't support bare repos directly. Options:
+| Component | What migration needs from it |
+|-----------|----------------------------|
+| `tree.WriteProjectUUIDFile` | Create .uuid files |
+| `tree.WriteLinkFile` | Create .link files |
+| `tree.UniqueSlug` | Deduplicate slugs within a project |
+| `git.OpenRepoAt` | Open bare repos at arbitrary paths |
+| `git.Repo.WritePageWithMeta` | Write migrated page content |
+| `git.Repo.DeletePage` | Remove old path |
+| `git.Repo.FirstCommitDate` | Get real creation date |
+| `git.Repo.PageHistoryAllBranches` | Get real last-edit date |
+| `git.Repo.ListPages` | Scan for pages to migrate |
+| `schema.Parse` | Read frontmatter |
+| `git.LoadMigrationAliases` | Read mapping for history following (post-migration) |
 
-1. **Clone bare → worktree, rename, push back** — works but slow for large repos
-2. **Build new tree objects directly** — manipulate git tree entries to rename the path, preserving the blob hash. This is what the migration script attempted but got wrong (it did delete+add instead of rename).
-3. **Use `object.TreeEntry` manipulation** — read the tree, find the entry, change its name, write new tree, commit. The blob SHA stays the same, so git recognizes it as a rename.
+## Test Procedure
 
-Option 3 is correct. The key: the **blob hash must be identical** before and after. If you read the file, modify frontmatter, and write back, the blob hash changes and git won't track it as a rename. So:
-
-**Step 1:** Rename the file (same blob) → git sees rename
-**Step 2:** Update content (frontmatter, cross-refs) → git sees content change
-
-Both in the same commit. Git's rename detection looks at the tree diff — if a path disappears and a new path appears with >50% similar content, it's a rename. Since we're only changing frontmatter (small % of content), this should always be detected as a rename.
-
-Actually, the safest approach: **two commits per page.**
-1. First commit: pure `git mv` (rename only, no content change) → guaranteed rename detection
-2. Second commit: update frontmatter + cross-refs → content change on the new path
-
-Then `git log --follow pages/{uuid}.md` traces through the rename to the full original history.
-
-## Test Plan
-
-1. Copy a repo to /tmp
-2. Run migration on the copy
-3. Verify: `git log --follow pages/{uuid}.md` shows full history (not just migration commit)
-4. Verify: all cross-references in page content resolve
-5. Verify: `dc.created` matches `FirstCommitDate()`
-6. Verify: no broken links (grep for old-ID patterns)
-7. Verify: blob store has all attachments
-8. Verify: wiki starts and serves from migrated data
-
-## Restore Plan
-
-The backup at `data.phase-b-backup-20260412010131/` has the original repos. To restore:
-
-```bash
-# Stop wiki
-pkill -f prd2wiki-fast
-
-# Move migrated data aside
-mv /srv/prd2wiki/data/repos /srv/prd2wiki/data/repos.failed-migration
-
-# Restore originals
-for repo in /srv/prd2wiki/data.phase-b-backup-20260412010131/*.wiki.git; do
-    name=$(basename "$repo")
-    cp -a "$repo" "/srv/prd2wiki/data/$name"
-done
-
-# Remove stale index (will rebuild on startup)
-rm -f /srv/prd2wiki/data/index.db*
-
-# Remove migrated tree (will be recreated by proper migration)
-rm -rf /srv/prd2wiki/tree/
-
-# Restart wiki with old config (needs projects: list back)
-# Edit config/prd2wiki.yaml to restore projects: [default, svg-terminal, battletech, phat-toad-with-trails]
-```
+1. `cp -a data/ /tmp/test-migrate/`
+2. `go run ./cmd/prd2wiki-migrate/ --data /tmp/test-migrate --tree /tmp/test-tree --execute`
+3. For each project's repo:
+   - `git log --follow --oneline {branch} -- pages/{uuid}.md` shows full history (not just migration commit)
+   - `grep -c '/projects/default/pages/' pages/{uuid}.md` = 0 (no old-style refs)
+4. `ls /tmp/test-tree/*/.uuid` — all projects have identity files
+5. `find /tmp/test-tree -name '*.link' | wc -l` = total page count
+6. Start wiki with `--data /tmp/test-migrate --tree /tmp/test-tree` — pages render, history works, timestamps correct
