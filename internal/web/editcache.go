@@ -1,6 +1,7 @@
 package web
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -25,8 +26,12 @@ func NewEditCache() *EditCache {
 	return &EditCache{items: make(map[string]EditInfo)}
 }
 
+const editCacheHistoryLimit = 100
+
 // build populates the cache from git history for all pages.
 // Called once at startup. Walks git log once for the entire repo.
+// Commits whose first line starts with "migrate:" are skipped so post-migration
+// metadata reflects the last real edit, not the migration tooling.
 func (c *EditCache) Build(repo *wgit.Repo, paths []string) {
 	if repo == nil {
 		return
@@ -34,15 +39,35 @@ func (c *EditCache) Build(repo *wgit.Repo, paths []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, path := range paths {
-		commits, err := repo.PageHistoryAllBranches(path, 1)
+		commits, err := repo.PageHistoryAllBranches(path, editCacheHistoryLimit)
 		if err != nil || len(commits) == 0 {
 			continue
 		}
+		chosen := pickLastNonMigrateCommit(commits)
 		c.items[path] = EditInfo{
-			Author: commits[0].Author,
-			Date:   commits[0].Date.Format("2006-01-02 15:04"),
+			Author: chosen.Author,
+			Date:   chosen.Date.Format("2006-01-02 15:04"),
 		}
 	}
+}
+
+// pickLastNonMigrateCommit returns the newest commit that is not a migration commit.
+// History is newest-first. If every commit is a migration commit, returns the newest (defensive).
+func pickLastNonMigrateCommit(commits []wgit.CommitInfo) wgit.CommitInfo {
+	for _, c := range commits {
+		if !isMigrateCommitMessage(c.Message) {
+			return c
+		}
+	}
+	return commits[0]
+}
+
+func isMigrateCommitMessage(message string) bool {
+	first := strings.TrimSpace(message)
+	if i := strings.IndexByte(first, '\n'); i >= 0 {
+		first = strings.TrimSpace(first[:i])
+	}
+	return strings.HasPrefix(first, "migrate:")
 }
 
 // get returns cached edit info for a page path.
