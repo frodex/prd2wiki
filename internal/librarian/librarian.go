@@ -48,7 +48,7 @@ type SubmitResult struct {
 	Path       string         `json:"path"`
 	Issues     []schema.Issue `json:"issues,omitempty"`
 	Warnings   []string       `json:"warnings,omitempty"`
-	CommitHash string         `json:"commit_hash,omitempty"` // filled when git layer returns hash (pre-flight item 5)
+	CommitHash string         `json:"commit_hash,omitempty"`
 }
 
 // submitFlags selects behavior for the unified submit path.
@@ -115,7 +115,7 @@ func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 		req.Body = []byte(cleaned)
 		// Store each extracted image as an attachment in git
 		for _, img := range extractedImages {
-			if err := l.repo.WritePage(req.Branch, img.Path, img.Data,
+			if _, err := l.repo.WritePage(req.Branch, img.Path, img.Data,
 				"extract inline image: "+img.Filename, req.Author); err != nil {
 				// Log but don't fail the whole submission
 				continue
@@ -343,7 +343,8 @@ func (l *Librarian) submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 	path := pagePath(req.Frontmatter)
 	msg := commitMessage(req.Intent, req.Frontmatter.Title)
 
-	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, bodyToWrite, msg, req.Author); err != nil {
+	commitHash, err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, bodyToWrite, msg, req.Author)
+	if err != nil {
 		return nil, fmt.Errorf("write page: %w", err)
 	}
 
@@ -371,10 +372,11 @@ func (l *Librarian) submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 	}
 
 	res := &SubmitResult{
-		Saved:    true,
-		Path:     path,
-		Issues:   issues,
-		Warnings: warnings,
+		Saved:      true,
+		Path:       path,
+		Issues:     issues,
+		Warnings:   warnings,
+		CommitHash: commitHash,
 	}
 	l.maybeSyncToLibrarian(ctx, req, res)
 	return res, nil

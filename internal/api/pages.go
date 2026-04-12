@@ -87,9 +87,7 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 	}
 
 	if !result.Saved {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]interface{}{
 			"valid":  false,
 			"issues": result.Issues,
 		})
@@ -101,15 +99,14 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 		cache.Touch(result.Path, req.Author)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":       fm.ID,
-		"title":    fm.Title,
-		"status":   fm.Status,
-		"path":     result.Path,
-		"issues":   result.Issues,
-		"warnings": result.Warnings,
+	writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"id":          fm.ID,
+		"title":       fm.Title,
+		"status":      fm.Status,
+		"path":        result.Path,
+		"issues":      result.Issues,
+		"warnings":    result.Warnings,
+		"commit_hash": result.CommitHash,
 	})
 }
 
@@ -177,8 +174,7 @@ func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
 		"body":        string(body),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) deletePage(w http.ResponseWriter, r *http.Request) {
@@ -273,6 +269,5 @@ func (s *Server) listPages(w http.ResponseWriter, r *http.Request) {
 		results = []interface{}{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	writeJSON(w, http.StatusOK, results)
 }

@@ -249,13 +249,13 @@ func TestRebuildFromRepo(t *testing.T) {
 	}
 
 	for _, p := range pages {
-		if err := repo.WritePageWithMeta("main", p.path, p.fm, p.body, "add "+p.path, "test"); err != nil {
+		if _, err := repo.WritePageWithMeta("main", p.path, p.fm, p.body, "add "+p.path, "test"); err != nil {
 			t.Fatalf("WritePageWithMeta %s: %v", p.path, err)
 		}
 	}
 
 	// Also write a non-.md file to ensure it's skipped
-	if err := repo.WritePage("main", "README.txt", []byte("readme"), "add readme", "test"); err != nil {
+	if _, err := repo.WritePage("main", "README.txt", []byte("readme"), "add readme", "test"); err != nil {
 		t.Fatalf("WritePage README.txt: %v", err)
 	}
 
@@ -306,12 +306,12 @@ func TestRebuildMultipleBranches(t *testing.T) {
 	}
 
 	fmA := &schema.Frontmatter{ID: "A-001", Title: "Alpha Page", Type: "concept", Status: "draft"}
-	if err := repo.WritePageWithMeta("draft/agent", "pages/a-001.md", fmA, []byte("Alpha body."), "add a-001", "test"); err != nil {
+	if _, err := repo.WritePageWithMeta("draft/agent", "pages/a-001.md", fmA, []byte("Alpha body."), "add a-001", "test"); err != nil {
 		t.Fatalf("WritePageWithMeta draft/agent: %v", err)
 	}
 
 	fmB := &schema.Frontmatter{ID: "B-001", Title: "Beta Page", Type: "policy", Status: "draft"}
-	if err := repo.WritePageWithMeta("draft/incoming", "pages/b-001.md", fmB, []byte("Beta body."), "add b-001", "test"); err != nil {
+	if _, err := repo.WritePageWithMeta("draft/incoming", "pages/b-001.md", fmB, []byte("Beta body."), "add b-001", "test"); err != nil {
 		t.Fatalf("WritePageWithMeta draft/incoming: %v", err)
 	}
 
@@ -359,7 +359,7 @@ func TestRebuildFromRepoClears(t *testing.T) {
 	}
 
 	fm := &schema.Frontmatter{ID: "stale-001", Title: "Stale", Type: "policy", Status: "draft"}
-	if err := repo.WritePageWithMeta("main", "stale.md", fm, []byte("body"), "add", "test"); err != nil {
+	if _, err := repo.WritePageWithMeta("main", "stale.md", fm, []byte("body"), "add", "test"); err != nil {
 		t.Fatalf("WritePageWithMeta: %v", err)
 	}
 
@@ -378,7 +378,7 @@ func TestRebuildFromRepoClears(t *testing.T) {
 
 	// Write a different page (simulating a page being replaced)
 	fm2 := &schema.Frontmatter{ID: "new-001", Title: "New", Type: "decision", Status: "approved"}
-	if err := repo.WritePageWithMeta("main", "new.md", fm2, []byte("body"), "add new", "test"); err != nil {
+	if _, err := repo.WritePageWithMeta("main", "new.md", fm2, []byte("body"), "add new", "test"); err != nil {
 		t.Fatalf("WritePageWithMeta new: %v", err)
 	}
 

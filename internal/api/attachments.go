@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -78,16 +77,14 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 		author = "anonymous"
 	}
 
-	if err := repo.WritePage(branch, gitPath, data, message, author); err != nil {
+	if _, err := repo.WritePage(branch, gitPath, data, message, author); err != nil {
 		http.Error(w, "store attachment: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	url := fmt.Sprintf("/api/projects/%s/pages/%s/attachments/%s", project, id, filename)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, http.StatusCreated, map[string]string{
 		"url":      url,
 		"filename": filename,
 	})
@@ -166,8 +163,7 @@ func (s *Server) listAttachments(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			// Branch doesn't exist yet — return empty list.
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]interface{}{})
+			writeJSON(w, http.StatusOK, []interface{}{})
 			return
 		}
 		http.Error(w, "list attachments: "+err.Error(), http.StatusInternalServerError)
@@ -197,8 +193,7 @@ func (s *Server) listAttachments(w http.ResponseWriter, r *http.Request) {
 		results = []attachment{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	writeJSON(w, http.StatusOK, results)
 }
 
 // readMultipart reads the file from a multipart/form-data request.

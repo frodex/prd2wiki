@@ -3,14 +3,13 @@ package web
 import (
 	"database/sql"
 	"embed"
-	"fmt"
 	"html/template"
 	"net/http"
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
-	"github.com/frodex/prd2wiki/internal/schema"
+	"github.com/frodex/prd2wiki/internal/pagepath"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 )
@@ -128,14 +127,5 @@ func (h *Handler) projects() []string {
 // resolvePagePath looks up the stored path for a page ID from the SQLite index.
 // Falls back to hash-prefix path for hash IDs, or flat "pages/{id}.md" for legacy IDs.
 func (h *Handler) resolvePagePath(project, id string) string {
-	results, err := h.search.ByID(project, id)
-	if err == nil && len(results) > 0 && results[0].Path != "" {
-		return results[0].Path
-	}
-	// Not in index — infer path from ID format.
-	sanitized := schema.SanitizePathSegment(id)
-	if schema.IsHashID(sanitized) && len(sanitized) >= 2 {
-		return fmt.Sprintf("pages/%s/%s.md", sanitized[:2], sanitized[2:])
-	}
-	return "pages/" + sanitized + ".md"
+	return pagepath.Resolve(h.search, project, id)
 }

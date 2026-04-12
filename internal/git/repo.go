@@ -61,7 +61,8 @@ func OpenRepo(dataDir, project string) (*Repo, error) {
 // WritePage writes a file to a branch, creating the branch if needed.
 // It serializes all writes with a mutex. Nested paths (e.g. "pages/test.md")
 // are handled by building nested tree objects.
-func (r *Repo) WritePage(branch, path string, content []byte, message, author string) error {
+// Returns the new commit hash (hex string).
+func (r *Repo) WritePage(branch, path string, content []byte, message, author string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -75,7 +76,7 @@ func (r *Repo) WritePage(branch, path string, content []byte, message, author st
 	// Store the new blob.
 	blobHash, err := r.storeBlob(content)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Collect existing files from the branch (if it exists).
@@ -86,17 +87,17 @@ func (r *Repo) WritePage(branch, path string, content []byte, message, author st
 	if err == nil {
 		parentCommit, err = r.repo.CommitObject(ref.Hash())
 		if err != nil {
-			return fmt.Errorf("parent commit: %w", err)
+			return "", fmt.Errorf("parent commit: %w", err)
 		}
 		tree, err := parentCommit.Tree()
 		if err != nil {
-			return fmt.Errorf("parent tree: %w", err)
+			return "", fmt.Errorf("parent tree: %w", err)
 		}
 		if err := tree.Files().ForEach(func(f *object.File) error {
 			files[f.Name] = f.Hash
 			return nil
 		}); err != nil {
-			return fmt.Errorf("walk tree: %w", err)
+			return "", fmt.Errorf("walk tree: %w", err)
 		}
 	}
 
@@ -106,7 +107,7 @@ func (r *Repo) WritePage(branch, path string, content []byte, message, author st
 	// Build nested tree objects.
 	rootTreeHash, err := r.buildTree(files)
 	if err != nil {
-		return fmt.Errorf("build tree: %w", err)
+		return "", fmt.Errorf("build tree: %w", err)
 	}
 
 	// Create commit.
@@ -121,20 +122,24 @@ func (r *Repo) WritePage(branch, path string, content []byte, message, author st
 	}
 	commitObj := &plumbing.MemoryObject{}
 	if err := commit.Encode(commitObj); err != nil {
-		return fmt.Errorf("encode commit: %w", err)
+		return "", fmt.Errorf("encode commit: %w", err)
 	}
 	commitHash, err := r.repo.Storer.SetEncodedObject(commitObj)
 	if err != nil {
-		return fmt.Errorf("store commit: %w", err)
+		return "", fmt.Errorf("store commit: %w", err)
 	}
 
 	// Update branch reference.
 	newRef := plumbing.NewHashReference(refName, commitHash)
-	return r.repo.Storer.SetReference(newRef)
+	if err := r.repo.Storer.SetReference(newRef); err != nil {
+		return "", err
+	}
+	return commitHash.String(), nil
 }
 
 // WritePageWithDate writes a page with a specific author date (for backfilling).
-func (r *Repo) WritePageWithDate(branch, path string, content []byte, message, author string, date time.Time) error {
+// Returns the new commit hash (hex string).
+func (r *Repo) WritePageWithDate(branch, path string, content []byte, message, author string, date time.Time) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -147,7 +152,7 @@ func (r *Repo) WritePageWithDate(branch, path string, content []byte, message, a
 
 	blobHash, err := r.storeBlob(content)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	files := make(map[string]plumbing.Hash)
@@ -157,17 +162,17 @@ func (r *Repo) WritePageWithDate(branch, path string, content []byte, message, a
 	if err == nil {
 		parentCommit, err = r.repo.CommitObject(ref.Hash())
 		if err != nil {
-			return fmt.Errorf("parent commit: %w", err)
+			return "", fmt.Errorf("parent commit: %w", err)
 		}
 		tree, err := parentCommit.Tree()
 		if err != nil {
-			return fmt.Errorf("parent tree: %w", err)
+			return "", fmt.Errorf("parent tree: %w", err)
 		}
 		if err := tree.Files().ForEach(func(f *object.File) error {
 			files[f.Name] = f.Hash
 			return nil
 		}); err != nil {
-			return fmt.Errorf("walk tree: %w", err)
+			return "", fmt.Errorf("walk tree: %w", err)
 		}
 	}
 
@@ -175,7 +180,7 @@ func (r *Repo) WritePageWithDate(branch, path string, content []byte, message, a
 
 	rootTreeHash, err := r.buildTree(files)
 	if err != nil {
-		return fmt.Errorf("build tree: %w", err)
+		return "", fmt.Errorf("build tree: %w", err)
 	}
 
 	commit := &object.Commit{
@@ -189,15 +194,18 @@ func (r *Repo) WritePageWithDate(branch, path string, content []byte, message, a
 	}
 	commitObj := &plumbing.MemoryObject{}
 	if err := commit.Encode(commitObj); err != nil {
-		return fmt.Errorf("encode commit: %w", err)
+		return "", fmt.Errorf("encode commit: %w", err)
 	}
 	commitHash, err := r.repo.Storer.SetEncodedObject(commitObj)
 	if err != nil {
-		return fmt.Errorf("store commit: %w", err)
+		return "", fmt.Errorf("store commit: %w", err)
 	}
 
 	newRef := plumbing.NewHashReference(refName, commitHash)
-	return r.repo.Storer.SetReference(newRef)
+	if err := r.repo.Storer.SetReference(newRef); err != nil {
+		return "", err
+	}
+	return commitHash.String(), nil
 }
 
 // ReadPage reads a file from a branch.

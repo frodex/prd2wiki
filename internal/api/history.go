@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,8 +42,7 @@ func (s *Server) pageHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(commits)
+	writeJSON(w, http.StatusOK, commits)
 }
 
 func (s *Server) pageAtCommit(w http.ResponseWriter, r *http.Request) {
@@ -68,8 +66,7 @@ func (s *Server) pageAtCommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, http.StatusOK, map[string]string{
 		"hash":    hash,
 		"content": string(data),
 	})
@@ -97,8 +94,7 @@ func (s *Server) pageDiff(w http.ResponseWriter, r *http.Request) {
 
 	changes := lineDiff(string(fromData), string(toData))
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(DiffResult{
+	writeJSON(w, http.StatusOK, DiffResult{
 		From:    from,
 		To:      to,
 		Changes: changes,

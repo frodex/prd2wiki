@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -34,7 +33,7 @@ func (s *Server) deprecatePage(w http.ResponseWriter, r *http.Request) {
 	fm.Status = "deprecated"
 	fm.DCModified = schema.Date{Time: time.Now().UTC()}
 
-	err = repo.WritePageWithMeta(branch, path, fm, body,
+	_, err = repo.WritePageWithMeta(branch, path, fm, body,
 		"deprecate: "+fm.Title, "system@prd2wiki")
 	if err != nil {
 		http.Error(w, "write failed: "+err.Error(), http.StatusInternalServerError)
@@ -44,8 +43,7 @@ func (s *Server) deprecatePage(w http.ResponseWriter, r *http.Request) {
 	// Update index
 	_ = s.indexer.IndexPage(project, branch, path, fm, body)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":     id,
 		"status": "deprecated",
 	})
@@ -76,7 +74,7 @@ func (s *Server) approvePage(w http.ResponseWriter, r *http.Request) {
 	fm.Status = "approved"
 	fm.DCModified = schema.Date{Time: time.Now().UTC()}
 
-	err = repo.WritePageWithMeta(branch, path, fm, body,
+	_, err = repo.WritePageWithMeta(branch, path, fm, body,
 		"approve: "+fm.Title, "system@prd2wiki")
 	if err != nil {
 		http.Error(w, "write failed: "+err.Error(), http.StatusInternalServerError)
@@ -85,8 +83,7 @@ func (s *Server) approvePage(w http.ResponseWriter, r *http.Request) {
 
 	_ = s.indexer.IndexPage(project, branch, path, fm, body)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":     id,
 		"status": "approved",
 	})
@@ -117,7 +114,7 @@ func (s *Server) restorePage(w http.ResponseWriter, r *http.Request) {
 	fm.Status = "draft"
 	fm.DCModified = schema.Date{Time: time.Now().UTC()}
 
-	err = repo.WritePageWithMeta(branch, path, fm, body,
+	_, err = repo.WritePageWithMeta(branch, path, fm, body,
 		"restore: "+fm.Title, "system@prd2wiki")
 	if err != nil {
 		http.Error(w, "write failed: "+err.Error(), http.StatusInternalServerError)
@@ -126,8 +123,7 @@ func (s *Server) restorePage(w http.ResponseWriter, r *http.Request) {
 
 	_ = s.indexer.IndexPage(project, branch, path, fm, body)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":     id,
 		"status": "draft",
 	})

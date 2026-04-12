@@ -11,10 +11,11 @@ import (
 )
 
 // WritePageWithMeta serializes frontmatter + body and writes to git.
-func (r *Repo) WritePageWithMeta(branch, path string, fm *schema.Frontmatter, body []byte, message, author string) error {
+// Returns the new commit hash (hex string).
+func (r *Repo) WritePageWithMeta(branch, path string, fm *schema.Frontmatter, body []byte, message, author string) (string, error) {
 	data, err := schema.Serialize(fm, body)
 	if err != nil {
-		return fmt.Errorf("serialize page: %w", err)
+		return "", fmt.Errorf("serialize page: %w", err)
 	}
 	return r.WritePage(branch, path, data, message, author)
 }

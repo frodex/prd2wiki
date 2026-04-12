@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"sync"
 
@@ -38,8 +37,7 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "search: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(results)
+		writeJSON(w, http.StatusOK, results)
 		return
 	}
 
@@ -114,6 +112,5 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	writeJSON(w, http.StatusOK, results)
 }

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -54,8 +53,7 @@ func (s *Server) getReferences(w http.ResponseWriter, r *http.Request) {
 		Children: children,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(root)
+	writeJSON(w, http.StatusOK, root)
 }
 
 // buildRefTree recursively queries provenance_edges for a page and builds the
