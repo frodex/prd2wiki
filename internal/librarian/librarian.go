@@ -446,24 +446,16 @@ func (l *Librarian) submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 		return nil, fmt.Errorf("index page: %w", err)
 	}
 
-	if err := l.indexInVectorStore(ctx, req.Project, req.Frontmatter, bodyToWrite); err != nil {
-		if flags.logVectorWarn {
-			slog.Warn("vector index failed", "page", req.Frontmatter.ID, "error", err)
-		} else {
-			_ = err
+	// BUG-012/BUG-014: Vector embedding + dedup async — don't block the response.
+	// Git commit + SQLite index are done. Vector index updates in background.
+	go func() {
+		bgCtx := context.Background()
+		if err := l.indexInVectorStore(bgCtx, req.Project, req.Frontmatter, bodyToWrite); err != nil {
+			slog.Warn("vector index failed (async)", "page", req.Frontmatter.ID, "error", err)
 		}
-	}
+	}()
 
 	var warnings []string
-	if flags.dedup {
-		detector := NewDedupDetector(l.vstore)
-		dedupResult, err := detector.Check(ctx, req.Project, req.Frontmatter.ID, string(bodyToWrite))
-		if err == nil && dedupResult != nil {
-			for _, c := range dedupResult.Candidates {
-				warnings = append(warnings, fmt.Sprintf("potential duplicate: %s (similarity: %.2f)", c.PageID, c.Similarity))
-			}
-		}
-	}
 
 	res := &SubmitResult{
 		Saved:      true,

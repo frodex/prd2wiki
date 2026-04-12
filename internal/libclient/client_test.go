@@ -41,10 +41,22 @@ func TestMemoryStoreParsesResponse(t *testing.T) {
 }
 
 func TestNew_EmptySocket(t *testing.T) {
-	if New("  ", "") != nil {
-		t.Fatal("expected nil client")
+	c, err := New("  ", "")
+	if c != nil || err != nil {
+		t.Fatal("expected nil client, nil error for empty socket")
 	}
-	if New("", "") != nil {
-		t.Fatal("expected nil client")
+	c, err = New("", "")
+	if c != nil || err != nil {
+		t.Fatal("expected nil client, nil error for empty socket")
+	}
+}
+
+func TestNew_BadSocket(t *testing.T) {
+	c, err := New("/tmp/nonexistent-test-socket-12345.sock", "")
+	if err == nil {
+		t.Fatal("expected error for unreachable socket")
+	}
+	if c == nil {
+		t.Fatal("should return client even on connection error (for later retry)")
 	}
 }

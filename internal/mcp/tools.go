@@ -498,6 +498,12 @@ func (s *MCPServer) toolIngest(raw json.RawMessage) (interface{}, error) {
 
 	id := "src-" + slugify(p.Title)
 
+	// BUG-005: allow caller to override type via 'kind' field, default "source"
+	pageType := "source"
+	if p.Kind != "" {
+		pageType = p.Kind
+	}
+
 	var bodyParts []string
 	bodyParts = append(bodyParts, fmt.Sprintf("# %s\n", p.Title))
 	if p.URL != "" {
@@ -511,7 +517,7 @@ func (s *MCPServer) toolIngest(raw json.RawMessage) (interface{}, error) {
 	req := CreatePageRequest{
 		ID:     id,
 		Title:  p.Title,
-		Type:   "source",
+		Type:   pageType,
 		Body:   strings.Join(bodyParts, ""),
 		Branch: "ingest/sources",
 		Author: "mcp-agent",

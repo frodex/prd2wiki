@@ -3,6 +3,8 @@ package migrate
 import (
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/frodex/prd2wiki/internal/git"
@@ -59,7 +61,24 @@ func Execute(plan *Plan) error {
 		return fmt.Errorf("create tree: %w", err)
 	}
 
+	// Phase 4: Clean stale indexes (BUG-010)
+	// The wiki's SQLite FTS and vector indexes have pre-migration paths.
+	// Delete them so the wiki rebuilds from scratch on next startup.
+	cleanStaleIndexes(plan.DataDir)
+
 	return nil
+}
+
+// cleanStaleIndexes removes the wiki's SQLite FTS index and vector store
+// so they rebuild from scratch after migration. Without this, search is
+// broken because the indexes have pre-migration page paths.
+func cleanStaleIndexes(dataDir string) {
+	for _, name := range []string{"index.db", "index.db-shm", "index.db-wal", "vectors/pages.json"} {
+		p := filepath.Join(dataDir, name)
+		if err := os.Remove(p); err == nil {
+			slog.Info("removed stale index", "path", p)
+		}
+	}
 }
 
 // migratePage handles a single page: rename in git, update frontmatter, update cross-refs.

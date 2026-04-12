@@ -38,10 +38,11 @@ type toolCallResponse struct {
 }
 
 // New returns a client for the given unix socket path, or nil if socketPath is empty.
-func New(socketPath, apiKey string) *Client {
+// It checks connectivity at creation time and returns an error if the socket is not reachable.
+func New(socketPath, apiKey string) (*Client, error) {
 	socketPath = strings.TrimSpace(socketPath)
 	if socketPath == "" {
-		return nil
+		return nil, nil
 	}
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -49,7 +50,7 @@ func New(socketPath, apiKey string) *Client {
 			return d.DialContext(ctx, "unix", socketPath)
 		},
 	}
-	return &Client{
+	c := &Client{
 		http: &http.Client{
 			Transport: tr,
 			Timeout:   60 * time.Second,
@@ -58,6 +59,14 @@ func New(socketPath, apiKey string) *Client {
 		apiKey:  strings.TrimSpace(apiKey),
 		baseURL: "http://unix",
 	}
+	// BUG-008: Check connectivity at creation time so startup logs an error
+	// instead of silently failing on first sync attempt.
+	conn, err := net.DialTimeout("unix", socketPath, 3*time.Second)
+	if err != nil {
+		return c, fmt.Errorf("libclient: socket %s not reachable: %w (sync will fail until librarian starts)", socketPath, err)
+	}
+	conn.Close()
+	return c, nil
 }
 
 // MemoryStore calls memory_store and returns the new head record_id (mem_…).

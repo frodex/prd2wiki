@@ -234,7 +234,12 @@ func New(cfg Config) (*App, error) {
 
 	var pippi *libclient.Client
 	if socket := strings.TrimSpace(cfg.Librarian.Socket); socket != "" {
-		pippi = libclient.New(socket, "")
+		var err error
+		pippi, err = libclient.New(socket, "")
+		if err != nil {
+			slog.Error("pippi-librarian socket not reachable — sync will fail until librarian starts", "socket", socket, "error", err)
+			// Don't fail startup — wiki works without librarian, sync degrades gracefully
+		}
 		if pippi != nil {
 			slog.Info("pippi-librarian sync enabled", "socket", socket)
 		}

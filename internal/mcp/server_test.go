@@ -353,8 +353,8 @@ func TestWikiIngestTool(t *testing.T) {
 		if req.Branch != "ingest/sources" {
 			t.Errorf("branch: got %q, want ingest/sources", req.Branch)
 		}
-		if req.Type != "source" {
-			t.Errorf("type: got %q, want source", req.Type)
+		if req.Type != "design-doc" {
+			t.Errorf("type: got %q, want design-doc (kind overrides type)", req.Type)
 		}
 		if !strings.HasPrefix(req.ID, "src-") {
 			t.Errorf("ID should start with src-, got %q", req.ID)
