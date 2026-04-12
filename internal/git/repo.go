@@ -48,14 +48,18 @@ func InitRepo(dataDir, project string) (*Repo, error) {
 
 // OpenRepo opens an existing bare repo at {dataDir}/{project}.wiki.git.
 func OpenRepo(dataDir, project string) (*Repo, error) {
-	p := repoPath(dataDir, project)
-	dot := billyos.New(p)
+	return OpenRepoAt(repoPath(dataDir, project))
+}
+
+// OpenRepoAt opens an existing bare repo at an arbitrary path.
+func OpenRepoAt(path string) (*Repo, error) {
+	dot := billyos.New(path)
 	stor := filesystem.NewStorage(dot, cache.NewObjectLRUDefault())
 	r, err := gogit.Open(stor, nil)
 	if err != nil {
-		return nil, fmt.Errorf("git open %s: %w", p, err)
+		return nil, fmt.Errorf("git open %s: %w", path, err)
 	}
-	return &Repo{repo: r, path: p}, nil
+	return &Repo{repo: r, path: path}, nil
 }
 
 // WritePage writes a file to a branch, creating the branch if needed.
