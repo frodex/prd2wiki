@@ -41,7 +41,7 @@ func setupTestHandler(t *testing.T) (*Handler, http.Handler) {
 	lib := librarian.New(repo, indexr, vstore, vocab)
 	librarians := map[string]*librarian.Librarian{"test-project": lib}
 
-	h := NewHandler(repos, db, librarians, nil)
+	h := NewHandler(repos, db, librarians, nil, nil)
 
 	mux := http.NewServeMux()
 	h.Register(mux)
@@ -116,7 +116,7 @@ func TestViewPageOnNonDefaultBranch(t *testing.T) {
 	lib := librarian.New(repo, indexr, vstore, vocab)
 	librarians := map[string]*librarian.Librarian{"test-project": lib}
 
-	h := NewHandler(repos, db, librarians, nil)
+	h := NewHandler(repos, db, librarians, nil, nil)
 	localMux := http.NewServeMux()
 	h.Register(localMux)
 	_ = mux // use local mux instead
@@ -244,5 +244,37 @@ func TestStaticFiles(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "wiki-nav") {
 		t.Error("base.css should contain wiki-nav class")
+	}
+}
+
+func TestAdminIndex(t *testing.T) {
+	_, mux := setupTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Export") || !strings.Contains(body, "/admin/export") {
+		snippet := body
+		if len(snippet) > 400 {
+			snippet = snippet[:400] + "…"
+		}
+		t.Errorf("admin index should link to export, got: %s", snippet)
+	}
+}
+
+func TestAdminPOSTRequiresConfiguredKeys(t *testing.T) {
+	_, mux := setupTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/export", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when key store nil, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

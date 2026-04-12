@@ -273,7 +273,7 @@ func New(cfg Config) (*App, error) {
 	blobStore := blob.NewStore(dataAbs)
 
 	// Create web handler first (builds edit caches), then API server shares the caches.
-	webHandler := web.NewHandler(repos, db, librarians, treeHolder)
+	webHandler := web.NewHandler(repos, db, librarians, treeHolder, keyStore)
 	apiSrv := api.NewServer(api.ServerConfig{
 		Addr:       cfg.Server.Addr,
 		Repos:      repos,

@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
+	"github.com/frodex/prd2wiki/internal/auth"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/pagepath"
@@ -45,10 +46,11 @@ type Handler struct {
 	templates  map[string]*template.Template
 	edits       map[string]*EditCache  // per-project edit info cache
 	treeHolder  *tree.IndexHolder      // optional; tree URLs and legacy redirects
+	keys        *auth.ServiceKeyStore   // optional; admin mutating routes require ScopeAdmin
 }
 
 // NewHandler creates a Handler with pre-parsed templates.
-func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, treeHolder *tree.IndexHolder) *Handler {
+func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, treeHolder *tree.IndexHolder, keys *auth.ServiceKeyStore) *Handler {
 	h := &Handler{
 		repos:      repos,
 		search:     index.NewSearcher(db),
@@ -57,6 +59,7 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		templates:  make(map[string]*template.Template),
 		edits:      make(map[string]*EditCache),
 		treeHolder: treeHolder,
+		keys:       keys,
 	}
 
 	// Build edit caches in background so startup isn't blocked.
@@ -88,6 +91,8 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		"templates/page_diff.html",
 		"templates/error.html",
 		"templates/tree_directory.html",
+		"templates/admin_index.html",
+		"templates/admin_stub.html",
 	}
 	for _, pt := range pageTemplates {
 		// page_view needs the page_actions partial
@@ -119,6 +124,13 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /projects/{project}/pages/{id}/diff", h.pageDiff)
 	mux.HandleFunc("GET /projects/{project}/pages/new", h.newPage)
 	mux.HandleFunc("GET /projects/{project}/search", h.searchPages)
+	mux.HandleFunc("GET /admin", h.adminIndex)
+	mux.HandleFunc("GET /admin/export", h.adminExportGet)
+	mux.HandleFunc("GET /admin/import", h.adminImportGet)
+	mux.HandleFunc("GET /admin/verify", h.adminVerifyGet)
+	mux.Handle("POST /admin/export", h.wrapAdminMutating(h.adminExportPost))
+	mux.Handle("POST /admin/import", h.wrapAdminMutating(h.adminImportPost))
+	mux.Handle("POST /admin/verify", h.wrapAdminMutating(h.adminVerifyPost))
 	mux.Handle("GET /static/", http.FileServerFS(content))
 }
 
