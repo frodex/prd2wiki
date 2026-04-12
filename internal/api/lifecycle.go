@@ -4,8 +4,28 @@ import (
 	"net/http"
 	"time"
 
+	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/schema"
 )
+
+// findBranchAndPathForLifecycle resolves the git path (index + hash-prefix + flat, same as GET page)
+// and finds a branch that contains the file. Returns ok false if the page does not exist.
+func (s *Server) findBranchAndPathForLifecycle(repo *wgit.Repo, project, id string) (branch, path string, ok bool) {
+	path = s.resolvePagePath(project, id)
+	b, err := repo.FindBranchForPage(path)
+	if err != nil {
+		alt := s.alternatePagePath(id, path)
+		if alt == "" {
+			return "", "", false
+		}
+		b, err = repo.FindBranchForPage(alt)
+		if err != nil {
+			return "", "", false
+		}
+		path = alt
+	}
+	return b, path, true
+}
 
 func (s *Server) deprecatePage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
@@ -16,10 +36,8 @@ func (s *Server) deprecatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the page on any branch
-	path := "pages/" + id + ".md"
-	branch, err := repo.FindBranchForPage(path)
-	if err != nil {
+	branch, path, found := s.findBranchAndPathForLifecycle(repo, project, id)
+	if !found {
 		http.Error(w, "page not found", http.StatusNotFound)
 		return
 	}
@@ -40,7 +58,6 @@ func (s *Server) deprecatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update index
 	_ = s.indexer.IndexPage(project, branch, path, fm, body)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -58,9 +75,8 @@ func (s *Server) approvePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := "pages/" + id + ".md"
-	branch, err := repo.FindBranchForPage(path)
-	if err != nil {
+	branch, path, found := s.findBranchAndPathForLifecycle(repo, project, id)
+	if !found {
 		http.Error(w, "page not found", http.StatusNotFound)
 		return
 	}
@@ -98,9 +114,8 @@ func (s *Server) restorePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := "pages/" + id + ".md"
-	branch, err := repo.FindBranchForPage(path)
-	if err != nil {
+	branch, path, found := s.findBranchAndPathForLifecycle(repo, project, id)
+	if !found {
 		http.Error(w, "page not found", http.StatusNotFound)
 		return
 	}
