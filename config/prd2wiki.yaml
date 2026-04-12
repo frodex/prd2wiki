@@ -11,10 +11,5 @@ tree:
 librarian:
   socket: "/var/run/pippi-librarian.sock"
 
-embedder:
-  endpoint: "http://localhost:8088"  # TEI (text-embeddings-inference) ONNX server
-  dimensions: 768                    # nomic-embed-text-v1.5 full dimensions
-  timeout: 60s                       # per-batch timeout; large pages with many sections need 30-60s
-
 logging:
   level: "info"

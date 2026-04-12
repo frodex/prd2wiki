@@ -7,12 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/schema"
-	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
 )
 
@@ -35,10 +33,8 @@ func setupTestHandler(t *testing.T) (*Handler, http.Handler) {
 	repos := map[string]*wgit.Repo{"test-project": repo}
 
 	indexr := index.NewIndexer(db)
-	emb := embedder.ZeroEmbedder{Dims: 768}
-	vstore := vectordb.NewStore(emb)
 	vocab := vocabulary.NewStore(db)
-	lib := librarian.New(repo, indexr, vstore, vocab)
+	lib := librarian.New(repo, indexr, vocab)
 	librarians := map[string]*librarian.Librarian{"test-project": lib}
 
 	h := NewHandler(repos, db, librarians, nil, nil, nil)
@@ -110,10 +106,8 @@ func TestViewPageOnNonDefaultBranch(t *testing.T) {
 
 	repos := map[string]*wgit.Repo{"test-project": repo}
 	indexr := index.NewIndexer(db)
-	emb := embedder.ZeroEmbedder{Dims: 768}
-	vstore := vectordb.NewStore(emb)
 	vocab := vocabulary.NewStore(db)
-	lib := librarian.New(repo, indexr, vstore, vocab)
+	lib := librarian.New(repo, indexr, vocab)
 	librarians := map[string]*librarian.Librarian{"test-project": lib}
 
 	h := NewHandler(repos, db, librarians, nil, nil, nil)

@@ -11,12 +11,10 @@ import (
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/libclient"
-	"github.com/frodex/prd2wiki/internal/tree"
-	"github.com/google/uuid"
-
 	"github.com/frodex/prd2wiki/internal/schema"
-	"github.com/frodex/prd2wiki/internal/vectordb"
+	"github.com/frodex/prd2wiki/internal/tree"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
+	"github.com/google/uuid"
 )
 
 // PagePathOptions controls how pagePath resolves the storage path.
@@ -61,18 +59,16 @@ type SubmitResult struct {
 type submitFlags struct {
 	blockOnErrors bool
 	normalize     bool
-	dedup         bool
-	logVectorWarn bool
 }
 
 func submitFlagsForIntent(intent string) (submitFlags, error) {
 	switch intent {
 	case IntentVerbatim:
-		return submitFlags{logVectorWarn: true}, nil
+		return submitFlags{}, nil
 	case IntentConform:
 		return submitFlags{blockOnErrors: true, normalize: true}, nil
 	case IntentIntegrate:
-		return submitFlags{blockOnErrors: true, normalize: true, dedup: true}, nil
+		return submitFlags{blockOnErrors: true, normalize: true}, nil
 	default:
 		return submitFlags{}, fmt.Errorf("unknown intent %q", intent)
 	}
@@ -82,7 +78,6 @@ func submitFlagsForIntent(intent string) (submitFlags, error) {
 type Librarian struct {
 	repo    *wgit.Repo
 	indexer *index.Indexer
-	vstore  *vectordb.Store
 	vocab   *vocabulary.Store
 
 	libClient   *libclient.Client
@@ -109,11 +104,10 @@ func WithProjectUUID(uuid string) Option {
 }
 
 // New creates a new Librarian.
-func New(repo *wgit.Repo, indexer *index.Indexer, vstore *vectordb.Store, vocab *vocabulary.Store, opts ...Option) *Librarian {
+func New(repo *wgit.Repo, indexer *index.Indexer, vocab *vocabulary.Store, opts ...Option) *Librarian {
 	l := &Librarian{
 		repo:    repo,
 		indexer: indexer,
-		vstore:  vstore,
 		vocab:   vocab,
 	}
 	for _, o := range opts {
@@ -315,23 +309,11 @@ func (l *Librarian) Search(ctx context.Context, project, query string, limit int
 		if err == nil {
 			return searchResultsFromMemoryHits(hits, limit), nil
 		}
-		slog.Warn("librarian memory_search failed, falling back to local vector index",
+		slog.Warn("librarian memory_search failed — search will use SQLite FTS only",
 			"project", project, "namespace", ns, "err", err)
 	}
 
-	results, err := l.vstore.Search(ctx, project, normalizedQuery, limit)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]SearchResult, 0, len(results))
-	for _, r := range results {
-		out = append(out, SearchResult{
-			PageID:     r.PageID,
-			Section:    r.Section,
-			Similarity: r.Similarity,
-		})
-	}
-	return out, nil
+	return nil, fmt.Errorf("librarian search unavailable")
 }
 
 // FindSimilar finds pages similar to the given page, preferring pippi-librarian memory_search
@@ -351,76 +333,43 @@ func (l *Librarian) FindSimilar(ctx context.Context, project, pageID string, lim
 				if len(out) > 0 {
 					return out, nil
 				}
-				slog.Debug("FindSimilar: librarian memory_search returned no hits after dedupe/filter; trying local vector index",
+				slog.Debug("FindSimilar: librarian memory_search returned no hits after dedupe/filter",
 					"project", project, "page_id", pageID, "raw_match_rows", len(hits))
 			} else {
-				slog.Warn("librarian memory_search failed for FindSimilar, falling back to local vector index",
+				slog.Warn("librarian memory_search failed for FindSimilar",
 					"project", project, "page_id", pageID, "err", err)
 			}
 		}
 	}
 
-	results, err := l.vstore.FindSimilar(ctx, project, pageID, limit)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]SearchResult, 0, len(results))
-	for _, r := range results {
-		out = append(out, SearchResult{
-			PageID:     r.PageID,
-			Section:    r.Section,
-			Similarity: r.Similarity,
-		})
-	}
-	return out, nil
+	return nil, nil // no similar pages found
 }
 
-// RebuildVectorIndex re-embeds all pages from a branch into the vector store.
-func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch string) (int, error) {
-	pages, err := l.repo.ListPages(branch)
-	if err != nil {
-		return 0, err
-	}
-
-	count := 0
-	failed := 0
-	consecutiveFails := 0
-	for _, path := range pages {
-		if !strings.HasSuffix(path, ".md") {
-			continue
-		}
-		// Stop if embedder appears dead (many consecutive failures)
-		if consecutiveFails >= 5 {
-			slog.Error("vector rebuild: stopping — embedder appears down", "project", project, "branch", branch, "consecutive_failures", consecutiveFails)
-			break
-		}
-		fm, body, err := l.repo.ReadPageWithMeta(branch, path)
-		if err != nil || fm == nil {
-			slog.Warn("vector rebuild: skip unreadable page", "path", path, "error", err)
-			failed++
-			continue
-		}
-		if err := l.indexInVectorStore(ctx, project, fm, body); err != nil {
-			slog.Warn("vector rebuild: embed failed", "page", fm.ID, "path", path, "error", err)
-			failed++
-			consecutiveFails++
-			continue
-		}
-		consecutiveFails = 0 // reset on success
-		count++
-	}
-	if failed > 0 {
-		slog.Warn("vector rebuild: some pages failed", "project", project, "branch", branch, "ok", count, "failed", failed)
-	}
-	return count, nil
-}
-
-// RemoveFromIndexes drops a page from SQLite and vector indexes without modifying git.
+// RemoveFromIndexes drops a page from SQLite index and notifies the librarian (async).
+// The librarian delete uses the mem_ record ID from tree .link line 2 (Option A per plan).
 func (l *Librarian) RemoveFromIndexes(pageID string) error {
 	if err := l.indexer.RemovePage(pageID); err != nil {
 		return err
 	}
-	l.vstore.RemovePage(pageID)
+	// Async delete from librarian using mem_ ID from tree index.
+	if l.libClient != nil && l.treeHolder != nil {
+		if idx := l.treeHolder.Get(); idx != nil {
+			if ent, ok := idx.PageByUUID(pageID); ok {
+				memID := ent.Page.LibrarianID
+				if memID == "" {
+					slog.Warn("page has no librarian ID (.link line 2 empty), skipping librarian delete", "page_uuid", pageID)
+				} else {
+					go func() {
+						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+						defer cancel()
+						if err := l.libClient.MemoryDelete(ctx, memID); err != nil {
+							slog.Warn("librarian memory_delete failed", "page_uuid", pageID, "mem_id", memID, "err", err)
+						}
+					}()
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -497,40 +446,6 @@ func commitMessage(intent, title string) string {
 	return fmt.Sprintf("submit (%s): %s", intent, title)
 }
 
-// indexInVectorStore indexes the page body into the vector store.
-// Title and tags are prepended to each chunk so vector similarity
-// matches on page identity, not just body content.
-func (l *Librarian) indexInVectorStore(ctx context.Context, project string, fm *schema.Frontmatter, body []byte) error {
-	chunks := ChunkByHeadings(string(body))
-	if len(chunks) == 0 {
-		chunks = []vectordb.TextChunk{
-			{Section: fm.Title, Text: string(body)},
-		}
-	}
-	// Prepend title + tags to each chunk for better search relevance.
-	// Without this, vector search only matches on body content and misses
-	// pages where the title/tags are the best match for the query.
-	prefix := fm.Title
-	if len(fm.Tags) > 0 {
-		prefix += " " + strings.Join(fm.Tags, " ")
-	}
-	if fm.Type != "" {
-		prefix += " " + fm.Type
-	}
-	for i := range chunks {
-		chunks[i].Text = prefix + "\n\n" + chunks[i].Text
-	}
-	tags := ""
-	if len(fm.Tags) > 0 {
-		for i, t := range fm.Tags {
-			if i > 0 {
-				tags += ","
-			}
-			tags += t
-		}
-	}
-	return l.vstore.IndexPage(ctx, project, fm.ID, fm.Type, tags, chunks)
-}
 
 // submit persists a page for verbatim, conform, or integrate intents.
 func (l *Librarian) submit(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
@@ -589,15 +504,6 @@ func (l *Librarian) submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 	if err := l.indexer.IndexPage(req.Project, req.Branch, path, req.Frontmatter, bodyToWrite); err != nil {
 		return nil, fmt.Errorf("index page: %w", err)
 	}
-
-	// BUG-012/BUG-014: Vector embedding + dedup async — don't block the response.
-	// Git commit + SQLite index are done. Vector index updates in background.
-	go func() {
-		bgCtx := context.Background()
-		if err := l.indexInVectorStore(bgCtx, req.Project, req.Frontmatter, bodyToWrite); err != nil {
-			slog.Warn("vector index failed (async)", "page", req.Frontmatter.ID, "error", err)
-		}
-	}()
 
 	var warnings []string
 

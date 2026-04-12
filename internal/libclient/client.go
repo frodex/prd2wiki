@@ -199,6 +199,51 @@ func (c *Client) MemorySearch(ctx context.Context, namespace, query string, limi
 	return payload.Matches, nil
 }
 
+// MemoryDelete calls memory_delete with the given record ID (mem_…).
+func (c *Client) MemoryDelete(ctx context.Context, id string) error {
+	if c == nil || c.http == nil {
+		return fmt.Errorf("libclient: nil client")
+	}
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("libclient: id required")
+	}
+	args := map[string]any{
+		"id": id,
+	}
+	body, err := json.Marshal(toolCallRequest{Name: "memory_delete", Args: args})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/tools/call", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	var tcr toolCallResponse
+	if err := json.Unmarshal(raw, &tcr); err != nil {
+		return fmt.Errorf("libclient: decode response: %w; body=%s", err, truncate(string(raw), 500))
+	}
+	if !tcr.OK {
+		if tcr.Error != "" {
+			return fmt.Errorf("libclient: memory_delete: %s", tcr.Error)
+		}
+		return fmt.Errorf("libclient: memory_delete failed (HTTP %d)", resp.StatusCode)
+	}
+	return nil
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s

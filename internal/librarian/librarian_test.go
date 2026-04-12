@@ -10,10 +10,7 @@ import (
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/schema"
-	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
-
-	"github.com/frodex/prd2wiki/internal/embedder"
 )
 
 func setupLibrarian(t *testing.T) (*librarian.Librarian, *wgit.Repo) {
@@ -31,12 +28,10 @@ func setupLibrarian(t *testing.T) (*librarian.Librarian, *wgit.Repo) {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	emb := embedder.ZeroEmbedder{Dims: 16}
-	vstore := vectordb.NewStore(emb)
 	vocab := vocabulary.NewStore(db)
 	ix := index.NewIndexer(db)
 
-	lib := librarian.New(repo, ix, vstore, vocab)
+	lib := librarian.New(repo, ix, vocab)
 	return lib, repo
 }
 

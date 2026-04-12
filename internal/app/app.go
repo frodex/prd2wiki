@@ -1,40 +1,33 @@
 package app
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/frodex/prd2wiki/internal/api"
 	"github.com/frodex/prd2wiki/internal/auth"
 	"github.com/frodex/prd2wiki/internal/blob"
-	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/libclient"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/tree"
-	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
 	"github.com/frodex/prd2wiki/internal/web"
 )
 
 // Config holds all application configuration.
 type Config struct {
-	Server    ServerConfig            `yaml:"server"`
-	Data      DataConfig              `yaml:"data"`
-	Tree      TreeConfig              `yaml:"tree"`
-	Librarian LibrarianConfig         `yaml:"librarian"`
-	Embedder  embedder.EmbedderConfig `yaml:"embedder"`
+	Server    ServerConfig    `yaml:"server"`
+	Data      DataConfig      `yaml:"data"`
+	Tree      TreeConfig      `yaml:"tree"`
+	Librarian LibrarianConfig `yaml:"librarian"`
 	// Projects is deprecated: projects are discovered from the tree scan. Ignored if present.
 	Projects []string `yaml:"projects"`
 }
@@ -66,7 +59,6 @@ type App struct {
 	DB         *sql.DB
 	Indexer    *index.Indexer
 	Searcher   *index.Searcher
-	VStore     *vectordb.Store
 	Librarians map[string]*librarian.Librarian
 	Keys       *auth.ServiceKeyStore
 	Handler    http.Handler
@@ -172,67 +164,6 @@ func New(cfg Config) (*App, error) {
 		}
 	}
 
-	// Apply embedder config defaults.
-	embCfg := cfg.Embedder
-	if embCfg.Endpoint == "" {
-		embCfg.Endpoint = os.Getenv("PRDWIKI_EMBEDDER_URL")
-	}
-	if embCfg.Endpoint == "" {
-		embCfg.Endpoint = "http://localhost:8081"
-	}
-	if embCfg.Dimensions == 0 {
-		embCfg.Dimensions = 768
-	}
-	if embCfg.TimeoutStr == "" {
-		embCfg.TimeoutStr = "30s"
-	}
-	if embCfg.Type == "" {
-		embCfg.Type = "openai"
-	}
-	if embCfg.QueryPrefix == "" {
-		embCfg.QueryPrefix = "search_query: "
-	}
-	if embCfg.PassagePrefix == "" {
-		embCfg.PassagePrefix = "search_document: "
-	}
-
-	// Create embedder -- try real LlamaCpp, fall back to Noop.
-	var emb embedder.Embedder
-	openaiEmb := embedder.NewOpenAIEmbedder(embCfg)
-	if err := openaiEmb.HealthCheck(context.Background()); err == nil {
-		emb = openaiEmb
-		slog.Info("embedder connected", "type", "openai", "endpoint", embCfg.Endpoint, "dims", embCfg.Dimensions)
-	} else {
-		emb = embedder.NoopEmbedder{}
-		slog.Warn("embedder unavailable, using noop", "endpoint", embCfg.Endpoint, "error", err)
-	}
-	vstore := vectordb.NewStore(emb)
-
-	// Load persisted vector index from disk (avoids re-embedding on restart).
-	vectorPath := filepath.Join(dataAbs, "vectors", "pages.json")
-	if err := vstore.LoadFromDisk(vectorPath); err != nil {
-		slog.Info("vector index: no persisted data, will embed on first write", "path", vectorPath)
-	} else {
-		slog.Info("vector index loaded from disk", "entries", vstore.Count(), "path", vectorPath)
-	}
-	// Enable auto-save so every IndexPage/RemovePage persists to disk.
-	vstore.SetPersistPath(vectorPath)
-
-	// Create embedding profile store.
-	profileStore, err := embedder.NewEmbeddingProfileStore(db)
-	if err != nil {
-		// Close db before returning since caller won't have an App to call Close on.
-		db.Close()
-		return nil, fmt.Errorf("create embedding profile store: %w", err)
-	}
-	profile := embedder.ProfileFromConfig(embCfg)
-	if existing, err := profileStore.Get(context.Background(), profile.ProfileID); err != nil || existing == nil {
-		if regErr := profileStore.Register(context.Background(), profile); regErr != nil {
-			slog.Warn("register embedding profile failed", "error", regErr)
-		}
-	}
-	_ = profileStore // available for future use
-
 	var pippi *libclient.Client
 	var pippiDialErr error
 	if socket := strings.TrimSpace(cfg.Librarian.Socket); socket != "" {
@@ -244,7 +175,7 @@ func New(cfg Config) (*App, error) {
 		if pippi != nil && pippiDialErr == nil {
 			slog.Info("pippi-librarian connected — sync and memory_search enabled", "socket", socket)
 		} else if pippi != nil {
-			slog.Warn("pippi-librarian socket unreachable at startup — search will use local vector index + SQLite FTS until librarian is up", "socket", socket, "error", pippiDialErr)
+			slog.Warn("pippi-librarian socket unreachable at startup — search will use SQLite FTS until librarian is up", "socket", socket, "error", pippiDialErr)
 		}
 	}
 	var libOpts []librarian.Option
@@ -269,45 +200,7 @@ func New(cfg Config) (*App, error) {
 		if u := repoKeyToProjectUUID[project]; u != "" {
 			opts = append(opts, librarian.WithProjectUUID(u))
 		}
-		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab, opts...)
-	}
-
-	// Rebuild vector index in background if nothing loaded from disk.
-	// Wiki serves immediately — search degrades to SQLite FTS until vectors ready.
-	if vstore.Count() == 0 {
-		slog.Info("vector index empty, will rebuild from git in background")
-		go func() {
-			workers := runtime.NumCPU()
-			if workers > 14 {
-				workers = 14
-			}
-			g, ctx := errgroup.WithContext(context.Background())
-			g.SetLimit(workers)
-
-			for _, project := range projectKeys {
-				lib := librarians[project]
-				repo := repos[project]
-				branches, _ := repo.ListBranches()
-				for _, branch := range branches {
-					project, branch := project, branch
-					g.Go(func() error {
-						n, err := lib.RebuildVectorIndex(ctx, project, branch)
-						if err != nil {
-							slog.Error("vector rebuild failed", "project", project, "branch", branch, "error", err)
-							return nil // don't cancel other work
-						}
-						if n > 0 {
-							slog.Info("vector index rebuilt", "project", project, "branch", branch, "pages", n)
-						}
-						return nil
-					})
-				}
-			}
-			_ = g.Wait()
-			slog.Info("vector index rebuild complete", "entries", vstore.Count())
-		}()
-	} else {
-		slog.Info("vector index loaded from disk", "entries", vstore.Count())
+		librarians[project] = librarian.New(repos[project], indexer, vocab, opts...)
 	}
 
 	blobStore := blob.NewStore(dataAbs)
@@ -356,7 +249,6 @@ func New(cfg Config) (*App, error) {
 		DB:         db,
 		Indexer:    indexer,
 		Searcher:   index.NewSearcher(db),
-		VStore:     vstore,
 		Librarians: librarians,
 		Keys:       keyStore,
 		Handler:    handler,
