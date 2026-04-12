@@ -33,6 +33,34 @@ func WriteLinkFile(treeRoot, projectRel, slug, pageUUID, title string) error {
 	return os.WriteFile(p, []byte(content), 0o644)
 }
 
+// WriteLinkFileAtTreeURL writes treeRoot/{urlPath}.link, creating parent directories.
+// urlPath uses web slashes (e.g. "prd2wiki/plan-foo"). Each path segment must pass safeSlug.
+func WriteLinkFileAtTreeURL(treeRoot, urlPath, pageUUID, title string) error {
+	urlPath = strings.Trim(urlPath, "/")
+	if urlPath == "" {
+		return fmt.Errorf("empty tree url path")
+	}
+	if strings.Contains(urlPath, "..") {
+		return fmt.Errorf("invalid tree url path")
+	}
+	for _, seg := range strings.Split(urlPath, "/") {
+		if seg == "" {
+			return fmt.Errorf("invalid empty segment in tree url path")
+		}
+		if !safeSlug(seg) {
+			return fmt.Errorf("invalid segment %q in tree url path", seg)
+		}
+	}
+	rel := filepath.FromSlash(urlPath) + ".link"
+	p := filepath.Join(treeRoot, rel)
+	dir := filepath.Dir(p)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	content := strings.TrimSpace(pageUUID) + "\n\n" + strings.TrimSpace(title) + "\n"
+	return os.WriteFile(p, []byte(content), 0o644)
+}
+
 // DeleteLinkFile removes {slug}.link from the project tree directory.
 func DeleteLinkFile(treeRoot, projectRel, slug string) error {
 	if !safeSlug(slug) {

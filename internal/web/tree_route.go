@@ -81,6 +81,14 @@ func (h *Handler) serveTreePage(w http.ResponseWriter, r *http.Request, treeRoot
 	linkPath := filepath.Join(cur, parts[len(parts)-1]+".link")
 	fi, err := os.Lstat(linkPath)
 	if err != nil || fi.IsDir() {
+		// After a move/rename, the old .link may be replaced by a stub directory with .301/.302.
+		leafDir := filepath.Join(cur, parts[len(parts)-1])
+		if fi2, err2 := os.Lstat(leafDir); err2 == nil && fi2.IsDir() {
+			if code, loc, ok := readTreeRedirect(leafDir); ok {
+				http.Redirect(w, r, joinRedirectLocation(r, loc, ""), code)
+				return true
+			}
+		}
 		http.NotFound(w, r)
 		return true
 	}

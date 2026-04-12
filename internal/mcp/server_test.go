@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/frodex/prd2wiki/internal/tree"
 )
 
 // ---------------------------------------------------------------------------
@@ -19,7 +23,7 @@ func newMCPServer(t *testing.T, mux *http.ServeMux) (*MCPServer, func()) {
 	t.Helper()
 	srv := httptest.NewServer(mux)
 	client := NewWikiClient(srv.URL)
-	return NewServer(client), srv.Close
+	return NewServer(ServerConfig{Client: client}), srv.Close
 }
 
 // callTool invokes a tool handler directly and returns the decoded result.
@@ -137,8 +141,8 @@ func TestToolsList(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected tools array, got %T", result["tools"])
 	}
-	if len(tools) != 7 {
-		t.Errorf("expected 7 tools, got %d", len(tools))
+	if len(tools) != 9 {
+		t.Errorf("expected 9 tools, got %d", len(tools))
 	}
 
 	// Check that known tool names are present.
@@ -147,7 +151,10 @@ func TestToolsList(t *testing.T) {
 		tm, _ := tool.(map[string]interface{})
 		names[fmt.Sprint(tm["name"])] = true
 	}
-	for _, want := range []string{"wiki_search", "wiki_read", "wiki_propose", "wiki_challenge", "wiki_ingest", "wiki_lint", "wiki_status"} {
+	for _, want := range []string{
+		"wiki_search", "wiki_read", "wiki_propose", "wiki_challenge", "wiki_ingest", "wiki_lint", "wiki_status",
+		"wiki_move", "wiki_rename",
+	} {
 		if !names[want] {
 			t.Errorf("missing tool %q", want)
 		}
@@ -599,5 +606,132 @@ func TestSlugify(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("slugify(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+func minimalTreeFixture(t *testing.T) (treeRoot, dataDir string, pageUUID string, cleanup func()) {
+	t.Helper()
+	tmp := t.TempDir()
+	treeDir := filepath.Join(tmp, "wiki")
+	dataDir = filepath.Join(tmp, "data")
+	reposDir := filepath.Join(dataDir, "repos")
+	if err := os.MkdirAll(reposDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const projUUID = "test0000-0000-4000-8000-000000000001"
+	bare := filepath.Join(reposDir, "proj_test0000.git")
+	if err := os.MkdirAll(filepath.Join(bare, "objects"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bare, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bare, "config"), []byte("[core]\n\trepositoryformatversion = 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(dataDir, "acme.wiki.git")
+	if err := os.Symlink(filepath.Join("repos", "proj_test0000.git"), linkPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(treeDir, "acme"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(treeDir, "acme", ".uuid"), []byte(projUUID+"\nAcme Wiki\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pageUUID = "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeeeee"
+	if err := os.WriteFile(filepath.Join(treeDir, "acme", "hello.link"), []byte(pageUUID+"\n\nHello Page\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := tree.Scan(treeDir, dataDir)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	holder := tree.NewIndexHolder(treeDir, dataDir, idx)
+	cleanup = func() { _ = holder }
+	return treeDir, dataDir, pageUUID, cleanup
+}
+
+func TestWikiReadToolTreePath(t *testing.T) {
+	treeRoot, dataDir, pageUUID, _ := minimalTreeFixture(t)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/projects/acme/pages/"+pageUUID, func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(PageResponse{
+			ID: pageUUID, Title: "Hello Page", Type: "concept", Body: "# Hello",
+		})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	idx, err := tree.Scan(treeRoot, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder := tree.NewIndexHolder(treeRoot, dataDir, idx)
+
+	s := NewServer(ServerConfig{Client: NewWikiClient(srv.URL), TreeHolder: holder})
+
+	out := callTool(t, s, "wiki_read", map[string]string{
+		"path": "acme/hello",
+	})
+
+	var page PageResponse
+	if err := json.Unmarshal(out, &page); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if page.ID != pageUUID {
+		t.Errorf("ID: got %q", page.ID)
+	}
+	if page.Body != "# Hello" {
+		t.Errorf("Body: got %q", page.Body)
+	}
+}
+
+func TestWikiMoveCreatesRedirect(t *testing.T) {
+	treeRoot, dataDir, _, _ := minimalTreeFixture(t)
+
+	mux := http.NewServeMux()
+	sHTTP := httptest.NewServer(mux)
+	defer sHTTP.Close()
+
+	idx, err := tree.Scan(treeRoot, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder := tree.NewIndexHolder(treeRoot, dataDir, idx)
+
+	s := NewServer(ServerConfig{Client: NewWikiClient(sHTTP.URL), TreeHolder: holder})
+
+	// Replace hello.link with old-name.link (single page in tree index)
+	if err := os.Remove(filepath.Join(treeRoot, "acme", "hello.link")); err != nil {
+		t.Fatal(err)
+	}
+	pageUUID := "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeeeee"
+	oldLink := filepath.Join(treeRoot, "acme", "old-name.link")
+	if err := os.WriteFile(oldLink, []byte(pageUUID+"\n\nOld\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := holder.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+
+	callTool(t, s, "wiki_move", map[string]string{
+		"from": "acme/old-name",
+		"to":   "acme/new-name",
+	})
+
+	newLink := filepath.Join(treeRoot, "acme", "new-name.link")
+	if _, err := os.Stat(newLink); err != nil {
+		t.Fatalf("expected new .link: %v", err)
+	}
+	redirectFile := filepath.Join(treeRoot, "acme", "old-name", ".302")
+	b, err := os.ReadFile(redirectFile)
+	if err != nil {
+		t.Fatalf("expected .302 redirect: %v", err)
+	}
+	if !strings.Contains(string(b), "/acme/new-name") {
+		t.Errorf("redirect content: %s", b)
 	}
 }
