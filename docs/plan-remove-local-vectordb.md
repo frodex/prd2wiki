@@ -17,10 +17,10 @@ Reviews and verification passes are **invalid for comparison** unless they state
 
 | Field | Value |
 |--------|--------|
-| **Wiki / prd2wiki root** | e.g. `/srv/prd2wiki` |
-| **Remote** | e.g. `https://github.com/frodex/prd2wiki.git` |
-| **Branch** | e.g. `main` |
-| **Commit** | full `git rev-parse HEAD` at time of review |
+| **Wiki / prd2wiki root** | `/srv/prd2wiki` |
+| **Remote** | local only (not yet pushed to GitHub) |
+| **Branch** | `main` |
+| **Commit** | run `git rev-parse HEAD` at review time |
 | **Librarian / pippi-librarian root** (if any claim references its source) | path + branch + commit, or **“not consulted”** |
 | **Other repos** (import tools, MCP servers, etc.) | path + commit or **“not consulted”** |
 
