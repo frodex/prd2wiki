@@ -4,10 +4,11 @@
 **Status:** DRAFT — REQUIRES REVIEW BEFORE IMPLEMENTATION
 **Priority:** Critical
 **Author:** Claude Opus 4.6
-**Reviews (corrections from all three incorporated below):**
+**Reviews (corrections from all four incorporated below):**
 - `plan-remove-local-vectordb-RESPONSE-verification.md` — first verification: dead dedup, API merge behavior, content prefixing
 - `plan-remove-local-vectordb-REVIEW-2-deep.md` — deep review: TextChunk dependency, prd2wiki-import absent, web≠API search, local scoring formula
 - `plan-remove-local-vectordb-REVIEW-3-verification.md` — third pass: Librarian has no Searcher (FTS fallback in handlers not Librarian), search logging is new work, grep patterns incomplete
+- `plan-remove-local-vectordb-REVIEW-4-in-chat.md` — fourth pass: namespace mapping (repo key vs wiki:uuid), vocabulary normalization parity, write latency table correction
 
 **Reviewer instructions:** This plan must be examined for anything missing that would prevent the intended outcome. If a step, dependency, or integration point is missing, flag it as a BLOCKER. Every claim has been verified against source code as of 2026-04-12. Function names are used as anchors (not line numbers, which drift).
 
@@ -24,6 +25,7 @@ Reviews and verification passes are **invalid for comparison** unless they state
 | **Branch** | `main` |
 | **Commit** | run `git rev-parse HEAD` at review time |
 | **Librarian / pippi-librarian root** | `/srv/pippi-librarian` — branch `main` — commit `cc96c4b` |
+| **Librarian key files for review** | `cmd/pippi-librarian/main.go` (MCP handlers), `internal/librarian/memory.go` (`StoreWiki`), `internal/librarian/memory_lance.go` (Arrow schema), `internal/librarian/memsvc.go` (`SearchWiki`, `WikiSearchHit`), `schema.d/wiki.yaml` (designed but unimplemented fields) |
 | **Other repos** | none consulted |
 
 - Claims about **this** repository must be checked only against the **prd2wiki** row above.
@@ -154,7 +156,8 @@ User searches → wiki calls librarian memory_search via unix socket
 | Startup time | 10-120s (blocked by vector rebuild) | <10s |
 | Search (vector) | ~100ms local scan | Depends on librarian (~50-200ms over socket) |
 | Search (FTS fallback) | ~10ms | Unchanged |
-| Write latency | 60-120s (local embed + git + sync) | <2s (git + async sync only) |
+| HTTP write response | <2s (git + SQLite; local embed is async goroutine) | <2s (git + SQLite; librarian sync is async goroutine) |
+| Background index time after write | 60-120s (local embed via TEI) | N/A — librarian handles async |
 
 ---
 
@@ -181,9 +184,18 @@ This is a **relevance contract** — without it, vector search matches on body c
 
 **C: Rely on BM25.** The librarian's hybrid search includes BM25 lexical matching. Title and tag matches would come through BM25 even without vector prefixing. The vector component would match on body content only.
 
-**Recommendation:** Option A (send prefixed content) for immediate parity. File a follow-up for Option B (move logic to librarian side) as the cleaner long-term solution.
+**Resolution (post Review 4 chat discovery):** Option B is the only correct answer, but it requires **pippi-librarian changes first**.
 
-**[REVIEWER: This affects search quality. Decide before implementation.]**
+**The librarian drops metadata.** Verified against `/srv/pippi-librarian` commit `cc96c4b`:
+- MCP handler for `memory_store` accepts `metadata` in the schema but **never reads `args["metadata"]`**
+- `StoreWiki()` takes `(ctx, namespace, pageUUID, content)` — no metadata parameter
+- `MemoryRecord` has no title, tags, type, or status fields
+- LanceDB Arrow schema has no `ext_json`, `page_title`, `page_tags`, or `page_type` columns
+- The `schema.d/wiki.yaml` extension fields were designed in Phase 1 but **never implemented in runtime code**
+
+**This is a BLOCKER.** The wiki sends metadata. The schema accepts it. The handler drops it. The record doesn't store it. The search can't use it. See Part 10 for prerequisites.
+
+**[DECISION: Option B — librarian handles metadata. But librarian must be fixed first (Part 10).]**
 
 ---
 
@@ -249,6 +261,8 @@ After Step 15 (all code changes done), before declaring the work complete.
 
 **Step 2:** Rewrite `Librarian.Search()` in `librarian.go`
 - When `libClient != nil`: call `libClient.MemorySearch()`
+- **Namespace mapping (Review 4 blocker):** `Librarian.Search()` receives `project` as a repo key (e.g., `"default"`). The librarian's `memory_search` expects `namespace` as `"wiki:{project-uuid}"`. The search call must resolve repo key → tree `Project.UUID` → `"wiki:" + uuid`. Use `treeHolder.Get().ProjectByRepoKey(project)` to get the UUID. Without this mapping, search hits the wrong namespace or returns empty.
+- **Vocabulary normalization (Review 4):** Current `Search()` normalizes query tokens via `l.vocab.Normalize()` before the local store. Decision: **send the normalized query to the librarian** (preserve current behavior). If the librarian also normalizes, that's double normalization but harmless. If it doesn't, wiki-side normalization preserves parity.
 - When `libClient == nil` or call fails: **return error** (not FTS fallback — `Librarian` does not have an `index.Searcher`)
 - FTS fallback happens in the **handlers** (`api/search.go` and `web/search.go`), NOT in `Librarian.Search()`
 - API handler: already runs FTS in parallel — if `lib.Search()` errors, the vector leg is empty but FTS results still display
@@ -327,6 +341,63 @@ After Step 15 (all code changes done), before declaring the work complete.
 
 ---
 
+## Part 10: Librarian Prerequisites (pippi-librarian changes, BLOCKER)
+
+The following changes must be made in `/srv/pippi-librarian/` BEFORE this plan can be implemented. Without them, removing the local vector store degrades search quality because the librarian cannot match on title, tags, or type.
+
+**Verified against `/srv/pippi-librarian` commit `cc96c4b`:**
+
+### 10.1: MCP handler must pass metadata to StoreWiki
+
+`cmd/pippi-librarian/main.go` memory_store handler currently calls:
+```go
+memStore.StoreWiki(ctx, namespace, pageUUID, content)
+```
+Must become:
+```go
+memStore.StoreWiki(ctx, namespace, pageUUID, content, metadata)
+```
+Where `metadata = args["metadata"]` (the map the wiki already sends).
+
+### 10.2: StoreWiki must accept and store metadata
+
+`internal/librarian/memory.go` `StoreWiki()` must:
+- Accept `metadata map[string]any` parameter
+- Store metadata fields on `MemoryRecord` (either as individual fields or `ExtJSON map[string]any`)
+- At minimum: `page_title`, `page_type`, `page_status`, `page_tags`, `author`
+
+### 10.3: LanceDB Arrow schema must include metadata columns
+
+`internal/librarian/memory_lance.go` must add to the Arrow schema:
+- `page_title` (string) — for BM25 + embedding enrichment
+- `page_tags` (string) — for BM25 + embedding enrichment + filtering
+- `page_type` (string) — for filtering
+- `page_status` (string) — for filtering
+- `ext_json` (string) — for additional metadata (author, source_repo, source_commit)
+
+### 10.4: Embedding must include title and tags
+
+When the librarian embeds content for vector search, it must prepend title and tags to the content text. This ensures vector similarity matches on page identity, not just body content. The metadata for this is available from 10.2.
+
+### 10.5: Search must support metadata filtering
+
+`SearchWiki` should support filtering by type, status, tags when the caller requests it. This enables the wiki's structured search (filter by type, filter by status) to work through the librarian.
+
+### 10.6: Bulk backfill must include metadata
+
+Step 19 (bulk backfill) must send metadata WITH each page. Without it, records in the librarian will have title/tags = empty even after re-ingestion.
+
+### Gate for Part 10
+
+- [ ] Librarian `memory_store` stores title, tags, type, status from metadata
+- [ ] LanceDB records include metadata columns
+- [ ] Embedding text includes title + tags
+- [ ] `memory_search` returns results that match on title (test: search "pippi readme" returns the README page in top 3)
+
+**This gate must pass before proceeding with the prd2wiki plan.**
+
+---
+
 ## Part 8: Rollback Plan
 
 If partially done and search is broken:
@@ -377,11 +448,20 @@ If JSON file was deleted:
 - [ ] `RemoveFromIndexes()` keeps SQLite, replaces vstore with async `memory_delete`
 - [ ] `MemoryDelete()` added to libclient
 - [ ] `TextChunk` type moved to librarian package before vectordb deletion
-- [ ] Content sent to librarian includes title/tags prefix
 - [ ] libclient startup logging is accurate (not "enabled" when socket is dead)
-- [ ] Bulk backfill completed — all pages in librarian
+- [ ] Namespace mapping: `Librarian.Search()` resolves repo key → tree project UUID → `wiki:{uuid}` for `MemorySearch` call
+- [ ] Query vocabulary normalization applied before `MemorySearch` call
+- [ ] Bulk backfill completed — all pages in librarian WITH metadata
 - [ ] Wiki starts in <10 seconds
 - [ ] `go build ./...` passes
 - [ ] `go test ./...` passes
 - [ ] End-to-end: edit → search via librarian → results render
 - [ ] Librarian logs confirm memory_search calls from wiki
+
+### Librarian prerequisite gate (Part 10 — must pass FIRST)
+
+- [ ] Librarian `memory_store` handler reads and passes metadata to `StoreWiki`
+- [ ] `StoreWiki` stores title, tags, type, status on the record
+- [ ] LanceDB Arrow schema includes metadata columns
+- [ ] Embedding text includes title + tags (search "pippi readme" → README in top 3)
+- [ ] Reviewer has verified Part 10 claims against `/srv/pippi-librarian` at commit `cc96c4b` or later
