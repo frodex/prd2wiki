@@ -388,10 +388,8 @@ func (r *Repo) storeTreeNode(node *dirNode) (plumbing.Hash, error) {
 		})
 	}
 
-	// Sort entries by name (git requires sorted tree entries).
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name < entries[j].Name
-	})
+	// Git tree ordering: compare directory names as if they had a trailing slash.
+	sort.Sort(object.TreeEntrySorter(entries))
 
 	tree := &object.Tree{Entries: entries}
 	treeObj := &plumbing.MemoryObject{}
