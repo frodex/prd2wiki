@@ -7,3 +7,4 @@ frontend/node_modules/
 *.jpeg
 backup/
 .worktrees/
+data.phase-b-backup-*/
