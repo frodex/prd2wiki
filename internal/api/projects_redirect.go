@@ -19,6 +19,12 @@ func (s *Server) wrapProjectsAPILegacyRedirect(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// Only redirect GETs — mutating requests from the web UI go through
+		// the old handler directly (no auth required for same-origin writes).
+		if r.Method != http.MethodGet {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if target, ok := s.mapLegacyProjectsAPIToTree(r); ok {
 			q := r.URL.RawQuery
 			if q != "" {
