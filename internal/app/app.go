@@ -10,9 +10,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"golang.org/x/sync/errgroup"
-
 	"github.com/frodex/prd2wiki/internal/api"
 	"github.com/frodex/prd2wiki/internal/auth"
 	"github.com/frodex/prd2wiki/internal/blob"
@@ -255,37 +252,31 @@ func New(cfg Config) (*App, error) {
 		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab, libOpts...)
 	}
 
-	// Rebuild vector index only if nothing was loaded from disk (parallel via errgroup).
+	// Rebuild vector index in background if nothing loaded from disk.
+	// Wiki serves immediately — search degrades to SQLite FTS until vectors ready.
 	if vstore.Count() == 0 {
-		slog.Info("vector index empty, rebuilding from git")
-		vg, vctx := errgroup.WithContext(context.Background())
-		for _, project := range projectKeys {
-			project := project // capture
-			lib := librarians[project]
-			repo := repos[project]
-			branches, _ := repo.ListBranches()
-			for _, branch := range branches {
-				branch := branch
-				vg.Go(func() error {
-					n, err := lib.RebuildVectorIndex(vctx, project, branch)
+		slog.Info("vector index empty, will rebuild from git in background")
+		go func() {
+			// Sequential per project/branch — don't overwhelm embedder
+			for _, project := range projectKeys {
+				lib := librarians[project]
+				repo := repos[project]
+				branches, _ := repo.ListBranches()
+				for _, branch := range branches {
+					n, err := lib.RebuildVectorIndex(context.Background(), project, branch)
 					if err != nil {
-						return fmt.Errorf("vector rebuild %s/%s: %w", project, branch, err)
+						slog.Error("vector rebuild failed", "project", project, "branch", branch, "error", err)
+						continue
 					}
 					if n > 0 {
 						slog.Info("vector index rebuilt", "project", project, "branch", branch, "pages", n)
 					}
-					return nil
-				})
+				}
 			}
-		}
-		if err := vg.Wait(); err != nil {
-			slog.Warn("vector index rebuild had errors", "error", err)
-		}
-		if vstore.Count() > 0 {
 			slog.Info("vector index rebuild complete", "entries", vstore.Count())
-		}
+		}()
 	} else {
-		slog.Info("vector index loaded, skipping rebuild", "entries", vstore.Count())
+		slog.Info("vector index loaded from disk", "entries", vstore.Count())
 	}
 
 	blobStore := blob.NewStore(dataAbs)

@@ -8,8 +8,6 @@ import (
 	"math"
 	"net/http"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 // EmbedderConfig holds configuration for the OpenAI-compatible embedding client.
@@ -25,14 +23,15 @@ type EmbedderConfig struct {
 	PassagePrefix string `yaml:"passage_prefix"`   // "search_document: "
 }
 
-// ParsedTimeout returns the parsed timeout duration, defaulting to 10s.
+// ParsedTimeout returns the parsed timeout duration, defaulting to 60s.
+// Large batches through TEI can take 30-60s for pages with many sections.
 func (c EmbedderConfig) ParsedTimeout() time.Duration {
 	if c.TimeoutStr == "" {
-		return 10 * time.Second
+		return 60 * time.Second
 	}
 	d, err := time.ParseDuration(c.TimeoutStr)
 	if err != nil {
-		return 10 * time.Second
+		return 60 * time.Second
 	}
 	return d
 }
@@ -58,8 +57,8 @@ type OpenAIEmbedder struct {
 var _ Embedder = (*OpenAIEmbedder)(nil)
 
 func NewOpenAIEmbedder(cfg EmbedderConfig) *OpenAIEmbedder {
-	if cfg.BatchSize <= 0 {
-		cfg.BatchSize = 64
+	if cfg.BatchSize <= 0 || cfg.BatchSize > 32 {
+		cfg.BatchSize = 32 // TEI max_client_batch_size default is 32
 	}
 	timeout := cfg.ParsedTimeout()
 	return &OpenAIEmbedder{
@@ -105,29 +104,18 @@ func (e *OpenAIEmbedder) EmbedBatch(ctx context.Context, texts []string, languag
 		return e.embed(ctx, prefixed)
 	}
 
-	results := make([][]float32, len(prefixed))
-	g, ctx := errgroup.WithContext(ctx)
-
+	// Send sub-batches sequentially — don't overwhelm the embedding server.
+	results := make([][]float32, 0, len(prefixed))
 	for start := 0; start < len(prefixed); start += e.cfg.BatchSize {
-		start := start
 		end := start + e.cfg.BatchSize
 		if end > len(prefixed) {
 			end = len(prefixed)
 		}
-		chunk := prefixed[start:end]
-
-		g.Go(func() error {
-			vecs, err := e.embed(ctx, chunk)
-			if err != nil {
-				return err
-			}
-			copy(results[start:], vecs)
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
+		vecs, err := e.embed(ctx, prefixed[start:end])
+		if err != nil {
+			return nil, fmt.Errorf("embed batch [%d:%d]: %w", start, end, err)
+		}
+		results = append(results, vecs...)
 	}
 	return results, nil
 }

@@ -269,18 +269,34 @@ func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch stri
 	}
 
 	count := 0
+	failed := 0
+	consecutiveFails := 0
 	for _, path := range pages {
 		if !strings.HasSuffix(path, ".md") {
 			continue
 		}
+		// Stop if embedder appears dead (many consecutive failures)
+		if consecutiveFails >= 5 {
+			slog.Error("vector rebuild: stopping — embedder appears down", "project", project, "branch", branch, "consecutive_failures", consecutiveFails)
+			break
+		}
 		fm, body, err := l.repo.ReadPageWithMeta(branch, path)
 		if err != nil || fm == nil {
+			slog.Warn("vector rebuild: skip unreadable page", "path", path, "error", err)
+			failed++
 			continue
 		}
 		if err := l.indexInVectorStore(ctx, project, fm, body); err != nil {
+			slog.Warn("vector rebuild: embed failed", "page", fm.ID, "path", path, "error", err)
+			failed++
+			consecutiveFails++
 			continue
 		}
+		consecutiveFails = 0 // reset on success
 		count++
+	}
+	if failed > 0 {
+		slog.Warn("vector rebuild: some pages failed", "project", project, "branch", branch, "ok", count, "failed", failed)
 	}
 	return count, nil
 }
