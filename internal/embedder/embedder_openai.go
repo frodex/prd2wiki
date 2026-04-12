@@ -57,8 +57,8 @@ type OpenAIEmbedder struct {
 var _ Embedder = (*OpenAIEmbedder)(nil)
 
 func NewOpenAIEmbedder(cfg EmbedderConfig) *OpenAIEmbedder {
-	if cfg.BatchSize <= 0 || cfg.BatchSize > 32 {
-		cfg.BatchSize = 32 // TEI max_client_batch_size default is 32
+	if cfg.BatchSize <= 0 || cfg.BatchSize > 8 {
+		cfg.BatchSize = 8 // TEI ONNX backend limit: "Backend does not support batch size > 8"
 	}
 	timeout := cfg.ParsedTimeout()
 	return &OpenAIEmbedder{
