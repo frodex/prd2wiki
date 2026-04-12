@@ -1,3 +1,9 @@
 bin/
 data/
 frontend/node_modules/
+prd2wiki-chain
+*.png
+*.jpg
+*.jpeg
+backup/
+.worktrees/
