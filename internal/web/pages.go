@@ -29,17 +29,19 @@ type PageViewData struct {
 	Branch       string
 	LastEditBy   string
 	LastEditDate string
+	TreeViewURL  string // canonical tree URL when indexed (e.g. /prd2wiki/foo)
 }
 
 // PageEditData holds data for the page edit template.
 type PageEditData struct {
-	IsNew   bool
-	ID      string
-	Title   string
-	Type    string
-	Status  string
-	TagsCSV string
-	Body    string
+	IsNew       bool
+	ID          string
+	Title       string
+	Type        string
+	Status      string
+	TagsCSV     string
+	Body        string
+	TreeViewURL string // wiki tree URL when indexed (shown on edit existing page)
 }
 
 // readPageNewest finds the most recently modified version of a page across all branches.
@@ -149,12 +151,19 @@ func (h *Handler) viewPageAtGitPath(w http.ResponseWriter, project, gitPath stri
 		pvd.Modified = fm.DCModified.Format("2006-01-02")
 	}
 
-	data := PageData{
-		Project:  project,
-		Title:    fm.Title + " — " + project,
-		Content:  pvd,
-		Projects: h.projects(),
+	if h.treeHolder != nil && h.treeHolder.Get() != nil {
+		if ent, ok := h.treeHolder.Get().PageByUUID(fm.ID); ok {
+			pvd.TreeViewURL = "/" + ent.URLPath()
+		}
 	}
+
+	data := PageData{
+		Project:     project,
+		Title:       fm.Title + " — " + project,
+		Content:     pvd,
+		Breadcrumbs: h.breadcrumbsForGitPage(project, fm.ID, fm.Title),
+	}
+	h.preparePageData(&data)
 
 	t := h.templates["templates/page_view.html"]
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
@@ -214,13 +223,19 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 		TagsCSV: strings.Join(fm.Tags, ", "),
 		Body:    string(body),
 	}
+	if h.treeHolder != nil && h.treeHolder.Get() != nil {
+		if ent, ok := h.treeHolder.Get().PageByUUID(fm.ID); ok {
+			ped.TreeViewURL = "/" + ent.URLPath()
+		}
+	}
 
 	data := PageData{
-		Project:  project,
-		Title:    "Edit: " + fm.Title,
-		Content:  ped,
-		Projects: h.projects(),
+		Project:     project,
+		Title:       "Edit: " + fm.Title,
+		Content:     ped,
+		Breadcrumbs: projectSectionBreadcrumbs(project, "Edit"),
 	}
+	h.preparePageData(&data)
 
 	t := h.templates["templates/page_edit.html"]
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
@@ -244,11 +259,12 @@ func (h *Handler) newPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PageData{
-		Project:  project,
-		Title:    "New Page",
-		Content:  ped,
-		Projects: h.projects(),
+		Project:     project,
+		Title:       "New Page",
+		Content:     ped,
+		Breadcrumbs: projectSectionBreadcrumbs(project, "New page"),
 	}
+	h.preparePageData(&data)
 
 	t := h.templates["templates/page_edit.html"]
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {

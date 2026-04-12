@@ -16,6 +16,7 @@ type ProjectCard struct {
 	Status      string
 	PageCount   int
 	Project     string // the wiki project this lives in (e.g. "default")
+	TreePath    string // on-disk tree project path when known (e.g. "prd2wiki"); link goes to /{TreePath}
 }
 
 // home renders the front page with project cards.
@@ -50,6 +51,13 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 
 			taggedPages, _ := h.search.ByTag(pr.Project, projTag)
 
+			treePath := ""
+			if h.treeHolder != nil && h.treeHolder.Get() != nil {
+				if p, ok := h.treeHolder.Get().ProjectByRepoKey(pr.Project); ok {
+					treePath = p.Path
+				}
+			}
+
 			cards = append(cards, ProjectCard{
 				ID:          projTag,
 				Title:       pr.Title,
@@ -57,6 +65,7 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 				Status:      pr.Status,
 				PageCount:   len(taggedPages),
 				Project:     pr.Project,
+				TreePath:    treePath,
 			})
 		}
 	}
@@ -67,10 +76,14 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 	})
 
 	data := PageData{
-		Title:    "Projects",
+		Title: "Projects",
 		Content:  cards,
-		Projects: h.projects(),
+		Breadcrumbs: []Breadcrumb{
+			{Label: "Home", Href: "/"},
+			{Label: "Projects", Href: ""},
+		},
 	}
+	h.preparePageData(&data)
 
 	t := h.templates["templates/home.html"]
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {

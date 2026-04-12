@@ -139,6 +139,15 @@
     background: #e8e8e8;
     border-color: #bbb;
 }
+.btn-action-secondary {
+    background: #eef2f7;
+    border-color: #a8b8cc;
+    color: #2c3e50;
+}
+.btn-action-secondary:hover {
+    background: #e2e8f0;
+    border-color: #8fa0b5;
+}
 .btn-action-approve {
     background: #d4edda;
     border-color: #27ae60;

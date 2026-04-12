@@ -2,7 +2,7 @@
 <h1>Projects</h1>
 <div class="project-cards">
     {{range .Content}}
-    <a href="/projects/{{.Project}}/pages?tree=&tag={{.ID}}" class="project-card">
+    <a href="{{if .TreePath}}/{{.TreePath}}{{else}}/projects/{{.Project}}/pages?tree=&tag={{.ID}}{{end}}" class="project-card">
         <h2>{{.Title}}</h2>
         {{if .Description}}<p class="project-desc">{{.Description}}</p>{{end}}
         <div class="project-meta">

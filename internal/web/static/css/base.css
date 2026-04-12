@@ -48,14 +48,125 @@ body {
     color: #fff;
 }
 
+/* Shell: optional left sidebar + main */
+.wiki-shell {
+    display: block;
+}
+
+.wiki-shell-with-sidebar {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+.wiki-sidebar {
+    flex: 0 0 220px;
+    position: sticky;
+    top: 0.5rem;
+    align-self: flex-start;
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+    padding: 1rem 0.75rem 1rem 0;
+    border-right: 1px solid #e0e0e8;
+    background: #fafafa;
+    font-size: 0.88rem;
+}
+
+.wiki-sidebar-project {
+    margin-bottom: 1.25rem;
+}
+
+.wiki-sidebar-project-title {
+    display: block;
+    font-weight: 600;
+    color: #1a1a2e;
+    text-decoration: none;
+    margin-bottom: 0.35rem;
+}
+
+.wiki-sidebar-project-title:hover {
+    text-decoration: underline;
+}
+
+.wiki-sidebar-pages {
+    list-style: none;
+    margin: 0;
+    padding-left: 0.35rem;
+}
+
+.wiki-sidebar-pages li {
+    margin: 0.2rem 0;
+    line-height: 1.35;
+}
+
+.wiki-sidebar-pages a {
+    color: #3d5a80;
+    text-decoration: none;
+}
+
+.wiki-sidebar-pages a:hover {
+    text-decoration: underline;
+}
+
+.wiki-shell-with-sidebar .wiki-main {
+    flex: 1;
+    min-width: 0;
+    margin: 2rem 0;
+    padding: 0 0 0 1rem;
+}
+
+/* Breadcrumbs */
+.breadcrumb-nav {
+    margin-bottom: 1rem;
+    font-size: 0.88rem;
+}
+
+.breadcrumb-list {
+    display: flex;
+    flex-wrap: wrap;
+    list-style: none;
+    gap: 0.25rem 0.5rem;
+    align-items: baseline;
+}
+
+.breadcrumb-item:not(:last-child)::after {
+    content: "/";
+    margin-left: 0.5rem;
+    color: #888;
+}
+
+.breadcrumb-item a {
+    color: #3d5a80;
+    text-decoration: none;
+}
+
+.breadcrumb-item a:hover {
+    text-decoration: underline;
+}
+
+.breadcrumb-current {
+    color: #555;
+    font-weight: 500;
+}
+
 /* Main content */
 .wiki-main {
     max-width: 900px;
     margin: 2rem auto;
     padding: 0 1.5rem;
 }
+.wiki-shell-with-sidebar .wiki-main {
+    margin-left: 0;
+    margin-right: 0;
+}
 .wiki-main:has(.page-layout) {
     max-width: 1100px;
+}
+.wiki-shell-with-sidebar .wiki-main:has(.page-layout) {
+    max-width: none;
 }
 
 h1 {

@@ -28,10 +28,12 @@ var md = goldmark.New(
 
 // PageData is the top-level data passed to every template.
 type PageData struct {
-	Project  string
-	Title    string
-	Content  interface{} // varies per template
-	Projects []string    // for nav
+	Project     string
+	Title       string
+	Content     interface{} // varies per template
+	Projects    []string    // top nav project keys
+	Breadcrumbs []Breadcrumb
+	TreeNav     *TreeNavData // optional; from on-disk tree index
 }
 
 // Handler serves the wiki web UI.

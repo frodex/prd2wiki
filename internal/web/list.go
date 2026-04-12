@@ -21,6 +21,7 @@ type PageListItem struct {
 	LastEditBy   string
 	LastEditDate string
 	Score        string // similarity score for search results
+	TreeHref     string // canonical wiki tree URL when indexed (e.g. /prd2wiki/foo)
 }
 
 // ModuleGroup groups page list items under a module heading.
@@ -83,6 +84,11 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 				allItems[i].LastEditDate = info.Date
 			}
 		}
+		if h.treeHolder != nil && h.treeHolder.Get() != nil {
+			if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
+				allItems[i].TreeHref = "/" + ent.URLPath()
+			}
+		}
 	}
 
 	// Build tree from all items (before filtering).
@@ -130,11 +136,16 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PageData{
-		Project:  project,
-		Title:    project + " — Pages",
-		Content:  pld,
-		Projects: h.projects(),
+		Project: project,
+		Title:   project + " — Pages",
+		Content: pld,
+		Breadcrumbs: []Breadcrumb{
+			{Label: "Home", Href: "/"},
+			{Label: project, Href: "/projects/" + project + "/pages"},
+			{Label: "Pages", Href: ""},
+		},
 	}
+	h.preparePageData(&data)
 
 	t := h.templates["templates/page_list.html"]
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {

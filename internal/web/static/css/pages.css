@@ -12,6 +12,15 @@
     font-size: 0.9rem;
 }
 
+.edit-tree-hint {
+    font-size: 0.9rem;
+    color: #555;
+    margin-bottom: 1rem;
+}
+.edit-tree-hint a {
+    color: #2c5282;
+}
+
 /* Meta bar */
 .meta-bar {
     display: flex;

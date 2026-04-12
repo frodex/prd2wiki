@@ -53,7 +53,7 @@
             {{range $s.Results}}
             <tr>
                 <td>
-                    <a href="/projects/{{$.Project}}/pages/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
+                    <a href="{{if .TreeHref}}{{.TreeHref}}{{else}}/projects/{{$.Project}}/pages/{{.ID}}{{end}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
                     <span class="page-id-annotation">{{.ID}}</span>
                 </td>
                 <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>

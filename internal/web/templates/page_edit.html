@@ -2,6 +2,9 @@
 {{$page := .Content}}
 
 <h1>{{if $page.IsNew}}New Page{{else}}Edit: {{$page.Title}}{{end}}</h1>
+{{if and (not $page.IsNew) $page.TreeViewURL}}
+<p class="edit-tree-hint">Wiki URL: <a href="{{$page.TreeViewURL}}">{{$page.TreeViewURL}}</a></p>
+{{end}}
 
 <form id="page-form" class="page-form" data-project="{{$.Project}}">
     <div class="form-group">

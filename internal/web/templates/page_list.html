@@ -42,7 +42,7 @@
                 {{range .Items}}
                 <tr>
                     <td>
-                        <a href="/projects/{{$.Project}}/pages/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
+                        <a href="{{if .TreeHref}}{{.TreeHref}}{{else}}/projects/{{$.Project}}/pages/{{.ID}}{{end}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
                         <span class="page-id-annotation">{{.ID}}</span>
                         {{if .Module}}<span class="badge badge-module">{{.Module}}</span>{{end}}
                         <a href="/projects/{{$.Project}}/pages/{{.ID}}/history" class="list-action-link">history</a>

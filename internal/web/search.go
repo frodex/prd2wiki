@@ -52,11 +52,17 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 						pages, err := h.search.ByID(project, vr.PageID)
 						if err == nil && len(pages) > 0 {
 							pr := pages[0]
-							items = append(items, PageListItem{
+							item := PageListItem{
 								ID: pr.ID, Title: pr.Title, Type: pr.Type,
 								Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
 								Score: fmt.Sprintf("%.0f%%", vr.Similarity*100),
-							})
+							}
+							if h.treeHolder != nil && h.treeHolder.Get() != nil {
+								if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
+									item.TreeHref = "/" + ent.URLPath()
+								}
+							}
+							items = append(items, item)
 						}
 					}
 				}
@@ -78,10 +84,16 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			for _, pr := range results {
-				items = append(items, PageListItem{
+				item := PageListItem{
 					ID: pr.ID, Title: pr.Title, Type: pr.Type,
 					Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
-				})
+				}
+				if h.treeHolder != nil && h.treeHolder.Get() != nil {
+					if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
+						item.TreeHref = "/" + ent.URLPath()
+					}
+				}
+				items = append(items, item)
 			}
 		}
 
@@ -89,11 +101,16 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PageData{
-		Project:  project,
-		Title:    "Search — " + project,
-		Content:  sd,
-		Projects: h.projects(),
+		Project: project,
+		Title:   "Search — " + project,
+		Content: sd,
+		Breadcrumbs: []Breadcrumb{
+			{Label: "Home", Href: "/"},
+			{Label: project, Href: "/projects/" + project + "/pages"},
+			{Label: "Search", Href: ""},
+		},
 	}
+	h.preparePageData(&data)
 
 	t := h.templates["templates/search.html"]
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {

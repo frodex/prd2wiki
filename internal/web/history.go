@@ -90,11 +90,12 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PageData{
-		Project:  project,
-		Title:    "History: " + title,
-		Content:  phd,
-		Projects: h.projects(),
+		Project:     project,
+		Title:       "History: " + title,
+		Content:     phd,
+		Breadcrumbs: projectSectionBreadcrumbs(project, "History"),
 	}
+	h.preparePageData(&data)
 
 	t := h.templates["templates/page_history.html"]
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
@@ -155,6 +156,11 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 		BodyHTML:   template.HTML(sanitizeHTML(htmlBuf.String())),
 		Sources:    fm.Provenance.Sources,
 	}
+	if h.treeHolder != nil && h.treeHolder.Get() != nil {
+		if ent, ok := h.treeHolder.Get().PageByUUID(fm.ID); ok {
+			pvd.TreeViewURL = "/" + ent.URLPath()
+		}
+	}
 	if !fm.DCCreated.IsZero() {
 		pvd.Created = fm.DCCreated.Format("2006-01-02")
 	}
@@ -163,11 +169,12 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pageData := PageData{
-		Project:  project,
-		Title:    pvd.Title + " — " + project,
-		Content:  pvd,
-		Projects: h.projects(),
+		Project:     project,
+		Title:       pvd.Title + " — " + project,
+		Content:     pvd,
+		Breadcrumbs: h.breadcrumbsForGitPage(project, fm.ID, pvd.Title),
 	}
+	h.preparePageData(&pageData)
 
 	t := h.templates["templates/page_view.html"]
 	if err := t.ExecuteTemplate(w, "layout", pageData); err != nil {
@@ -231,11 +238,12 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pageData := PageData{
-		Project:  project,
-		Title:    "Diff: " + title,
-		Content:  pdd,
-		Projects: h.projects(),
+		Project:     project,
+		Title:       "Diff: " + title,
+		Content:     pdd,
+		Breadcrumbs: projectSectionBreadcrumbs(project, "Diff"),
 	}
+	h.preparePageData(&pageData)
 
 	t := h.templates["templates/page_diff.html"]
 	if err := t.ExecuteTemplate(w, "layout", pageData); err != nil {
