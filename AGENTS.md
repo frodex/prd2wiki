@@ -38,3 +38,4 @@ Applies alongside the wiki plan. In practice:
 - **No shallow “no concerns”** — Walk fragile surfaces against the plan; silence on a known risk is a red flag.
 - **PRD discipline** — Unilateral specs are proposals; co-sign where multiple parties are involved. Tag inherited facts `[UNVERIFIED — …]` until verified in this codebase.
 - **Complete vs clean** — Handoff docs, constraint updates, and provenance matter as much as passing tests.
+- **Review via wiki** — When finishing implementer work tied to a wiki plan, record the handoff **on the wiki** (e.g. `{plan title} IMPLEMENTER-NOTES` or the plan page): commits, scope, verification commands, and explicit “for review” asks — not only in the chat session. Use `PUT /api/projects/{project}/pages/{id}` (see `internal/api/pages.go`) with the wiki base URL above; issue a Bearer key with `go run ./cmd/prd2wiki-keygen -db ./data/index.db` if writes are restricted.
