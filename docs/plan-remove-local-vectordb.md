@@ -9,6 +9,7 @@
 - `plan-remove-local-vectordb-REVIEW-2-deep.md` — deep review: TextChunk dependency, prd2wiki-import absent, web≠API search, local scoring formula
 - `plan-remove-local-vectordb-REVIEW-3-verification.md` — third pass: Librarian has no Searcher (FTS fallback in handlers not Librarian), search logging is new work, grep patterns incomplete
 - `plan-remove-local-vectordb-REVIEW-4-in-chat.md` — fourth pass: namespace mapping (repo key vs wiki:uuid), vocabulary normalization parity, write latency table correction
+- `plan-remove-local-vectordb-REVIEW-5-stepped-dual-repo.md` — fifth pass (DUAL REPO): memory_delete takes id not page_uuid (BLOCKER), Step 4 contradicts Part 5 Option B, vocab normalization differs between repos, firstLineTitle vs frontmatter title
 
 **Reviewer instructions:** This plan must be examined for anything missing that would prevent the intended outcome. If a step, dependency, or integration point is missing, flag it as a BLOCKER. Every claim has been verified against source code as of 2026-04-12. Function names are used as anchors (not line numbers, which drift).
 
@@ -262,7 +263,7 @@ After Step 15 (all code changes done), before declaring the work complete.
 **Step 2:** Rewrite `Librarian.Search()` in `librarian.go`
 - When `libClient != nil`: call `libClient.MemorySearch()`
 - **Namespace mapping (Review 4 blocker):** `Librarian.Search()` receives `project` as a repo key (e.g., `"default"`). The librarian's `memory_search` expects `namespace` as `"wiki:{project-uuid}"`. The search call must resolve repo key → tree `Project.UUID` → `"wiki:" + uuid`. Use `treeHolder.Get().ProjectByRepoKey(project)` to get the UUID. Without this mapping, search hits the wrong namespace or returns empty.
-- **Vocabulary normalization (Review 4):** Current `Search()` normalizes query tokens via `l.vocab.Normalize()` before the local store. Decision: **send the normalized query to the librarian** (preserve current behavior). If the librarian also normalizes, that's double normalization but harmless. If it doesn't, wiki-side normalization preserves parity.
+- **Vocabulary normalization (Review 4 + Review 5):** Current `Search()` normalizes query tokens via `l.vocab.Normalize()`. The librarian uses `NormalizeSemantic(query)` internally — these are DIFFERENT normalization functions. Decision: **send the wiki-normalized query to the librarian.** The librarian will apply its own normalization on top. This is double normalization with different rules — functionally harmless (both produce cleaner text) but NOT equivalent to either alone. If search quality changes for specific terms, this is the place to investigate.
 - When `libClient == nil` or call fails: **return error** (not FTS fallback — `Librarian` does not have an `index.Searcher`)
 - FTS fallback happens in the **handlers** (`api/search.go` and `web/search.go`), NOT in `Librarian.Search()`
 - API handler: already runs FTS in parallel — if `lib.Search()` errors, the vector leg is empty but FTS results still display
@@ -273,9 +274,11 @@ After Step 15 (all code changes done), before declaring the work complete.
 - Call `libClient.MemorySearch()` with the page's content as query
 - Fallback: return empty results with log
 
-**Step 4:** Fix content prefixing in `runSyncToLibrarian()`
-- Prepend title + tags + type to content before sending to librarian (Part 5, Option A)
-- This ensures the librarian embeds the same enriched content
+**Step 4:** ~~Fix content prefixing in `runSyncToLibrarian()`~~ **REMOVED — contradicts Part 5 Option B**
+- Part 5 decision: librarian handles prefixing (Option B) after Part 10 ships
+- `runSyncToLibrarian` already sends metadata (title, tags, type, status) in the `ext` map
+- The librarian will use this metadata to enrich embeddings (Part 10.4)
+- The wiki does NOT prepend — no double enrichment
 
 **Step 5:** Fix `libclient.New()` startup logging
 - When dial fails: log ERROR and set `pippi = nil` so "sync enabled" only appears when socket is actually reachable
@@ -300,13 +303,17 @@ After Step 15 (all code changes done), before declaring the work complete.
 
 **Step 11:** Fix `RemoveFromIndexes()`:
 - Keep `indexer.RemovePage()` (SQLite — legitimate)
-- Replace `vstore.RemovePage()` with async `libclient.MemoryDelete()` call (if libclient connected)
-- This ensures page deletes via tree API also remove from the librarian, preventing orphan records
-- If libclient is nil (librarian down), log warning — orphan will be cleaned by compactor or next reconcile
+- Replace `vstore.RemovePage()` with async librarian delete (if libclient connected)
+- **Review 5 BLOCKER:** `memory_delete` MCP tool takes `id` (mem_ record ID), NOT `page_uuid`. But `RemoveFromIndexes` is called with `page_uuid` from `tree_api.go`. Resolution options:
+  - **A:** Read `.link` line 2 to get the current `mem_` head ID, pass that to `memory_delete`
+  - **B:** Call `memory_get` by `page_uuid` first to get `record_id`, then `memory_delete` by `record_id`
+  - **C:** Add a new librarian operation `DeleteByPageUUID` that handles the lookup internally
+- **Recommendation:** Option A (read .link line 2) — simplest, no extra RPC, data is already on disk
+- If libclient is nil (librarian down), log warning — orphan cleaned by compactor
 
 **Step 11b:** Add `MemoryDelete()` to `internal/libclient/client.go`
 - Calls librarian's `memory_delete` MCP tool over socket
-- Takes page_uuid, calls delete by page_uuid
+- Takes `id` (mem_ record ID, NOT page_uuid) — matches the librarian's API
 
 **Step 12:** Remove embedder + vector store creation from `app.go`: `NewOpenAIEmbedder()`, `vectordb.NewStore()`, `LoadFromDisk()`, `SetPersistPath()`, embedding profile store, `VStore` from App struct
 
@@ -374,6 +381,10 @@ Where `metadata = args["metadata"]` (the map the wiki already sends).
 - `page_type` (string) — for filtering
 - `page_status` (string) — for filtering
 - `ext_json` (string) — for additional metadata (author, source_repo, source_commit)
+
+### 10.3b: Search title derivation (nuance from Review 5)
+
+`SearchWiki` currently sets result `Title` from `firstLineTitle(rec.Content)` — parsing the first line of the body text. This may differ from the wiki's frontmatter title. After 10.2 ships, `SearchWiki` should use the stored `page_title` metadata instead of `firstLineTitle`.
 
 ### 10.4: Embedding must include title and tags
 
