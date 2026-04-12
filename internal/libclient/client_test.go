@@ -40,6 +40,38 @@ func TestMemoryStoreParsesResponse(t *testing.T) {
 	}
 }
 
+func TestMemorySearchParsesMatches(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/tools/call" {
+			http.NotFound(w, r)
+			return
+		}
+		resp := toolCallResponse{
+			OK: true,
+			Content: []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{
+				{Type: "text", Text: `{"matches":[{"page_uuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","record_id":"mem_1","title":"T","snippet":"s","score":0.9,"history_count":0}]}`},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	c := &Client{
+		http:    srv.Client(),
+		baseURL: srv.URL,
+	}
+	hits, err := c.MemorySearch(context.Background(), "wiki:proj-uuid", "hello", 5, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].PageUUID != "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" || hits[0].Score != 0.9 {
+		t.Fatalf("hits: %+v", hits)
+	}
+}
+
 func TestNew_EmptySocket(t *testing.T) {
 	c, err := New("  ", "")
 	if c != nil || err != nil {

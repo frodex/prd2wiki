@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 	"sync"
 
@@ -81,6 +82,10 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	wg.Wait()
+
+	if vecErr != nil {
+		slog.Warn("api search: semantic/vector path failed; results are SQLite FTS only", "project", project, "error", vecErr)
+	}
 
 	// Merge: SQL results first (exact matches), then vector results not already seen.
 	seen := make(map[string]bool)

@@ -85,8 +85,9 @@ type Librarian struct {
 	vstore  *vectordb.Store
 	vocab   *vocabulary.Store
 
-	libClient  *libclient.Client
-	treeHolder *tree.IndexHolder
+	libClient   *libclient.Client
+	treeHolder  *tree.IndexHolder
+	projectUUID string // full project UUID for wiki:{uuid} namespace (pippi memory_search / memory_store)
 }
 
 // Option configures optional integrations (e.g. pippi-librarian sync).
@@ -97,6 +98,13 @@ func WithPippiLibrarian(cli *libclient.Client, holder *tree.IndexHolder) Option 
 	return func(l *Librarian) {
 		l.libClient = cli
 		l.treeHolder = holder
+	}
+}
+
+// WithProjectUUID sets the canonical project UUID for librarian memory namespaces (wiki:{uuid}).
+func WithProjectUUID(uuid string) Option {
+	return func(l *Librarian) {
+		l.projectUUID = strings.TrimSpace(uuid)
 	}
 }
 
@@ -209,6 +217,83 @@ func (l *Librarian) runSyncToLibrarian(req SubmitRequest, pageUUID, projectUUID,
 	}
 }
 
+func normalizeQueryWithVocab(vocab *vocabulary.Store, query string) string {
+	words := strings.Fields(query)
+	normalized := make([]string, len(words))
+	for i, w := range words {
+		normalized[i] = vocab.Normalize(w)
+	}
+	return strings.Join(normalized, " ")
+}
+
+func searchResultsFromMemoryHits(hits []libclient.MemorySearchHit, limit int) []SearchResult {
+	seen := make(map[string]bool)
+	var out []SearchResult
+	for _, h := range hits {
+		id := strings.TrimSpace(h.PageUUID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, SearchResult{
+			PageID:     id,
+			Section:    "",
+			Similarity: h.Score,
+		})
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func filterOutPage(in []SearchResult, pageID string) []SearchResult {
+	if pageID == "" {
+		return in
+	}
+	var out []SearchResult
+	for _, r := range in {
+		if r.PageID == pageID {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+func trimRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes])
+}
+
+// readPageBodyAcrossBranches loads raw markdown body for pageID from the first branch that has the page.
+func (l *Librarian) readPageBodyAcrossBranches(pageID string) ([]byte, error) {
+	if l == nil || l.repo == nil {
+		return nil, fmt.Errorf("no repo")
+	}
+	branches, err := l.repo.ListBranches()
+	if err != nil {
+		return nil, err
+	}
+	for _, br := range branches {
+		path := ResolvePagePath(l.repo, br, pageID)
+		if !l.repo.HasPage(br, path) {
+			continue
+		}
+		_, body, err := l.repo.ReadPageWithMeta(br, path)
+		if err == nil {
+			return body, nil
+		}
+	}
+	return nil, fmt.Errorf("page not found: %s", pageID)
+}
+
 // SearchResult holds a search result with page ID and relevance.
 type SearchResult struct {
 	PageID     string  `json:"page_id"`
@@ -216,23 +301,27 @@ type SearchResult struct {
 	Similarity float64 `json:"similarity"`
 }
 
-// Search queries the vector store for pages matching the query text.
-// The query is normalized through the vocabulary before searching.
+// Search runs hybrid semantic search: prefers pippi-librarian memory_search (wiki:{projectUUID} namespace)
+// when configured and healthy; falls back to the local vector store and logs a warning.
+// The query is normalized through the vocabulary before sending to either backend.
 func (l *Librarian) Search(ctx context.Context, project, query string, limit int) ([]SearchResult, error) {
-	// Normalize query terms through vocabulary
-	words := strings.Fields(query)
-	normalized := make([]string, len(words))
-	for i, w := range words {
-		normalized[i] = l.vocab.Normalize(w)
+	normalizedQuery := normalizeQueryWithVocab(l.vocab, query)
+
+	if l.libClient != nil && l.projectUUID != "" {
+		ns := "wiki:" + l.projectUUID
+		hits, err := l.libClient.MemorySearch(ctx, ns, normalizedQuery, limit, false)
+		if err == nil {
+			return searchResultsFromMemoryHits(hits, limit), nil
+		}
+		slog.Warn("librarian memory_search failed, falling back to local vector index",
+			"project", project, "namespace", ns, "err", err)
 	}
-	normalizedQuery := strings.Join(normalized, " ")
 
 	results, err := l.vstore.Search(ctx, project, normalizedQuery, limit)
 	if err != nil {
 		return nil, err
 	}
-
-	var out []SearchResult
+	out := make([]SearchResult, 0, len(results))
 	for _, r := range results {
 		out = append(out, SearchResult{
 			PageID:     r.PageID,
@@ -243,14 +332,35 @@ func (l *Librarian) Search(ctx context.Context, project, query string, limit int
 	return out, nil
 }
 
-// FindSimilar finds pages similar to the given page via the vector store.
+// FindSimilar finds pages similar to the given page, preferring pippi-librarian memory_search
+// with the page body as query (metadata-enriched embeddings live in the librarian); falls back to the local vector store.
 func (l *Librarian) FindSimilar(ctx context.Context, project, pageID string, limit int) ([]SearchResult, error) {
+	if l.libClient != nil && l.projectUUID != "" {
+		body, err := l.readPageBodyAcrossBranches(pageID)
+		if err == nil && strings.TrimSpace(string(body)) != "" {
+			q := normalizeQueryWithVocab(l.vocab, trimRunes(string(body), 8000))
+			ns := "wiki:" + l.projectUUID
+			hits, err := l.libClient.MemorySearch(ctx, ns, q, max(limit*3, 30), false)
+			if err == nil {
+				out := filterOutPage(searchResultsFromMemoryHits(hits, limit*3), pageID)
+				if len(out) > limit {
+					out = out[:limit]
+				}
+				if len(out) > 0 {
+					return out, nil
+				}
+			} else {
+				slog.Warn("librarian memory_search failed for FindSimilar, falling back to local vector index",
+					"project", project, "page_id", pageID, "err", err)
+			}
+		}
+	}
+
 	results, err := l.vstore.FindSimilar(ctx, project, pageID, limit)
 	if err != nil {
 		return nil, err
 	}
-
-	var out []SearchResult
+	out := make([]SearchResult, 0, len(results))
 	for _, r := range results {
 		out = append(out, SearchResult{
 			PageID:     r.PageID,

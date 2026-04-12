@@ -20,8 +20,8 @@ import (
 	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
-	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/libclient"
+	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/tree"
 	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
@@ -234,15 +234,17 @@ func New(cfg Config) (*App, error) {
 	_ = profileStore // available for future use
 
 	var pippi *libclient.Client
+	var pippiDialErr error
 	if socket := strings.TrimSpace(cfg.Librarian.Socket); socket != "" {
-		var err error
-		pippi, err = libclient.New(socket, "")
-		if err != nil {
-			slog.Error("pippi-librarian socket not reachable — sync will fail until librarian starts", "socket", socket, "error", err)
+		pippi, pippiDialErr = libclient.New(socket, "")
+		if pippiDialErr != nil {
+			slog.Error("pippi-librarian socket not reachable — sync will fail until librarian starts", "socket", socket, "error", pippiDialErr)
 			// Don't fail startup — wiki works without librarian, sync degrades gracefully
 		}
-		if pippi != nil {
-			slog.Info("pippi-librarian sync enabled", "socket", socket)
+		if pippi != nil && pippiDialErr == nil {
+			slog.Info("pippi-librarian connected — sync and memory_search enabled", "socket", socket)
+		} else if pippi != nil {
+			slog.Warn("pippi-librarian socket unreachable at startup — search will use local vector index + SQLite FTS until librarian is up", "socket", socket, "error", pippiDialErr)
 		}
 	}
 	var libOpts []librarian.Option
@@ -250,10 +252,24 @@ func New(cfg Config) (*App, error) {
 		libOpts = append(libOpts, librarian.WithPippiLibrarian(pippi, treeHolder))
 	}
 
+	repoKeyToProjectUUID := make(map[string]string)
+	for _, p := range treeIdx.Projects {
+		if p == nil || p.RepoKey == "" || p.UUID == "" {
+			continue
+		}
+		if _, ok := repoKeyToProjectUUID[p.RepoKey]; !ok {
+			repoKeyToProjectUUID[p.RepoKey] = p.UUID
+		}
+	}
+
 	librarians := make(map[string]*librarian.Librarian)
 	for _, project := range projectKeys {
 		vocab := vocabulary.NewStore(db)
-		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab, libOpts...)
+		opts := append([]librarian.Option{}, libOpts...)
+		if u := repoKeyToProjectUUID[project]; u != "" {
+			opts = append(opts, librarian.WithProjectUUID(u))
+		}
+		librarians[project] = librarian.New(repos[project], indexer, vstore, vocab, opts...)
 	}
 
 	// Rebuild vector index in background if nothing loaded from disk.
@@ -305,14 +321,14 @@ func New(cfg Config) (*App, error) {
 	// Create web handler first (builds edit caches), then API server shares the caches.
 	webHandler := web.NewHandler(repos, db, librarians, treeHolder, keyStore, migrationAliases)
 	apiSrv := api.NewServer(api.ServerConfig{
-		Addr:       cfg.Server.Addr,
-		Repos:      repos,
-		DB:         db,
-		Librarians: librarians,
-		Edits:      webHandler.EditCaches(),
-		Tree:       treeHolder,
-		Blob:       blobStore,
-		Keys:       keyStore,
+		Addr:             cfg.Server.Addr,
+		Repos:            repos,
+		DB:               db,
+		Librarians:       librarians,
+		Edits:            webHandler.EditCaches(),
+		Tree:             treeHolder,
+		Blob:             blobStore,
+		Keys:             keyStore,
 		MigrationAliases: migrationAliases,
 	})
 

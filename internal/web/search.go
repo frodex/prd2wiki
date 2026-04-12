@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/frodex/prd2wiki/internal/index"
@@ -42,7 +43,9 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 			lib, ok := h.librarians[project]
 			if ok {
 				vresults, err := lib.Search(r.Context(), project, query, 20)
-				if err == nil {
+				if err != nil {
+					slog.Warn("web search: semantic path failed; falling back to SQLite FTS", "project", project, "error", err)
+				} else {
 					seen := make(map[string]bool)
 					for _, vr := range vresults {
 						if seen[vr.PageID] {
