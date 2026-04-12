@@ -47,19 +47,22 @@ type Handler struct {
 	edits       map[string]*EditCache  // per-project edit info cache
 	treeHolder  *tree.IndexHolder      // optional; tree URLs and legacy redirects
 	keys        *auth.ServiceKeyStore   // optional; admin mutating routes require ScopeAdmin
+	// migrationAliases maps post-migration git paths to prior paths (from data/migration-map.json).
+	migrationAliases map[string][]string
 }
 
 // NewHandler creates a Handler with pre-parsed templates.
-func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, treeHolder *tree.IndexHolder, keys *auth.ServiceKeyStore) *Handler {
+func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, treeHolder *tree.IndexHolder, keys *auth.ServiceKeyStore, migrationAliases map[string][]string) *Handler {
 	h := &Handler{
-		repos:      repos,
-		search:     index.NewSearcher(db),
-		librarians: librarians,
-		db:         db,
-		templates:  make(map[string]*template.Template),
-		edits:      make(map[string]*EditCache),
-		treeHolder: treeHolder,
-		keys:       keys,
+		repos:              repos,
+		search:             index.NewSearcher(db),
+		librarians:         librarians,
+		db:                 db,
+		templates:          make(map[string]*template.Template),
+		edits:              make(map[string]*EditCache),
+		treeHolder:         treeHolder,
+		keys:               keys,
+		migrationAliases:   migrationAliases,
 	}
 
 	// Build edit caches in background so startup isn't blocked.
@@ -76,7 +79,7 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 			for i, p := range pages {
 				paths[i] = p.Path
 			}
-			c.Build(r, paths)
+			c.Build(r, paths, migrationAliases)
 		}(project, repo, cache)
 	}
 
@@ -132,6 +135,14 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/import", h.wrapAdminMutating(h.adminImportPost))
 	mux.Handle("POST /admin/verify", h.wrapAdminMutating(h.adminVerifyPost))
 	mux.Handle("GET /static/", http.FileServerFS(content))
+}
+
+// aliasPathsFor returns pre-migration git paths for the same page (migration-map.json), if any.
+func (h *Handler) aliasPathsFor(gitPath string) []string {
+	if h == nil || len(h.migrationAliases) == 0 {
+		return nil
+	}
+	return h.migrationAliases[gitPath]
 }
 
 // projects returns the list of configured project names.

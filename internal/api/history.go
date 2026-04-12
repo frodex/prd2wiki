@@ -27,7 +27,7 @@ func (s *Server) pageHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := r.PathValue("id")
-	path := "pages/" + id + ".md"
+	path := s.resolvePagePath(project, id)
 
 	limit := 50
 	if q := r.URL.Query().Get("limit"); q != "" {
@@ -36,7 +36,8 @@ func (s *Server) pageHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	commits, err := repo.PageHistoryAllBranches(path, limit)
+	extras := s.aliasPathsFor(path)
+	commits, err := repo.PageHistoryAllBranches(path, limit, extras...)
 	if err != nil {
 		http.Error(w, "history: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -54,9 +55,11 @@ func (s *Server) pageAtCommit(w http.ResponseWriter, r *http.Request) {
 
 	id := r.PathValue("id")
 	hash := r.PathValue("hash")
-	path := "pages/" + id + ".md"
+	path := s.resolvePagePath(project, id)
+	paths := []string{path}
+	paths = append(paths, s.aliasPathsFor(path)...)
 
-	data, err := repo.ReadPageAtCommit(hash, path)
+	data, _, err := repo.ReadPageAtCommitFirst(hash, paths)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			http.Error(w, "not found", http.StatusNotFound)
@@ -80,7 +83,9 @@ func (s *Server) pageDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := r.PathValue("id")
-	path := "pages/" + id + ".md"
+	path := s.resolvePagePath(project, id)
+	paths := []string{path}
+	paths = append(paths, s.aliasPathsFor(path)...)
 	from := r.URL.Query().Get("from")
 	to := r.URL.Query().Get("to")
 
@@ -89,8 +94,8 @@ func (s *Server) pageDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fromData, _ := repo.ReadPageAtCommit(from, path) // empty if file didn't exist yet
-	toData, _ := repo.ReadPageAtCommit(to, path)     // empty if file was deleted
+	fromData, _, _ := repo.ReadPageAtCommitFirst(from, paths)
+	toData, _, _ := repo.ReadPageAtCommitFirst(to, paths)
 
 	changes := lineDiff(string(fromData), string(toData))
 

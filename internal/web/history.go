@@ -55,7 +55,7 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 
 	path := h.resolvePagePath(project, id)
 
-	commits, err := repo.PageHistoryAllBranches(path, 50)
+	commits, err := repo.PageHistoryAllBranches(path, 50, h.aliasPathsFor(path)...)
 	if err != nil || len(commits) == 0 {
 		h.renderError(w, http.StatusNotFound, "No history found for this page.")
 		return
@@ -63,7 +63,7 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 
 	// Determine page title from the latest version.
 	title := id
-	fm, _, _, fmErr := readPageNewest(repo, path)
+	fm, _, _, fmErr := readPageNewest(repo, path, h.aliasPathsFor(path)...)
 	if fmErr == nil && fm.Title != "" {
 		title = fm.Title
 	}
@@ -116,7 +116,9 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := h.resolvePagePath(project, id)
-	data, err := repo.ReadPageAtCommit(hash, path)
+	paths := []string{path}
+	paths = append(paths, h.aliasPathsFor(path)...)
+	data, _, err := repo.ReadPageAtCommitFirst(hash, paths)
 	if err != nil {
 		h.renderError(w, http.StatusNotFound, "Page version not found.")
 		return
@@ -201,9 +203,11 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := h.resolvePagePath(project, id)
+	paths := []string{path}
+	paths = append(paths, h.aliasPathsFor(path)...)
 
-	fromData, _ := repo.ReadPageAtCommit(from, path) // empty if file didn't exist yet
-	toData, _ := repo.ReadPageAtCommit(to, path)     // empty if file was deleted
+	fromData, _, _ := repo.ReadPageAtCommitFirst(from, paths)
+	toData, _, _ := repo.ReadPageAtCommitFirst(to, paths)
 
 	diffChanges := diff.ComputeLineDiff(string(fromData), string(toData))
 
@@ -214,7 +218,7 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := id
-	fm, _, _, fmErr := readPageNewest(repo, path)
+	fm, _, _, fmErr := readPageNewest(repo, path, h.aliasPathsFor(path)...)
 	if fmErr == nil && fm.Title != "" {
 		title = fm.Title
 	}

@@ -28,6 +28,8 @@ type ServerConfig struct {
 	Tree       *tree.IndexHolder
 	Blob       *blob.Store
 	Keys       *auth.ServiceKeyStore
+	// MigrationAliases maps post-migration git paths to prior paths (data/migration-map.json).
+	MigrationAliases map[string][]string
 }
 
 // Server holds application state and serves the REST API.
@@ -42,21 +44,23 @@ type Server struct {
 	treeHolder *tree.IndexHolder
 	blobStore  *blob.Store
 	keys       *auth.ServiceKeyStore
+	migrationAliases map[string][]string
 }
 
 // NewServer creates a Server from config.
 func NewServer(cfg ServerConfig) *Server {
 	return &Server{
-		addr:       cfg.Addr,
-		repos:      cfg.Repos,
-		db:         cfg.DB,
-		indexer:    index.NewIndexer(cfg.DB),
-		search:     index.NewSearcher(cfg.DB),
-		librarians: cfg.Librarians,
-		edits:      cfg.Edits,
-		treeHolder: cfg.Tree,
-		blobStore:  cfg.Blob,
-		keys:       cfg.Keys,
+		addr:             cfg.Addr,
+		repos:            cfg.Repos,
+		db:               cfg.DB,
+		indexer:          index.NewIndexer(cfg.DB),
+		search:           index.NewSearcher(cfg.DB),
+		librarians:       cfg.Librarians,
+		edits:            cfg.Edits,
+		treeHolder:       cfg.Tree,
+		blobStore:        cfg.Blob,
+		keys:             cfg.Keys,
+		migrationAliases: cfg.MigrationAliases,
 	}
 }
 
@@ -122,6 +126,13 @@ func (s *Server) projectLibrarian(w http.ResponseWriter, project string) (*libra
 // Falls back to hash-prefix path for hash IDs, or flat path for legacy IDs.
 func (s *Server) resolvePagePath(project, id string) string {
 	return pagepath.Resolve(s.search, project, id)
+}
+
+func (s *Server) aliasPathsFor(gitPath string) []string {
+	if s == nil || len(s.migrationAliases) == 0 {
+		return nil
+	}
+	return s.migrationAliases[gitPath]
 }
 
 // alternatePagePath returns the other path format for an ID (hash-prefix vs flat).

@@ -272,8 +272,14 @@ func New(cfg Config) (*App, error) {
 	treeHolder := tree.NewIndexHolder(treeAbs, dataAbs, treeIdx)
 	blobStore := blob.NewStore(dataAbs)
 
+	migrationAliases, err := wgit.LoadMigrationAliases(dataAbs)
+	if err != nil {
+		slog.Warn("migration-map.json not loaded; page history may miss pre-migration commits", "error", err)
+		migrationAliases = nil
+	}
+
 	// Create web handler first (builds edit caches), then API server shares the caches.
-	webHandler := web.NewHandler(repos, db, librarians, treeHolder, keyStore)
+	webHandler := web.NewHandler(repos, db, librarians, treeHolder, keyStore, migrationAliases)
 	apiSrv := api.NewServer(api.ServerConfig{
 		Addr:       cfg.Server.Addr,
 		Repos:      repos,
@@ -283,6 +289,7 @@ func New(cfg Config) (*App, error) {
 		Tree:       treeHolder,
 		Blob:       blobStore,
 		Keys:       keyStore,
+		MigrationAliases: migrationAliases,
 	})
 
 	// Compose both into a single root mux.

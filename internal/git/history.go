@@ -3,6 +3,7 @@ package git
 import (
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	gogit "github.com/go-git/go-git/v5"
@@ -18,9 +19,46 @@ type CommitInfo struct {
 	Message string    `json:"message"`
 }
 
-// PageHistory returns the commit history for a specific file on a branch.
-// Results are most recent first. If limit <= 0, defaults to 50.
-func (r *Repo) PageHistory(branch, path string, limit int) ([]CommitInfo, error) {
+func mergeFetchLimit(limit, nPaths int) int {
+	if nPaths <= 1 {
+		return limit
+	}
+	n := limit * nPaths
+	if n < 100 {
+		n = 100
+	}
+	if n > 500 {
+		n = 500
+	}
+	return n
+}
+
+func mergeCommitsDedupe(limit int, lists ...[]CommitInfo) []CommitInfo {
+	if len(lists) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var all []CommitInfo
+	for _, list := range lists {
+		for _, c := range list {
+			if seen[c.Hash] {
+				continue
+			}
+			seen[c.Hash] = true
+			all = append(all, c)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Date.After(all[j].Date)
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all
+}
+
+// pageHistoryBranchPath returns commits touching path on a single branch (most recent first).
+func (r *Repo) pageHistoryBranchPath(branch, path string, limit int) ([]CommitInfo, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -31,9 +69,10 @@ func (r *Repo) PageHistory(branch, path string, limit int) ([]CommitInfo, error)
 		return nil, fmt.Errorf("branch %q not found: %w", branch, err)
 	}
 
+	p := path
 	logOpts := &gogit.LogOptions{
 		From:     ref.Hash(),
-		FileName: &path,
+		FileName: &p,
 		Order:    gogit.LogOrderCommitterTime,
 	}
 
@@ -56,7 +95,6 @@ func (r *Repo) PageHistory(branch, path string, limit int) ([]CommitInfo, error)
 		})
 		return nil
 	})
-	// "limit reached" is our own sentinel, not a real error.
 	if err != nil && err.Error() != "limit reached" {
 		return nil, fmt.Errorf("walk log: %w", err)
 	}
@@ -64,48 +102,84 @@ func (r *Repo) PageHistory(branch, path string, limit int) ([]CommitInfo, error)
 	return commits, nil
 }
 
-// PageHistoryAllBranches returns commit history for a file across ALL branches,
-// deduplicated by hash, sorted most recent first.
-func (r *Repo) PageHistoryAllBranches(path string, limit int) ([]CommitInfo, error) {
+// PageHistory returns the commit history for a specific file on a branch.
+// Results are most recent first. If limit <= 0, defaults to 50.
+// aliasPaths are additional paths for the same logical page (e.g. pre-migration paths); history is merged and deduplicated by commit hash.
+func (r *Repo) PageHistory(branch, path string, limit int, aliasPaths ...string) ([]CommitInfo, error) {
 	if limit <= 0 {
 		limit = 50
 	}
+	paths := append([]string{path}, aliasPaths...)
+	fetch := mergeFetchLimit(limit, len(paths))
+	var parts [][]CommitInfo
+	for _, p := range paths {
+		c, err := r.pageHistoryBranchPath(branch, p, fetch)
+		if err != nil {
+			continue
+		}
+		parts = append(parts, c)
+	}
+	if len(parts) == 0 {
+		return []CommitInfo{}, nil
+	}
+	return mergeCommitsDedupe(limit, parts...), nil
+}
+
+// PageHistoryAllBranches returns commit history for a file across ALL branches,
+// deduplicated by hash, sorted most recent first.
+// aliasPaths are additional paths for the same logical page (e.g. pre-migration paths from migration-map.json).
+func (r *Repo) PageHistoryAllBranches(path string, limit int, aliasPaths ...string) ([]CommitInfo, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	paths := append([]string{path}, aliasPaths...)
+	fetch := mergeFetchLimit(limit, len(paths))
 
 	branches, err := r.ListBranches()
 	if err != nil {
 		return nil, err
 	}
 
-	seen := make(map[string]bool)
-	var all []CommitInfo
-
+	var parts [][]CommitInfo
 	for _, branch := range branches {
-		commits, err := r.PageHistory(branch, path, limit)
-		if err != nil {
-			continue // branch may not have this file
-		}
-		for _, c := range commits {
-			if !seen[c.Hash] {
-				seen[c.Hash] = true
-				all = append(all, c)
+		for _, p := range paths {
+			commits, err := r.pageHistoryBranchPath(branch, p, fetch)
+			if err != nil {
+				continue
+			}
+			if len(commits) > 0 {
+				parts = append(parts, commits)
 			}
 		}
 	}
+	if len(parts) == 0 {
+		return []CommitInfo{}, nil
+	}
+	return mergeCommitsDedupe(limit, parts...), nil
+}
 
-	// Sort by date descending
-	for i := 0; i < len(all); i++ {
-		for j := i + 1; j < len(all); j++ {
-			if all[j].Date.After(all[i].Date) {
-				all[i], all[j] = all[j], all[i]
-			}
+// ReadPageAtCommitFirst tries paths in order and returns content from the first path that exists at the commit.
+func (r *Repo) ReadPageAtCommitFirst(commitHash string, paths []string) ([]byte, string, error) {
+	var lastErr error
+	for _, p := range paths {
+		data, err := r.ReadPageAtCommit(commitHash, p)
+		if err == nil {
+			return data, p, nil
 		}
+		lastErr = err
 	}
-
-	if len(all) > limit {
-		all = all[:limit]
+	if lastErr != nil {
+		return nil, "", fmt.Errorf("file not found at commit %s in any of %d path(s): %w", shortHash(commitHash), len(paths), lastErr)
 	}
+	return nil, "", fmt.Errorf("no paths to try")
+}
 
-	return all, nil
+func shortHash(h string) string {
+	if len(h) <= 8 {
+		return h
+	}
+	return h[:8]
 }
 
 // FirstCommitDate returns the author date of the earliest commit that touched path on any branch.
@@ -123,9 +197,10 @@ func (r *Repo) FirstCommitDate(path string) (time.Time, error) {
 		if err != nil {
 			continue
 		}
+		p := path
 		logOpts := &gogit.LogOptions{
 			From:     ref.Hash(),
-			FileName: &path,
+			FileName: &p,
 			Order:    gogit.LogOrderCommitterTime,
 		}
 		iter, err := r.repo.Log(logOpts)

@@ -46,7 +46,8 @@ type PageEditData struct {
 
 // readPageNewest finds the most recently modified version of a page across all branches.
 // Returns the frontmatter, body, and the branch it was found on.
-func readPageNewest(repo *wgit.Repo, path string) (*schema.Frontmatter, []byte, string, error) {
+// aliasPaths are pre-migration paths for the same page (migration-map.json).
+func readPageNewest(repo *wgit.Repo, path string, aliasPaths ...string) (*schema.Frontmatter, []byte, string, error) {
 	branches, err := repo.ListBranches()
 	if err != nil || len(branches) == 0 {
 		branches = []string{"truth", "draft/incoming"}
@@ -68,7 +69,7 @@ func readPageNewest(repo *wgit.Repo, path string) (*schema.Frontmatter, []byte, 
 		}
 
 		// Get the latest commit date for this file on this branch
-		commits, _ := repo.PageHistory(branch, path, 1)
+		commits, _ := repo.PageHistory(branch, path, 1, aliasPaths...)
 		var commitDate time.Time
 		if len(commits) > 0 {
 			commitDate = commits[0].Date
@@ -108,7 +109,7 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 
 // viewPageAtGitPath renders a page from a resolved git path (used by /projects/... and tree routes).
 func (h *Handler) viewPageAtGitPath(w http.ResponseWriter, project, gitPath string, repo *wgit.Repo) {
-	fm, body, pageBranch, err := readPageNewest(repo, gitPath)
+	fm, body, pageBranch, err := readPageNewest(repo, gitPath, h.aliasPathsFor(gitPath)...)
 	if err != nil {
 		h.renderError(w, http.StatusNotFound, "Page not found.")
 		return
@@ -116,7 +117,7 @@ func (h *Handler) viewPageAtGitPath(w http.ResponseWriter, project, gitPath stri
 
 	// Get last edit info from git history
 	var lastEditBy, lastEditDate string
-	commits, _ := repo.PageHistoryAllBranches(gitPath, 1)
+	commits, _ := repo.PageHistoryAllBranches(gitPath, 1, h.aliasPathsFor(gitPath)...)
 	if len(commits) > 0 {
 		lastEditBy = commits[0].Author
 		lastEditDate = commits[0].Date.Format("2006-01-02 15:04")
@@ -180,7 +181,7 @@ func (h *Handler) treeLegacyRedirectLocation(project, id string) (string, bool) 
 		return "", false
 	}
 	gitPath := h.resolvePagePath(project, id)
-	fm, _, _, err := readPageNewest(repo, gitPath)
+	fm, _, _, err := readPageNewest(repo, gitPath, h.aliasPathsFor(gitPath)...)
 	if err != nil || fm == nil {
 		return "", false
 	}
@@ -208,7 +209,7 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 
 	path := h.resolvePagePath(project, id)
 
-	fm, body, _, err := readPageNewest(repo, path)
+	fm, body, _, err := readPageNewest(repo, path, h.aliasPathsFor(path)...)
 	if err != nil {
 		h.renderError(w, http.StatusNotFound, "Page not found.")
 		return

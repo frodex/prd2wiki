@@ -32,14 +32,16 @@ const editCacheHistoryLimit = 100
 // Called once at startup. Walks git log once for the entire repo.
 // Commits whose first line starts with "migrate:" are skipped so post-migration
 // metadata reflects the last real edit, not the migration tooling.
-func (c *EditCache) Build(repo *wgit.Repo, paths []string) {
+// migrationAliases maps current git paths to pre-migration paths for combined history.
+func (c *EditCache) Build(repo *wgit.Repo, paths []string, migrationAliases map[string][]string) {
 	if repo == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, path := range paths {
-		commits, err := repo.PageHistoryAllBranches(path, editCacheHistoryLimit)
+		extras := migrationExtraPaths(path, migrationAliases)
+		commits, err := repo.PageHistoryAllBranches(path, editCacheHistoryLimit, extras...)
 		if err != nil || len(commits) == 0 {
 			continue
 		}
@@ -68,6 +70,13 @@ func isMigrateCommitMessage(message string) bool {
 		first = strings.TrimSpace(first[:i])
 	}
 	return strings.HasPrefix(first, "migrate:")
+}
+
+func migrationExtraPaths(path string, m map[string][]string) []string {
+	if m == nil {
+		return nil
+	}
+	return m[path]
 }
 
 // get returns cached edit info for a page path.
