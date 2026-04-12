@@ -186,7 +186,7 @@ func New(cfg Config) (*App, error) {
 		embCfg.TimeoutStr = "30s"
 	}
 	if embCfg.Type == "" {
-		embCfg.Type = "llama_cpp"
+		embCfg.Type = "openai"
 	}
 	if embCfg.QueryPrefix == "" {
 		embCfg.QueryPrefix = "search_query: "
@@ -197,10 +197,10 @@ func New(cfg Config) (*App, error) {
 
 	// Create embedder -- try real LlamaCpp, fall back to Noop.
 	var emb embedder.Embedder
-	llamaEmb := embedder.NewLlamaCppEmbedder(embCfg)
-	if err := llamaEmb.HealthCheck(context.Background()); err == nil {
-		emb = llamaEmb
-		slog.Info("embedder connected", "type", "llama_cpp", "endpoint", embCfg.Endpoint, "dims", embCfg.Dimensions)
+	openaiEmb := embedder.NewOpenAIEmbedder(embCfg)
+	if err := openaiEmb.HealthCheck(context.Background()); err == nil {
+		emb = openaiEmb
+		slog.Info("embedder connected", "type", "openai", "endpoint", embCfg.Endpoint, "dims", embCfg.Dimensions)
 	} else {
 		emb = embedder.NoopEmbedder{}
 		slog.Warn("embedder unavailable, using noop", "endpoint", embCfg.Endpoint, "error", err)

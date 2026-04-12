@@ -50,7 +50,7 @@ func TestNoopEmbedder(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// LlamaCppEmbedder helpers
+// OpenAIEmbedder helpers
 // ---------------------------------------------------------------------------
 
 // mockEmbeddingServer returns an httptest.Server that serves /v1/embeddings and
@@ -105,10 +105,10 @@ func mockEmbeddingServer(t *testing.T, fullDims int) *httptest.Server {
 }
 
 // ---------------------------------------------------------------------------
-// LlamaCppEmbedder
+// OpenAIEmbedder
 // ---------------------------------------------------------------------------
 
-func TestLlamaCppEmbedder(t *testing.T) {
+func TestOpenAIEmbedder(t *testing.T) {
 	const fullDims = 768
 	srv := mockEmbeddingServer(t, fullDims)
 	defer srv.Close()
@@ -120,7 +120,7 @@ func TestLlamaCppEmbedder(t *testing.T) {
 		QueryPrefix:   "search_query: ",
 		PassagePrefix: "search_document: ",
 	}
-	e := embedder.NewLlamaCppEmbedder(cfg)
+	e := embedder.NewOpenAIEmbedder(cfg)
 
 	t.Run("HealthCheck succeeds when server healthy", func(t *testing.T) {
 		if err := e.HealthCheck(context.Background()); err != nil {
@@ -183,7 +183,7 @@ func TestLlamaCppMatryoshka(t *testing.T) {
 		QueryPrefix:   "search_query: ",
 		PassagePrefix: "search_document: ",
 	}
-	e := embedder.NewLlamaCppEmbedder(cfg)
+	e := embedder.NewOpenAIEmbedder(cfg)
 
 	t.Run("EmbedBatch truncates full server vectors to target dims", func(t *testing.T) {
 		vecs, err := e.EmbedBatch(context.Background(), []string{"truncate me"}, "en")
@@ -221,7 +221,7 @@ func TestLlamaCppUnavailable(t *testing.T) {
 		QueryPrefix:   "search_query: ",
 		PassagePrefix: "search_document: ",
 	}
-	e := embedder.NewLlamaCppEmbedder(cfg)
+	e := embedder.NewOpenAIEmbedder(cfg)
 
 	t.Run("HealthCheck returns error when server unreachable", func(t *testing.T) {
 		if err := e.HealthCheck(context.Background()); err == nil {

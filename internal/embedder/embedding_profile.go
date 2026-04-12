@@ -292,7 +292,7 @@ func (s *EmbeddingProfileStore) Get(ctx context.Context, id string) (*EmbeddingP
 		return nil, err
 	}
 	if provider == "" || provider == "unknown" {
-		provider = "llama_cpp"
+		provider = "openai"
 	}
 	if modelID == "" {
 		modelID = legacyModelName
@@ -331,7 +331,7 @@ func (s *EmbeddingProfileStore) List(ctx context.Context) ([]*EmbeddingProfile, 
 			return nil, err
 		}
 		if provider == "" || provider == "unknown" {
-			provider = "llama_cpp"
+			provider = "openai"
 		}
 		if modelID == "" {
 			modelID = legacyModelName
@@ -408,7 +408,7 @@ func UnmarshalProfile(data string) (*EmbeddingProfile, error) {
 		return nil, err
 	}
 	p := &EmbeddingProfile{
-		Provider:      "llama_cpp",
+		Provider:      "openai",
 		ModelID:       legacy.ModelName,
 		ModelVersion:  legacy.ModelVersion,
 		Dimensions:    legacy.Dimensions,

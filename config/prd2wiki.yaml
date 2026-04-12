@@ -9,10 +9,10 @@ tree:
   dir: "./tree"
 
 librarian:
-  socket: ""
+  socket: "/var/run/pippi-librarian.sock"
 
 embedder:
-  endpoint: "http://localhost:8081"  # llama.cpp server (install via scripts/install-embedder.sh)
+  endpoint: "http://localhost:8088"  # TEI (text-embeddings-inference) ONNX server
   dimensions: 768                    # nomic-embed-text-v1.5 full dimensions
   timeout: 30                        # seconds per request
 
