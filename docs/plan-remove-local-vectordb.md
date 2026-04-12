@@ -3,267 +3,323 @@
 **Date:** 2026-04-12
 **Status:** DRAFT — REQUIRES REVIEW BEFORE IMPLEMENTATION
 **Priority:** Critical
-**Reviewer instructions:** This plan must be examined for anything missing that would prevent the intended outcome. If a step, dependency, or integration point is missing, flag it as a BLOCKER before implementation begins. The pattern of "looks wired but isn't" has happened repeatedly — the reviewer should verify each claim against actual code, not documentation.
+**Author:** Claude Opus 4.6 (this session)
+
+**Reviewer instructions:** This plan must be examined for anything missing that would prevent the intended outcome. If a step, dependency, or integration point is missing, flag it as a BLOCKER. The pattern of "looks wired but isn't" has occurred repeatedly in this project. The reviewer MUST verify claims against actual code at the cited locations, not against design documents.
 
 ---
 
-## Part 1: How the System Is SUPPOSED to Work
+## Part 1: How the System Is Supposed to Work
 
-### The design (from de836ff, c6525ac, 8634f02, 6ccd407)
+### Intended architecture (verified against pippi-librarian source 2026-04-12)
 
 ```
-User edits page in wiki
-    ↓
-Wiki writes to git (source of truth)
-    ↓
-Wiki calls pippi-librarian via unix socket (syncToLibrarian)
-    ↓
-Librarian embeds content via TEI (nomic-embed-text-v1.5, 768 dims)
-    ↓
-Librarian stores in LanceDB (pippi_memory table)
-    with: BM25 index, vector index, record_type, page_uuid, version chain
-    ↓
-User searches in wiki
-    ↓
-Wiki calls pippi-librarian memory_search via unix socket
-    ↓
-Librarian runs hybrid search: BM25 (lexical) + vector (cosine) → RRF fusion (k=60)
-    ↓
-Results returned with page_uuid, score, title, snippet, history_count
+User edits page → wiki writes to git → wiki calls librarian via unix socket
+    → librarian embeds via TEI → librarian stores in LanceDB (pippi_memory)
+    → librarian indexes: BM25 lexical + vector cosine → RRF fusion (k=60)
+
+User searches → wiki calls librarian memory_search via unix socket
+    → librarian runs BM25 + vector + RRF → returns matches
+    → wiki renders results
 ```
 
-**One embedder (TEI).** Called by the librarian only. The wiki never embeds anything.
+**Verified against source:** `/srv/pippi-librarian/internal/librarian/table.go:299-300`:
+```go
+fused := rrfFuse(lexRanked, vecRanked, 60)
+```
+BM25 + vector + RRF k=60 is confirmed in current code, not just design docs.
 
-**One vector database (LanceDB).** Inside the librarian. The wiki never stores vectors.
+**One embedder (TEI).** Called by the librarian only.
+**One vector database (LanceDB).** Inside the librarian.
+**One search path.** Wiki → librarian → LanceDB → results.
+**SQLite FTS** in the wiki is for page listing/filtering (metadata). Serves as degraded fallback when librarian is down.
 
-**One search path.** Wiki → librarian → LanceDB → results. No local search.
+### What the librarian's memory_search returns
 
-**SQLite FTS** in the wiki is for page listing, filtering by type/status/tag, and path resolution. It is metadata, not search. It serves as a degraded fallback if the librarian is down.
+Verified against `/srv/pippi-librarian/cmd/pippi-librarian/main.go` and `/srv/pippi-librarian/internal/librarian/memsvc.go`:
 
-### What the constraint file says
+```json
+{
+  "matches": [
+    {
+      "page_uuid": "550e8400-...",
+      "record_id": "mem_0hf5e3a8...",
+      "title": "Page Title",
+      "snippet": "...matching text...",
+      "score": 0.92,
+      "history_count": 3
+    }
+  ]
+}
+```
 
-From `/srv/prd2wiki/docs/constraints-prd2wiki-pippi.md`:
-- "The librarian is the only way to read or write data. No direct database access."
-- "Wiki sends full content to memory_store — the librarian handles everything else internally."
-
-From the steward rules (`/srv/PHAT-TOAD-with-Trails/steward/system.md`):
-- §3.2: "If someone touching your work could break it by not knowing something, it is a constraint — not an 'implementation detail.'"
+This provides everything the wiki needs to render search results.
 
 ---
 
 ## Part 2: How the System Actually Works Today
 
-### What exists in the code (verified against actual source, not docs)
+### Complete inventory of local vector store usage
 
-```
-User edits page in wiki
-    ↓
-Wiki writes to git ✓
-    ↓
-Wiki embeds content LOCALLY via its own TEI connection ← WRONG
-    ↓
-Wiki stores vectors in data/vectors/pages.json (in-memory JSON array) ← WRONG
-    ↓
-Wiki ALSO calls syncToLibrarian (async, fire-and-forget)
-    ↓
-Librarian embeds content AGAIN via the SAME TEI ← DOUBLE WORK
-    ↓
-Librarian stores in LanceDB ← NEVER READ BY WIKI
-    ↓
-User searches in wiki
-    ↓
-Wiki searches its LOCAL JSON vector store ← WRONG, POOR QUALITY
-    ↓
-If no results, falls back to SQLite FTS
-    ↓
-Librarian's LanceDB with BM25+vector+RRF sits completely unused
-```
+Verified by grep against current source 2026-04-12. Every code path listed was confirmed at the cited location.
 
-### Specific code locations
+| # | What | File:Line | What it does | Should exist? |
+|---|------|-----------|-------------|---------------|
+| 1 | Wiki embedder creation | `app.go:199-208` | Connects to TEI, creates OpenAIEmbedder | **NO** |
+| 2 | JSON vector store creation | `app.go:209` | `vectordb.NewStore(emb)` | **NO** |
+| 3 | Load vectors from disk | `app.go:212-219` | Loads `data/vectors/pages.json` | **NO** |
+| 4 | Vector rebuild goroutine | `app.go:261-291` | Re-embeds ALL pages via TEI on startup | **NO** |
+| 5 | Embedding profile store | `app.go:222-234` | Tracks embedding model versions | **NO** (librarian manages this) |
+| 6 | `VStore` on App struct | `app.go:69` | Exposes vector store externally | **NO** — verified no external readers by grep |
+| 7 | `vstore` on Librarian struct | `librarian.go:85` | Local vector store reference | **NO** |
+| 8 | `lib.Search()` → local store | `librarian.go:230` | `l.vstore.Search()` → JSON array scan | **NO** — should call librarian |
+| 9 | `lib.FindSimilar()` → local store | `librarian.go:247-248` | `l.vstore.FindSimilar()` → JSON scan | **NO** — feature needs replacement or removal |
+| 10 | `RemoveFromIndexes()` → local store | `librarian.go:305-310` | `l.vstore.RemovePage()` + SQLite remove | **PARTIAL** — keep SQLite remove, drop vstore remove |
+| 11 | `indexInVectorStore()` | `librarian.go:389-418` | Chunks page, embeds locally, stores in JSON | **NO** — librarian does this |
+| 12 | `RebuildVectorIndex()` | `librarian.go:265-303` | Iterates all pages, embeds each locally | **NO** |
+| 13 | Async local embed on write | `librarian.go:469-471` (goroutine at 481-486) | Embeds in background after git write | **NO** — librarian does this via syncToLibrarian |
+| 14 | DedupDetector → local store | `dedup.go:34` | `d.store.Search()` — fully implemented (59 lines, 0.85 threshold) | **NEEDS DECISION** — wire to librarian or remove |
+| 15 | Dedup call in submit() | `librarian.go:489-496` | Calls DedupDetector after write | **NEEDS DECISION** |
+| 16 | `tree_api.go:365` → RemoveFromIndexes | `api/tree_api.go:365` | Called on page delete via tree API | **FIX** — keep SQLite part, remove vstore part |
+| 17 | `api/pages.go:212` → indexer.RemovePage | `api/pages.go:212` | SQLite only — legitimate, keep | **KEEP** |
 
-| What | Where | What it does | Should it exist? |
-|------|-------|-------------|-----------------|
-| Wiki's own embedder | `app.go:199-208` | Connects to TEI independently | **NO** |
-| JSON vector store creation | `app.go:209` | `vectordb.NewStore(emb)` | **NO** |
-| JSON vector load from disk | `app.go:212-219` | Loads `data/vectors/pages.json` | **NO** |
-| Vector rebuild on startup | `app.go:261-291` | Re-embeds ALL pages via TEI | **NO** — causes TEI OOM |
-| Local embedding on write | `librarian.go:469-471` | Embeds page content locally | **NO** — librarian does this |
-| `indexInVectorStore()` | `librarian.go:389-418` | Chunks page, embeds, stores in JSON | **NO** |
-| `RebuildVectorIndex()` | `librarian.go:265-303` | Iterates all pages, embeds each | **NO** |
-| `lib.Search()` → local store | `librarian.go:230` | `l.vstore.Search()` → JSON array | **NO** — should call librarian |
-| `DedupDetector` → local store | `dedup.go:34` | Uses JSON vector store for similarity | **NO** |
-| `internal/vectordb/` package | entire package | In-memory JSON vector store | **DELETE** |
-| `data/vectors/pages.json` | runtime data | Persisted vector array | **DELETE** |
-| Wiki embedder config | `prd2wiki.yaml:14-17` | `embedder:` section | **REMOVE** |
+### What actually uses the librarian (complete list)
 
-### Versus what actually uses the librarian
+| What | File:Line | Status |
+|------|-----------|--------|
+| `maybeSyncToLibrarian()` | `librarian.go:165-181` | **Works** — called at end of submit(), launches goroutine |
+| `runSyncToLibrarian()` | `librarian.go:184-212` | **Works** — async goroutine, calls `libClient.MemoryStore()`, writes .link line 2 |
+| `libclient.MemoryStore()` | `libclient/client.go:72` | **Works** — calls memory_store over socket |
+| `libclient.MemorySearch()` | Does not exist | **MISSING** — must be built |
 
-| What | Where | Status |
-|------|-------|--------|
-| `syncToLibrarian` | `librarian.go:184` | **Works** — writes to librarian on edit |
-| `libclient.MemoryStore()` | `libclient/client.go:72` | **Works** — calls memory_store |
-| `libclient.MemorySearch()` | Does not exist | **MISSING** — never built |
-| Search via librarian | Does not exist | **MISSING** — search calls local JSON store |
+### syncToLibrarian calling convention (corrected)
+
+`maybeSyncToLibrarian()` is called synchronously at the end of `submit()` (line 497), but it launches a **goroutine** at line 181: `go l.runSyncToLibrarian(...)`. So: the decision to sync is synchronous, the actual sync is async. The wiki does not block on the librarian response.
+
+### What syncToLibrarian sends to the librarian
+
+Verified at `librarian.go:184-212`:
+- `namespace`: `"wiki:" + projectUUID`
+- `page_uuid`: from .link line 1 or frontmatter ID
+- `content`: full page body
+- `metadata`: source_repo, source_branch, source_commit, author, page_title, page_type, page_status, page_tags
+
+This is everything the librarian needs for search (content for embedding, metadata for filtering).
 
 ---
 
 ## Part 3: How We Got Here
 
-1. **prd2wiki was built first** (before the librarian). It had its own embedder, its own vector store (`internal/vectordb/`), its own search. This was the correct architecture at the time.
+1. **prd2wiki built first** with its own embedder + JSON vector store. Correct at the time (no librarian).
+2. **Librarian designed** to replace wiki's search. All design docs say this. 13 audit rounds reviewed docs.
+3. **Audits reviewed documents, not code.** No audit verified the old vector store was removed.
+4. **Phase 3 implementation** added librarian sync AS AN ADDITION. Nobody removed the old code.
+5. **I reviewed and merged** without catching the parallel pipeline.
 
-2. **The librarian was designed** to replace the wiki's search. Every design document (de836ff, c6525ac, 8634f02, 6ccd407) describes the librarian as THE search backend. 13 audit rounds reviewed these documents.
+### Anti-patterns that occurred (per steward §6)
 
-3. **The audits reviewed documents, not code.** No audit round verified that the wiki's local vector store was actually removed. The code was never checked against the design.
-
-4. **Phase 3a-3d was implemented** by adding librarian integration (libclient, syncToLibrarian, .link write-back) AS AN ADDITION to the existing code. The old vector store was left in place. Nobody removed it because nobody was told to remove it — the plan said "wire libclient" not "remove vectordb."
-
-5. **The implementing agent** saw existing working code (vector store, embedder) and left it alone. They added the new code alongside. This is the "Premature Builder" anti-pattern from the steward rules — building before understanding what already exists.
-
-6. **I (Claude) reviewed and merged all of this** without catching that the old search pipeline was still active. I focused on whether the new code worked, not whether the old code was removed.
-
-7. **The result:** Two parallel search pipelines, double embedding, TEI crashes from the wiki's rebuild, poor search quality, and the librarian's search sitting unused. None of this was in any document because nobody knew it was happening.
+| Anti-pattern | How it manifested |
+|-------------|-------------------|
+| §6.1 Confident Architect | Design docs described the intended system. Nobody verified the actual system matched. |
+| §6.2 Premature Builder | Implementing agent saw existing working code and left it, adding new code alongside. |
+| §6.5 Performative Compliance | 13 audit rounds produced correct documents. Zero audits checked the code. |
+| §6.8 Clean vs Complete | Tests pass, code committed. But the old pipeline was never removed — debt transferred. |
 
 ---
 
-## Part 4: What Needs to Be Done
+## Part 4: Constraint Declaration (per steward §3.1)
 
-### Step 1: Add `MemorySearch` to libclient
+### Hard constraints
 
-**File:** `internal/libclient/client.go`
+1. **SQLite FTS must continue to work** — page listing, filtering by type/status/tag, path resolution all depend on it
+2. **syncToLibrarian must not be disrupted** — it's the only path that sends pages to the librarian
+3. **Page deletion via tree API must still work** — `tree_api.go:365` calls `RemoveFromIndexes()`; the SQLite removal must be preserved
+4. **Wiki must start and serve without the librarian running** — degraded mode (FTS only) is acceptable
+5. **Existing tests for non-vectordb functionality must continue to pass**
 
-Add a method that calls the librarian's `memory_search` MCP tool over the unix socket. Returns page UUID, score, title. This is the missing piece that connects wiki search to the librarian.
+### Known anti-patterns (things that failed)
 
-### Step 2: Rewrite `Librarian.Search()` to call libclient
+1. **Adding alongside instead of replacing** — the librarian was added next to the JSON store. This plan must REMOVE, not add alongside.
+2. **Silent fallback hiding problems** — the FTS fallback should LOG when it activates, not silently serve degraded results
+3. **Line number references drift** — use function names as anchors, not line numbers
 
-**File:** `internal/librarian/librarian.go`
+### Test invariants
 
-Current: `l.vstore.Search()` → scans JSON array.
-New: `l.libClient.MemorySearch()` → calls librarian via socket → LanceDB BM25+vector+RRF.
-Fallback: if libclient is nil or call fails, fall back to SQLite FTS (title/tag matching).
+Tests that currently use `vectordb.Store` and must be updated:
+- `internal/web/web_test.go` (2 test functions create vectordb.Store)
+- `internal/librarian/dedup_test.go` (2 test functions)
+- `internal/librarian/librarian_test.go` (1 test function)
+- `internal/api/pages_test.go` (1 test function)
+- `internal/vectordb/store_test.go` (entire file — delete with package)
 
-### Step 3: Remove local embedding on write
+Each must be rewritten to either pass nil for vstore or use a mock librarian client.
 
-**File:** `internal/librarian/librarian.go`
+### Performance contracts
 
-Remove the `indexInVectorStore()` call from the `submit()` method (line 469-471). The librarian receives the page via `syncToLibrarian` and handles its own embedding. The wiki should not embed.
+| Metric | Current | Required after |
+|--------|---------|---------------|
+| Wiki startup time | 10-120s (blocked by vector rebuild) | <10s (no vector rebuild) |
+| Search latency (vector) | ~100ms (local JSON scan) | depends on librarian (should be similar or better with LanceDB) |
+| Search latency (FTS fallback) | ~10ms | unchanged |
+| Write latency | 60-120s (local embed + git + sync) | <2s (git + async sync, no local embed) |
 
-### Step 4: Remove vstore from Librarian struct
+---
 
-**File:** `internal/librarian/librarian.go`
+## Part 5: Feature Decisions Required
 
-Remove `vstore *vectordb.Store` field. Remove it from `New()` signature. Update all callers.
+### FindSimilar (related pages)
 
-### Step 5: Remove vector store creation and rebuild from app.go
+`Librarian.FindSimilar()` provides a "find pages similar to this one" feature. It works by searching the local vector store with the page's content.
 
-**File:** `internal/app/app.go`
+**Options:**
+- **A: Wire to librarian** — add `libclient.MemorySearch()` call with the page's content as the query. The librarian's hybrid search would find similar pages. This is functionally equivalent.
+- **B: Remove the feature** — drop FindSimilar entirely. No current UI calls it (verified: no web handler or template references it). Only the API `/api/projects/{project}/pages/{id}/references` handler does, and it uses a different function (`search.References()`).
+- **C: Defer** — leave FindSimilar as a stub that returns empty results when vstore is nil. Fix later.
 
-Remove: embedder creation, `vectordb.NewStore()`, `LoadFromDisk()`, `SetPersistPath()`, vector rebuild goroutine, embedding profile store, `VStore` from App struct.
+**Recommendation:** Option B (remove). No UI uses it. The references endpoint uses SQLite, not FindSimilar. If needed later, Option A is straightforward.
 
-### Step 6: Remove wiki embedder config
+**[REVIEWER: Confirm no UI or user-facing feature depends on FindSimilar before approving Option B.]**
 
-**File:** `config/prd2wiki.yaml`
+### DedupDetector
 
-Remove the `embedder:` section. The wiki doesn't need an embedder.
+`DedupDetector` is a fully implemented (59 lines) duplicate detection system that searches the local vector store for pages with >85% similarity. It runs during the `integrate` intent in `submit()`.
 
-### Step 7: Delete the vectordb package
+**Options:**
+- **A: Wire to librarian** — call `libclient.MemorySearch()` with the page content, check if any result has score > 0.85.
+- **B: Remove** — drop dedup entirely. It was designed as a quality gate but no user-facing feature depends on its output (warnings are returned in the API response but not displayed in the UI).
+- **C: Defer** — skip dedup when vstore is nil. Implement via librarian later.
 
-**Files:** `internal/vectordb/store.go`, `record.go`, `store_test.go`
+**Recommendation:** Option C (defer). Dedup is useful but not critical. Skip when vstore is nil, add a TODO. Wire to librarian in a follow-up.
 
-### Step 8: Delete runtime vector data
+**[REVIEWER: Confirm dedup warnings are not displayed in the UI before approving Option C.]**
 
-**File:** `data/vectors/pages.json`
+---
 
-### Step 9: Update web search handler
+## Part 6: Implementation Steps
 
-**File:** `internal/web/search.go`
+### Phase 1: Add + wire (build new path before removing old)
 
-Remove the vector search path that calls `lib.Search()` → local store. Replace with `lib.Search()` → librarian. The FTS fallback stays.
+**Step 1:** Add `MemorySearch()` to `internal/libclient/client.go`
+- Calls librarian's `memory_search` MCP tool
+- Returns `[]SearchResult` with page_uuid, record_id, title, snippet, score, history_count
+- Handles connection errors gracefully (returns error, caller decides fallback)
 
-### Step 10: Update API search handler
+**Step 2:** Rewrite `Librarian.Search()` in `internal/librarian/librarian.go`
+- When `libClient != nil`: call `libClient.MemorySearch()` via socket
+- When `libClient == nil` or call fails: fall back to SQLite FTS with `slog.Warn("librarian search unavailable, using FTS fallback")`
+- Remove local vstore search path
 
-**File:** `internal/api/search.go`
+**Step 3:** Test Phase 1
+- With librarian running: search returns librarian results
+- With librarian down: search returns FTS results with warning log
+- `go build` and `go test` pass (vstore still exists but Search() no longer uses it)
 
-Same change — `lib.Search()` now goes through the librarian, not the local store.
+**Gate: Phase 1 must pass before proceeding to Phase 2.**
 
-### Step 11: Update tests
+### Phase 2: Remove old pipeline
 
-Remove tests that depend on the local vector store. Add tests that verify search calls the librarian.
+**Step 4:** Remove `FindSimilar()` from `Librarian` (or stub to return nil)
 
-### Step 12: Update dedup
+**Step 5:** Remove `indexInVectorStore()` and its call from `submit()`
+- Remove the async goroutine at lines 481-486 that embeds locally
+- `syncToLibrarian` handles embedding via the librarian
 
-**File:** `internal/librarian/dedup.go`
+**Step 6:** Remove `RebuildVectorIndex()` and its call from `app.go`
 
-DedupDetector uses `vectordb.Store`. Either wire it to the librarian or disable it (it was a stub anyway — "Not yet implemented" in the plan).
+**Step 7:** Remove `vstore` field from `Librarian` struct
+- Update `New()` signature: remove `vstore *vectordb.Store` parameter
+- Update all callers in `app.go`
 
-### Step 13: Verify end-to-end
+**Step 8:** Remove `DedupDetector` vstore dependency
+- When vstore is nil, skip dedup in `submit()` with `slog.Info("dedup skipped: local vector store removed, will use librarian in future")`
 
+**Step 9:** Fix `RemoveFromIndexes()`
+- Keep `l.indexer.RemovePage(pageID)` (SQLite — legitimate)
+- Remove `l.vstore.RemovePage(pageID)` call
+- Optionally: add async `libclient.MemoryDelete()` call to remove from librarian too
+
+**Step 10:** Remove embedder + vector store creation from `app.go`
+- Remove: `NewOpenAIEmbedder()`, `vectordb.NewStore()`, `LoadFromDisk()`, `SetPersistPath()`, vector rebuild goroutine, embedding profile store
+- Remove: `VStore` field from App struct (confirmed no external readers)
+- Remove: `embedder:` section from `config/prd2wiki.yaml`
+
+**Step 11:** Update tests
+- `web_test.go`: pass nil for vstore in Librarian.New() or mock
+- `librarian_test.go`: same
+- `api/pages_test.go`: same
+- `dedup_test.go`: update to handle nil vstore (skip or mock)
+- Delete `vectordb/store_test.go` with the package
+
+**Step 12:** Delete `internal/vectordb/` package
+
+**Step 13:** Delete `data/vectors/pages.json` (runtime data)
+
+**Step 14:** Delete `data/vectors/` directory
+
+### Phase 3: Verify
+
+**Step 15:** Full end-to-end test
 - Start librarian + wiki
 - Edit a page
-- Search for it
-- Confirm search goes through librarian (check librarian logs for memory_search call)
-- Confirm wiki does NOT connect to TEI
-- Confirm wiki does NOT create/load data/vectors/pages.json
-- Confirm wiki starts in <10 seconds (no vector rebuild)
+- Search for it — confirm result comes from librarian (check librarian logs for memory_search)
+- Confirm wiki does NOT connect to TEI (no embedder log at startup)
+- Confirm wiki starts in <10 seconds
+- Confirm `data/vectors/` is not recreated
+- `go build ./...` passes
+- `go test ./...` passes
 
 ---
 
-## Part 5: Dependencies and Risks
+## Part 7: Rollback Plan
 
-### The librarian MUST be running for vector search
+If the migration is partially done and search is broken:
+1. `git stash` or `git revert` the branch
+2. Restart wiki from the reverted code
+3. The old vector store will rebuild from the persisted JSON file
 
-If the librarian is down, search degrades to SQLite FTS (title, tags, metadata). No semantic/vector search. This is acceptable — it was the design from the start. FTS covers the common case (searching by title or tag).
-
-### The librarian must have pages indexed
-
-Pages get indexed when:
-- `syncToLibrarian` fires on page edit (each edit sends full content)
-- Bulk import sends all pages from git history
-
-If the librarian has never received pages (fresh install, librarian wiped), vector search returns nothing. FTS still works.
-
-### TEI must be running for the LIBRARIAN (not the wiki)
-
-The wiki no longer connects to TEI. Only the librarian does. If TEI is down, the librarian still works (BM25 lexical search only, no vectors). The wiki doesn't know or care about TEI.
-
-### Librarian process management
-
-The librarian needs to stay running. Currently it's a manual `nohup` process. Needs a systemd unit or process monitor. This is BUG-011 (still open).
+If the JSON file was already deleted:
+1. Revert code
+2. Wiki will re-embed all pages on startup (takes ~5 minutes)
 
 ---
 
-## Part 6: What the Reviewer Should Check
+## Part 8: What the Reviewer Must Verify
 
-**This plan MUST be examined for missing steps.** Specifically:
+**Each of these must be checked against actual source code, not this document:**
 
-1. **Is there any other code path that reads from `internal/vectordb/`?** Grep the codebase. If anything besides the listed files uses it, that's a blocker.
+1. **Is the inventory in Part 2 complete?** `grep -rn "vstore\|vectordb\|FindSimilar\|RemovePage\|IndexPage\|EmbedBatch" internal/ --include="*.go" | grep -v _test | grep -v ".bak"` — every result must be addressed in a step.
 
-2. **Is there any other code path that calls the wiki's own embedder?** If any handler embeds content locally, that's a blocker.
+2. **Does syncToLibrarian send everything the librarian needs?** Check `runSyncToLibrarian()` sends namespace, page_uuid, content, title, type, status, tags. If any field is missing, search quality degrades.
 
-3. **Does `syncToLibrarian` actually send all the data the librarian needs for search?** Check that namespace, page_uuid, content, and metadata (title, tags, type) are all sent. If any are missing, the librarian can't search properly — that's a blocker.
+3. **Does the librarian's memory_search return enough for the wiki?** The wiki needs at minimum: page_uuid and score. Title and snippet are helpful. Verify the MCP response shape.
 
-4. **Does the librarian's `memory_search` MCP tool return enough data for the wiki to render results?** Check that page_uuid, score, and optionally title/snippet are in the response. If the wiki needs fields that the librarian doesn't return, that's a blocker.
+4. **Are all pages in the librarian?** After migration, pages must be bulk-imported into the librarian. If this hasn't happened, vector search returns nothing even with correct wiring.
 
-5. **Are there any pages that exist in git but were never sent to the librarian?** After migration, all pages need to be bulk-imported into the librarian. If this hasn't happened, vector search returns nothing even with the librarian running.
+5. **Does FindSimilar have any user-facing callers?** Verify no web handler, template, or MCP tool calls it. If it does, Option B (remove) is wrong.
 
-6. **Does the SQLite FTS fallback actually work for the common search case?** Test: search for a page by title. If FTS doesn't find it, the degraded mode is broken — that's a blocker.
+6. **Does DedupDetector output appear in the UI?** Check if dedup warnings from `submit()` are shown to users. If they are, Option C (defer) needs a UI change.
 
-7. **Is there any test that asserts the existence of `internal/vectordb/`?** If so, those tests need updating before the package can be deleted.
+7. **Do any tests assert vectordb behavior that must be preserved?** Check if test assertions verify search quality or vector content, not just "doesn't crash."
 
-8. **Does the embedder config in `prd2wiki.yaml` affect anything besides the vector store?** If other code reads `embedder.endpoint` for non-search purposes, removing the config would break it — that's a blocker.
+8. **Does anything outside `internal/` read the embedder config?** `grep -rn "embedder\|Embedder" cmd/ config/ --include="*.go" --include="*.yaml"` — if the MCP server or other tools read it, removing the config breaks them.
 
 ---
 
-## Gate (implementation is not done until ALL of these are true)
+## Gate (ALL must be true before declaring done)
 
-- [ ] `internal/vectordb/` package deleted from repo
-- [ ] `data/vectors/pages.json` not created on startup
+- [ ] `internal/vectordb/` package deleted
+- [ ] `data/vectors/` directory not created on startup
 - [ ] Wiki does NOT connect to TEI on startup
 - [ ] Wiki does NOT embed pages locally on write
-- [ ] `Librarian.Search()` calls libclient → pippi-librarian → LanceDB
-- [ ] Search falls back to SQLite FTS when librarian is down
-- [ ] Wiki starts in <10 seconds (no vector rebuild)
+- [ ] Wiki does NOT rebuild vectors on startup
+- [ ] `Librarian.Search()` calls librarian via libclient when connected
+- [ ] Search falls back to SQLite FTS when librarian is down (with warning log)
+- [ ] `FindSimilar()` removed or stubbed (per reviewer decision)
+- [ ] `DedupDetector` handles nil vstore (skips with log)
+- [ ] `RemoveFromIndexes()` keeps SQLite remove, drops vstore remove
+- [ ] Wiki starts in <10 seconds
 - [ ] `go build ./...` passes
 - [ ] `go test ./...` passes
-- [ ] End-to-end: edit page → search finds it via librarian
-- [ ] Librarian logs show `memory_search` calls when wiki searches
-- [ ] TEI connection only in librarian logs, NOT in wiki logs
+- [ ] End-to-end: edit → search via librarian → results render
+- [ ] Librarian logs confirm memory_search calls
+- [ ] Wiki logs confirm NO embedder/TEI connection
