@@ -226,6 +226,8 @@ func normalizeQueryWithVocab(vocab *vocabulary.Store, query string) string {
 	return strings.Join(normalized, " ")
 }
 
+// searchResultsFromMemoryHits maps librarian hits to SearchResult (page id + score only).
+// TODO: propagate Title/Snippet when API consumers can use them without re-querying SQLite.
 func searchResultsFromMemoryHits(hits []libclient.MemorySearchHit, limit int) []SearchResult {
 	seen := make(map[string]bool)
 	var out []SearchResult
@@ -349,6 +351,8 @@ func (l *Librarian) FindSimilar(ctx context.Context, project, pageID string, lim
 				if len(out) > 0 {
 					return out, nil
 				}
+				slog.Debug("FindSimilar: librarian memory_search returned no hits after dedupe/filter; trying local vector index",
+					"project", project, "page_id", pageID, "raw_match_rows", len(hits))
 			} else {
 				slog.Warn("librarian memory_search failed for FindSimilar, falling back to local vector index",
 					"project", project, "page_id", pageID, "err", err)
