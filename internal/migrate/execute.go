@@ -11,9 +11,14 @@ import (
 )
 
 // Execute runs the migration plan. It modifies git repos, creates the tree directory,
-// and extracts blobs. Designed to run against a COPY of the data, not the live wiki.
+// and sets up repo symlinks. Designed to run against a COPY of the data, not the live wiki.
 func Execute(plan *Plan) error {
+	// Count total pages for progress
+	totalPages := len(plan.Pages)
+
 	// Phase 1: Git renames + frontmatter updates (per project repo)
+	progress := &Progress{Total: totalPages}
+
 	for projName, proj := range plan.Projects {
 		slog.Info("migrating project", "name", projName, "repo", proj.RepoPath)
 
@@ -31,15 +36,25 @@ func Execute(plan *Plan) error {
 		}
 
 		for _, page := range pages {
-			if err := migratePage(repo, page, plan); err != nil {
-				slog.Error("page migration failed", "old_id", page.OldID, "error", err)
+			if err := migratePage(repo, page, plan, progress); err != nil {
+				progress.Fail(page.OldID, err)
 				return fmt.Errorf("migrate page %s: %w", page.OldID, err)
 			}
-			slog.Info("migrated page", "old_id", page.OldID, "uuid", page.UUID, "title", page.Title)
 		}
 	}
 
-	// Phase 2: Create tree directory structure
+	slog.Info("git migration complete",
+		"total", progress.Total,
+		"migrated", progress.Done-progress.Skipped,
+		"skipped", progress.Skipped,
+		"failed", progress.Failed)
+
+	// Phase 2: Create repo symlinks
+	if err := CreateRepoSymlinks(plan); err != nil {
+		return fmt.Errorf("create repo symlinks: %w", err)
+	}
+
+	// Phase 3: Create tree directory structure
 	if err := createTree(plan); err != nil {
 		return fmt.Errorf("create tree: %w", err)
 	}
@@ -48,10 +63,10 @@ func Execute(plan *Plan) error {
 }
 
 // migratePage handles a single page: rename in git, update frontmatter, update cross-refs.
-func migratePage(repo *git.Repo, page *PagePlan, plan *Plan) error {
+func migratePage(repo *git.Repo, page *PagePlan, plan *Plan, progress *Progress) error {
 	// Check if already migrated (idempotent)
 	if _, err := repo.ReadPage(page.Branch, page.NewPath); err == nil {
-		slog.Info("page already migrated, skipping", "uuid", page.UUID)
+		progress.Skip(page.OldID)
 		return nil
 	}
 
@@ -77,21 +92,19 @@ func migratePage(repo *git.Repo, page *PagePlan, plan *Plan) error {
 	updatedBody := updateCrossRefs(string(body), plan)
 
 	// Write the page at the new path with updated content
-	// This is a single commit: new path + updated content
 	msg := fmt.Sprintf("migrate: %s → %s (%s)", page.OldID, page.UUID, page.Title)
 	if _, err := repo.WritePageWithMeta(page.Branch, page.NewPath, fm, []byte(updatedBody), msg, "migration-tool"); err != nil {
 		return fmt.Errorf("write new path: %w", err)
 	}
 
-	// Delete the old path in a second commit
-	// Note: git log --follow on the new path will trace through if content similarity is >50%
-	// (which it will be since we only changed frontmatter ID + cross-refs)
+	// Delete the old path
+	// git log --follow on the new path will trace through if content similarity >50%
 	msgDel := fmt.Sprintf("migrate: remove old path %s", page.OldPath)
 	if err := repo.DeletePage(page.Branch, page.OldPath, msgDel, "migration-tool"); err != nil {
-		slog.Warn("could not delete old path", "path", page.OldPath, "error", err)
-		// Not fatal — old path can coexist
+		slog.Warn("could not delete old path (non-fatal)", "path", page.OldPath, "error", err)
 	}
 
+	progress.Log(page.OldID, page.Title)
 	return nil
 }
 
@@ -100,23 +113,18 @@ func updateCrossRefs(body string, plan *Plan) string {
 	result := body
 
 	for oldID, page := range plan.Pages {
-		// /projects/default/pages/{old-id} → /{tree-path}
-		// Also handle /projects/{any-project}/pages/{old-id}
+		// /projects/{any-project}/pages/{old-id} → /{tree-path}
 		for projName := range plan.Projects {
 			oldURL := fmt.Sprintf("/projects/%s/pages/%s", projName, oldID)
 			newURL := "/" + page.TreePath
 			result = strings.ReplaceAll(result, oldURL, newURL)
 		}
-
-		// Handle bare old IDs in markdown links: (old-id) → not replaced (too aggressive)
-		// Only replace full URL patterns to avoid false positives
 	}
 
 	return result
 }
 
-// createTree builds the tree/ directory with .uuid and .link files using package tree
-// (WriteProjectUUIDFile, WriteLinkFile) — filesystem layout matches the wiki tree index.
+// createTree builds the tree/ directory with .uuid and .link files using package tree.
 func createTree(plan *Plan) error {
 	treeDir := plan.TreeDir
 
