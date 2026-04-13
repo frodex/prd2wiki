@@ -3,6 +3,14 @@ package index
 import (
 	"database/sql"
 	"fmt"
+	"sort"
+)
+
+// FTS BM25 column weights (title/tags boosted vs body). Tuned for wiki-style queries.
+const (
+	ftsBM25WeightTitle = 25.0
+	ftsBM25WeightBody  = 1.0
+	ftsBM25WeightTags  = 4.0
 )
 
 // PageResult holds the fields returned by search queries.
@@ -51,7 +59,9 @@ func (s *Searcher) query(sqlStr string, args ...interface{}) ([]PageResult, erro
 	return results, nil
 }
 
-const selectPages = `SELECT pages.id, pages.title, pages.type, pages.status, pages.path, pages.project, pages.trust_level, COALESCE(pages.tags, ''), COALESCE(pages.module, ''), COALESCE(pages.category, '') FROM pages`
+const selectPagesCols = `pages.id, pages.title, pages.type, pages.status, pages.path, pages.project, pages.trust_level, COALESCE(pages.tags, ''), COALESCE(pages.module, ''), COALESCE(pages.category, '')`
+
+const selectPages = `SELECT ` + selectPagesCols + ` FROM pages`
 
 // ListAll returns all pages for a given project.
 func (s *Searcher) ListAll(project string) ([]PageResult, error) {
@@ -84,12 +94,54 @@ func (s *Searcher) ByTag(project, tag string) ([]PageResult, error) {
 }
 
 // FullText searches the FTS5 index for pages matching the query within a project.
+// Rows are ordered by title-token relevance (all query terms in title first), then BM25, then shorter title.
 func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
-	sql := selectPages + `
+	sql := fmt.Sprintf(`SELECT %s,
+		bm25(pages_fts, 'title', %g, 'body', %g, 'tags', %g) AS fts_bm25
+		FROM pages
 		INNER JOIN pages_fts ON pages.id = pages_fts.id
-		WHERE pages.project = ? AND pages_fts MATCH ?
-		ORDER BY rank`
-	return s.query(sql, project, q)
+		WHERE pages.project = ? AND pages_fts MATCH ?`,
+		selectPagesCols, ftsBM25WeightTitle, ftsBM25WeightBody, ftsBM25WeightTags)
+
+	rows, err := s.db.Query(sql, project, q)
+	if err != nil {
+		return nil, fmt.Errorf("search query: %w", err)
+	}
+	defer rows.Close()
+
+	type scored struct {
+		PageResult
+		bm25 float64
+	}
+	var buf []scored
+	for rows.Next() {
+		var r scored
+		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category, &r.bm25); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		buf = append(buf, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	sort.SliceStable(buf, func(i, j int) bool {
+		ti := fullTextTitleTier(buf[i].Title, q)
+		tj := fullTextTitleTier(buf[j].Title, q)
+		if ti != tj {
+			return ti < tj
+		}
+		if buf[i].bm25 != buf[j].bm25 {
+			return buf[i].bm25 < buf[j].bm25
+		}
+		return len(buf[i].Title) < len(buf[j].Title)
+	})
+
+	out := make([]PageResult, len(buf))
+	for i := range buf {
+		out[i] = buf[i].PageResult
+	}
+	return out, nil
 }
 
 // Search dispatches to the appropriate query method based on the provided filters.

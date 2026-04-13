@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/frodex/prd2wiki/internal/index"
+	"github.com/frodex/prd2wiki/internal/searchmerge"
 )
 
 func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
@@ -87,33 +88,43 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("api search: semantic/vector path failed; results are SQLite FTS only", "project", project, "error", vecErr)
 	}
 
-	// Merge: SQL results first (exact matches), then vector results not already seen.
-	seen := make(map[string]bool)
-	var results []index.PageResult
-
+	ftsByID := make(map[string]index.PageResult, len(sqlResults))
+	var ftsOrder []string
 	if sqlErr == nil {
 		for _, r := range sqlResults {
-			seen[r.ID] = true
-			results = append(results, r)
+			if _, dup := ftsByID[r.ID]; dup {
+				continue
+			}
+			ftsByID[r.ID] = r
+			ftsOrder = append(ftsOrder, r.ID)
 		}
 	}
 
-	if vecErr == nil {
-		for _, id := range vecIDs {
-			if seen[id] {
-				continue
-			}
-			seen[id] = true
-			pages, err := s.search.ByID(project, id)
-			if err == nil && len(pages) > 0 {
-				results = append(results, pages[0])
-			} else {
-				results = append(results, index.PageResult{
-					ID:      id,
-					Title:   id,
-					Project: project,
-				})
-			}
+	var mergedIDs []string
+	switch {
+	case sqlErr == nil && vecErr == nil:
+		mergedIDs = searchmerge.MergeRRF(ftsOrder, vecIDs, searchmerge.DefaultRRFK)
+	case sqlErr == nil:
+		mergedIDs = ftsOrder
+	case vecErr == nil:
+		mergedIDs = vecIDs
+	}
+
+	var results []index.PageResult
+	for _, id := range mergedIDs {
+		if pr, ok := ftsByID[id]; ok {
+			results = append(results, pr)
+			continue
+		}
+		pages, err := s.search.ByID(project, id)
+		if err == nil && len(pages) > 0 {
+			results = append(results, pages[0])
+		} else {
+			results = append(results, index.PageResult{
+				ID:      id,
+				Title:   id,
+				Project: project,
+			})
 		}
 	}
 

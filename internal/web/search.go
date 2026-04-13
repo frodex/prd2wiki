@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/frodex/prd2wiki/internal/index"
+	"github.com/frodex/prd2wiki/internal/librarian"
+	"github.com/frodex/prd2wiki/internal/searchmerge"
 )
 
 // SearchData holds data for the search results template.
@@ -39,62 +41,96 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 		var items []PageListItem
 
 		if query != "" {
-			// Run FTS and librarian semantic search, merge results (same pattern as api/search.go).
-			seen := make(map[string]bool)
+			var (
+				ftsResults []index.PageResult
+				ftsErr     error
+				vresults   []librarian.SearchResult
+				vecErr     error
+			)
 
-			// FTS results first — exact keyword matches.
-			ftsResults, ftsErr := h.search.Search(project, query, typ, status, tag)
+			ftsResults, ftsErr = h.search.FullText(project, query)
 			if ftsErr != nil {
 				slog.Warn("web search: FTS failed", "project", project, "error", ftsErr)
-			} else {
-				for _, pr := range ftsResults {
-					if seen[pr.ID] {
-						continue
-					}
-					seen[pr.ID] = true
-					item := PageListItem{
-						ID: pr.ID, Title: pr.Title, Type: pr.Type,
-						Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
-						Score: "[sql]",
-					}
-					if h.treeHolder != nil && h.treeHolder.Get() != nil {
-						if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
-							item.TreeHref = "/" + ent.URLPath()
-						}
-					}
-					items = append(items, item)
+			}
+
+			lib, haveLib := h.librarians[project]
+			if haveLib {
+				vresults, vecErr = lib.Search(r.Context(), project, query, 20)
+				if vecErr != nil {
+					slog.Warn("web search: semantic path failed", "project", project, "error", vecErr)
 				}
 			}
 
-			// Librarian semantic results — merge in any not already in FTS.
-			lib, ok := h.librarians[project]
-			if ok {
-				vresults, err := lib.Search(r.Context(), project, query, 20)
-				if err != nil {
-					slog.Warn("web search: semantic path failed", "project", project, "error", err)
-				} else {
-					for _, vr := range vresults {
-						if seen[vr.PageID] {
-							continue
-						}
-						seen[vr.PageID] = true
-						pages, err := h.search.ByID(project, vr.PageID)
-						if err == nil && len(pages) > 0 {
-							pr := pages[0]
-							item := PageListItem{
-								ID: pr.ID, Title: pr.Title, Type: pr.Type,
-								Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
-								Score: fmt.Sprintf("%.0f%% [vector]", vr.Similarity*100),
-							}
-							if h.treeHolder != nil && h.treeHolder.Get() != nil {
-								if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
-									item.TreeHref = "/" + ent.URLPath()
-								}
-							}
-							items = append(items, item)
-						}
+			ftsByID := make(map[string]index.PageResult, len(ftsResults))
+			var ftsOrder []string
+			if ftsErr == nil {
+				for _, pr := range ftsResults {
+					if _, dup := ftsByID[pr.ID]; dup {
+						continue
+					}
+					ftsByID[pr.ID] = pr
+					ftsOrder = append(ftsOrder, pr.ID)
+				}
+			}
+
+			vecByID := make(map[string]librarian.SearchResult)
+			var vecOrder []string
+			if haveLib && vecErr == nil {
+				seenVec := make(map[string]bool)
+				for _, vr := range vresults {
+					if seenVec[vr.PageID] {
+						continue
+					}
+					seenVec[vr.PageID] = true
+					vecByID[vr.PageID] = vr
+					vecOrder = append(vecOrder, vr.PageID)
+				}
+			}
+
+			vecOK := haveLib && vecErr == nil
+			var mergedIDs []string
+			switch {
+			case ftsErr == nil && vecOK:
+				mergedIDs = searchmerge.MergeRRF(ftsOrder, vecOrder, searchmerge.DefaultRRFK)
+			case ftsErr == nil:
+				mergedIDs = ftsOrder
+			case vecOK:
+				mergedIDs = vecOrder
+			}
+
+			for _, id := range mergedIDs {
+				pr, inFts := ftsByID[id]
+				if !inFts {
+					pages, err := h.search.ByID(project, id)
+					if err == nil && len(pages) > 0 {
+						pr = pages[0]
+					} else {
+						pr = index.PageResult{ID: id, Title: id, Project: project}
 					}
 				}
+
+				vr, inVec := vecByID[id]
+				var score string
+				switch {
+				case inFts && inVec:
+					score = fmt.Sprintf("%.0f%% [vec] + fts", vr.Similarity*100)
+				case inFts:
+					score = "[fts]"
+				default:
+					score = fmt.Sprintf("%.0f%% [vec]", vr.Similarity*100)
+				}
+
+				item := PageListItem{
+					ID: pr.ID, Title: pr.Title, Type: pr.Type,
+					Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
+					Score: score,
+				}
+				if h.treeHolder != nil && h.treeHolder.Get() != nil {
+					if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
+						item.TreeHref = "/" + ent.URLPath()
+					}
+				}
+				items = append(items, item)
 			}
 		} else {
 			// Structured filters go to SQLite
