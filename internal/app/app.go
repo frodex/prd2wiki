@@ -173,7 +173,8 @@ func New(cfg Config) (*App, error) {
 			// Don't fail startup — wiki works without librarian, sync degrades gracefully
 		}
 		if pippi != nil && pippiDialErr == nil {
-			slog.Info("pippi-librarian connected — sync and memory_search enabled", "socket", socket)
+			pippi.EnableTicketAuth([]string{"memory_store", "memory_search", "memory_delete"})
+			slog.Info("pippi-librarian connected — ticket auth enabled", "socket", socket)
 		} else if pippi != nil {
 			slog.Warn("pippi-librarian socket unreachable at startup — search will use SQLite FTS until librarian is up", "socket", socket, "error", pippiDialErr)
 		}
