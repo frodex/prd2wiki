@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -91,4 +92,45 @@ func TestNew_BadSocket(t *testing.T) {
 	if c == nil {
 		t.Fatal("should return client even on connection error (for later retry)")
 	}
+}
+
+// Integration tests — run against the live librarian socket.
+// Skipped if the socket is not available (CI-safe).
+
+func TestTicketAuth_LiveSocket_Search(t *testing.T) {
+	const sock = "/var/run/pippi-librarian.sock"
+	if _, err := os.Stat(sock); err != nil {
+		t.Skipf("librarian socket not available: %v", err)
+	}
+	c, err := New(sock, "")
+	if err != nil {
+		t.Skipf("cannot connect to librarian: %v", err)
+	}
+	c.EnableTicketAuth([]string{"memory_store", "memory_search", "memory_delete", "memory_get"})
+
+	_, err = c.MemorySearch(context.Background(), "wiki:test", "hello", 1, false)
+	if err != nil {
+		t.Fatalf("MemorySearch with ticket auth failed: %v", err)
+	}
+}
+
+func TestTicketAuth_LiveSocket_Store(t *testing.T) {
+	const sock = "/var/run/pippi-librarian.sock"
+	if _, err := os.Stat(sock); err != nil {
+		t.Skipf("librarian socket not available: %v", err)
+	}
+	c, err := New(sock, "")
+	if err != nil {
+		t.Skipf("cannot connect to librarian: %v", err)
+	}
+	c.EnableTicketAuth([]string{"memory_store", "memory_search"})
+
+	id, err := c.MemoryStore(context.Background(), "wiki:test-integration", "test-page-auth", "# Test\n\nTicket auth test.", nil)
+	if err != nil {
+		t.Fatalf("MemoryStore with ticket auth failed: %v", err)
+	}
+	if id == "" {
+		t.Fatal("expected non-empty record ID")
+	}
+	t.Logf("stored record: %s", id)
 }
