@@ -39,14 +39,40 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 		var items []PageListItem
 
 		if query != "" {
-			// Try librarian semantic search first, fall back to SQLite FTS
+			// Run FTS and librarian semantic search, merge results (same pattern as api/search.go).
+			seen := make(map[string]bool)
+
+			// FTS results first — exact keyword matches.
+			ftsResults, ftsErr := h.search.Search(project, query, typ, status, tag)
+			if ftsErr != nil {
+				slog.Warn("web search: FTS failed", "project", project, "error", ftsErr)
+			} else {
+				for _, pr := range ftsResults {
+					if seen[pr.ID] {
+						continue
+					}
+					seen[pr.ID] = true
+					item := PageListItem{
+						ID: pr.ID, Title: pr.Title, Type: pr.Type,
+						Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
+						Score: "[sql]",
+					}
+					if h.treeHolder != nil && h.treeHolder.Get() != nil {
+						if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
+							item.TreeHref = "/" + ent.URLPath()
+						}
+					}
+					items = append(items, item)
+				}
+			}
+
+			// Librarian semantic results — merge in any not already in FTS.
 			lib, ok := h.librarians[project]
 			if ok {
 				vresults, err := lib.Search(r.Context(), project, query, 20)
 				if err != nil {
-					slog.Warn("web search: semantic path failed; falling back to SQLite FTS", "project", project, "error", err)
+					slog.Warn("web search: semantic path failed", "project", project, "error", err)
 				} else {
-					seen := make(map[string]bool)
 					for _, vr := range vresults {
 						if seen[vr.PageID] {
 							continue
@@ -67,25 +93,6 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 							}
 							items = append(items, item)
 						}
-					}
-				}
-			}
-			// Fallback: if librarian search returned nothing, use SQLite FTS
-			if len(items) == 0 {
-				ftsResults, err := h.search.Search(project, query, typ, status, tag)
-				if err == nil {
-					for _, pr := range ftsResults {
-						item := PageListItem{
-							ID: pr.ID, Title: pr.Title, Type: pr.Type,
-							Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
-							Score: "[sql]",
-						}
-						if h.treeHolder != nil && h.treeHolder.Get() != nil {
-							if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
-								item.TreeHref = "/" + ent.URLPath()
-							}
-						}
-						items = append(items, item)
 					}
 				}
 			}
