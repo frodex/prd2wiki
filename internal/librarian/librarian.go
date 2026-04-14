@@ -220,9 +220,26 @@ func normalizeQueryWithVocab(vocab *vocabulary.Store, query string) string {
 	return strings.Join(normalized, " ")
 }
 
-// searchResultsFromMemoryHits maps librarian hits to SearchResult (page id + score only).
-// TODO: propagate Title/Snippet when API consumers can use them without re-querying SQLite.
-func searchResultsFromMemoryHits(hits []libclient.MemorySearchHit, limit int) []SearchResult {
+func vectorHitIsHistory(versionStatus string) bool {
+	switch strings.ToLower(strings.TrimSpace(versionStatus)) {
+	case "", "current":
+		return false
+	default:
+		return true
+	}
+}
+
+func shortSourceCommit(full string) string {
+	full = strings.TrimSpace(full)
+	if len(full) > 12 {
+		return full[:12]
+	}
+	return full
+}
+
+// aggregateMemorySearchHits keeps the first (highest-scored) hit per page UUID.
+// With deep search, that hit may be a superseded version; MatchFromHistory and HistoryCommit describe it.
+func aggregateMemorySearchHits(hits []libclient.MemorySearchHit, limit int) []SearchResult {
 	seen := make(map[string]bool)
 	var out []SearchResult
 	for _, h := range hits {
@@ -232,9 +249,12 @@ func searchResultsFromMemoryHits(hits []libclient.MemorySearchHit, limit int) []
 		}
 		seen[id] = true
 		out = append(out, SearchResult{
-			PageID:     id,
-			Section:    "",
-			Similarity: h.Score,
+			PageID:           id,
+			Section:          "",
+			Similarity:       h.Score,
+			MatchFromHistory: vectorHitIsHistory(h.VersionStatus),
+			HistoryCommit:    shortSourceCommit(h.SourceCommit),
+			VectorSnippet:    strings.TrimSpace(h.Snippet),
 		})
 		if limit > 0 && len(out) >= limit {
 			break
@@ -292,9 +312,12 @@ func (l *Librarian) readPageBodyAcrossBranches(pageID string) ([]byte, error) {
 
 // SearchResult holds a search result with page ID and relevance.
 type SearchResult struct {
-	PageID     string  `json:"page_id"`
-	Section    string  `json:"section,omitempty"`
-	Similarity float64 `json:"similarity"`
+	PageID           string  `json:"page_id"`
+	Section          string  `json:"section,omitempty"`
+	Similarity       float64 `json:"similarity"`
+	MatchFromHistory bool    `json:"match_from_history,omitempty"`
+	HistoryCommit    string  `json:"history_commit,omitempty"`
+	VectorSnippet    string  `json:"vector_snippet,omitempty"`
 }
 
 // Search calls pippi-librarian memory_search (wiki:{projectUUID} namespace).
@@ -306,9 +329,13 @@ func (l *Librarian) Search(ctx context.Context, project, query string, limit int
 
 	if l.libClient != nil && l.projectUUID != "" {
 		ns := "wiki:" + l.projectUUID
-		hits, err := l.libClient.MemorySearch(ctx, ns, normalizedQuery, limit, false)
+		fetch := limit * 4
+		if fetch < 40 {
+			fetch = 40
+		}
+		hits, err := l.libClient.MemorySearch(ctx, ns, normalizedQuery, fetch, true)
 		if err == nil {
-			return searchResultsFromMemoryHits(hits, limit), nil
+			return aggregateMemorySearchHits(hits, limit), nil
 		}
 		slog.Warn("librarian memory_search failed — search will use SQLite FTS only",
 			"project", project, "namespace", ns, "err", err)
@@ -328,7 +355,7 @@ func (l *Librarian) FindSimilar(ctx context.Context, project, pageID string, lim
 			ns := "wiki:" + l.projectUUID
 			hits, err := l.libClient.MemorySearch(ctx, ns, q, max(limit*3, 30), false)
 			if err == nil {
-				out := filterOutPage(searchResultsFromMemoryHits(hits, limit*3), pageID)
+				out := filterOutPage(aggregateMemorySearchHits(hits, limit*3), pageID)
 				if len(out) > limit {
 					out = out[:limit]
 				}

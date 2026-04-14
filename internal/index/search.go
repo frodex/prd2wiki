@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // FTS BM25 column weights (title/tags boosted vs body). Tuned for wiki-style queries.
@@ -25,6 +26,8 @@ type PageResult struct {
 	Tags       string `json:"tags"`
 	Module     string `json:"module"`
 	Category   string `json:"category"`
+	// UpdatedAt is from SQLite pages.updated_at (typically "2006-01-02 15:04:05" UTC).
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // Searcher queries the SQLite index for pages.
@@ -48,7 +51,7 @@ func (s *Searcher) query(sqlStr string, args ...interface{}) ([]PageResult, erro
 	var results []PageResult
 	for rows.Next() {
 		var r PageResult
-		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
 		results = append(results, r)
@@ -59,7 +62,7 @@ func (s *Searcher) query(sqlStr string, args ...interface{}) ([]PageResult, erro
 	return results, nil
 }
 
-const selectPagesCols = `pages.id, pages.title, pages.type, pages.status, pages.path, pages.project, pages.trust_level, COALESCE(pages.tags, ''), COALESCE(pages.module, ''), COALESCE(pages.category, '')`
+const selectPagesCols = `pages.id, pages.title, pages.type, pages.status, pages.path, pages.project, pages.trust_level, COALESCE(pages.tags, ''), COALESCE(pages.module, ''), COALESCE(pages.category, ''), IFNULL(pages.updated_at, '')`
 
 const selectPages = `SELECT ` + selectPagesCols + ` FROM pages`
 
@@ -116,7 +119,7 @@ func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 	var buf []scored
 	for rows.Next() {
 		var r scored
-		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category, &r.bm25); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category, &r.UpdatedAt, &r.bm25); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
 		buf = append(buf, r)
@@ -126,8 +129,8 @@ func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 	}
 
 	sort.SliceStable(buf, func(i, j int) bool {
-		ti := fullTextTitleTier(buf[i].Title, q)
-		tj := fullTextTitleTier(buf[j].Title, q)
+		ti := MatchTier(buf[i].Title, buf[i].Tags, q)
+		tj := MatchTier(buf[j].Title, buf[j].Tags, q)
 		if ti != tj {
 			return ti < tj
 		}
@@ -142,6 +145,87 @@ func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 		out[i] = buf[i].PageResult
 	}
 	return out, nil
+}
+
+// FTSSnippetsBody returns FTS5 body-column snippets for pages that match matchQuery (plain text, no HTML).
+func (s *Searcher) FTSSnippetsBody(project string, pageIDs []string, matchQuery string) (map[string]string, error) {
+	out := make(map[string]string)
+	matchQuery = strings.TrimSpace(matchQuery)
+	if len(pageIDs) == 0 || matchQuery == "" {
+		return out, nil
+	}
+	seen := make(map[string]bool)
+	var ids []string
+	for _, id := range pageIDs {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	ph := make([]string, len(ids))
+	args := make([]interface{}, 0, 2+len(ids))
+	args = append(args, project, matchQuery)
+	for i, id := range ids {
+		ph[i] = "?"
+		args = append(args, id)
+	}
+	q := fmt.Sprintf(`
+		SELECT pages_fts.id, snippet(pages_fts, 2, '', '', ' … ', 32)
+		FROM pages_fts
+		INNER JOIN pages ON pages.id = pages_fts.id
+		WHERE pages.project = ? AND pages_fts MATCH ? AND pages_fts.id IN (%s)`,
+		strings.Join(ph, ","))
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("fts snippet: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, snip string
+		if err := rows.Scan(&id, &snip); err != nil {
+			return nil, fmt.Errorf("fts snippet scan: %w", err)
+		}
+		if snip != "" {
+			out[id] = snip
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RerankSearchResults stable-sorts by MatchTier (title+tags vs query), then original order.
+// Use after hybrid RRF so vector-heavy ordering does not bury pages that match all query terms in metadata.
+func RerankSearchResults(results []PageResult, query string) []PageResult {
+	if len(results) < 2 {
+		return results
+	}
+	type slot struct {
+		pr   PageResult
+		ord  int
+		tier int
+	}
+	xs := make([]slot, len(results))
+	for i, pr := range results {
+		xs[i] = slot{pr: pr, ord: i, tier: MatchTier(pr.Title, pr.Tags, query)}
+	}
+	sort.SliceStable(xs, func(i, j int) bool {
+		if xs[i].tier != xs[j].tier {
+			return xs[i].tier < xs[j].tier
+		}
+		return xs[i].ord < xs[j].ord
+	})
+	out := make([]PageResult, len(xs))
+	for i := range xs {
+		out[i] = xs[i].pr
+	}
+	return out
 }
 
 // Search dispatches to the appropriate query method based on the provided filters.

@@ -111,7 +111,7 @@ func (h *Handler) serveTreePage(w http.ResponseWriter, r *http.Request, treeRoot
 	}
 
 	gitPath := "pages/" + strings.TrimSpace(ent.Page.UUID) + ".md"
-	h.viewPageAtGitPath(w, ent.Project.RepoKey, gitPath, repo)
+	h.viewPageAtGitPath(w, r, ent.Project.RepoKey, gitPath, repo)
 	return true
 }
 

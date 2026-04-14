@@ -1,8 +1,5 @@
 {{define "page-actions"}}
 <div class="page-actions">
-    {{if .TreeViewURL}}
-    <a href="{{.TreeViewURL}}" class="btn-action btn-action-secondary">Tree</a>
-    {{end}}
     <a href="/projects/{{.Project}}/pages/{{.ID}}/edit" class="btn-action">Edit</a>
     <a href="/projects/{{.Project}}/pages/{{.ID}}/history" class="btn-action">History</a>
     {{if or (eq .Status "draft") (eq .Status "review")}}

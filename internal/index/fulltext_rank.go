@@ -5,27 +5,62 @@ import (
 	"unicode"
 )
 
-// fullTextTitleTier classifies how well a page title matches a free-text query.
-// Lower tier values sort first (more relevant). Used after FTS retrieval.
-func fullTextTitleTier(title, query string) int {
-	t := normalizeForTitleMatch(title)
+// MatchTier classifies metadata match strength for title+tags vs query.
+// Lower sorts first: 0 = phrase in blob; 1 = every query token in title; 2 = every token in title+tags but not all in title alone; 3 = weaker.
+func MatchTier(title, tags, query string) int {
+	tit := normalizeForTitleMatch(title)
+	blob := matchMetadataBlob(title, tags)
 	q := normalizeForTitleMatch(query)
-	if t == "" || q == "" {
-		return 2
+	if blob == "" || q == "" {
+		return 3
 	}
-	if strings.Contains(t, q) {
+	if strings.Contains(blob, q) {
 		return 0
 	}
-	for _, tok := range strings.Fields(q) {
-		r := []rune(tok)
-		if len(r) < 2 {
-			continue
-		}
-		if !strings.Contains(t, tok) {
-			return 2
+	tokens := significantQueryTokens(q)
+	if len(tokens) == 0 {
+		return 3
+	}
+	allInTitle := true
+	for _, tok := range tokens {
+		if !strings.Contains(tit, tok) {
+			allInTitle = false
+			break
 		}
 	}
-	return 1
+	if allInTitle {
+		return 1
+	}
+	for _, tok := range tokens {
+		if !strings.Contains(blob, tok) {
+			return 3
+		}
+	}
+	return 2
+}
+
+func significantQueryTokens(q string) []string {
+	var out []string
+	for _, tok := range strings.Fields(q) {
+		if len([]rune(tok)) >= 2 {
+			out = append(out, tok)
+		}
+	}
+	return out
+}
+
+func matchMetadataBlob(title, tags string) string {
+	t := normalizeForTitleMatch(title)
+	tags = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(tags), ",", " "))
+	tags = strings.Join(strings.Fields(tags), " ")
+	switch {
+	case t == "":
+		return tags
+	case tags == "":
+		return t
+	default:
+		return t + " " + tags
+	}
 }
 
 func normalizeForTitleMatch(s string) string {
@@ -46,7 +81,6 @@ func normalizeForTitleMatch(s string) string {
 			prevSpace = false
 			continue
 		}
-		// drop punctuation (e.g. ":" in "DRAFT:")
 		if !prevSpace {
 			b.WriteByte(' ')
 			prevSpace = true

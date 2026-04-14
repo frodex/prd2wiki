@@ -2,12 +2,15 @@ package web
 
 import (
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/searchmerge"
+	"github.com/frodex/prd2wiki/internal/searchsnippet"
 )
 
 // SearchData holds data for the search results template.
@@ -36,6 +39,11 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 		Tag:    tag,
 	}
 
+	var editCache *EditCache
+	if c, ok := h.edits[project]; ok {
+		editCache = c
+	}
+
 	// Only run a search if at least one filter is provided.
 	if query != "" || typ != "" || status != "" || tag != "" {
 		var items []PageListItem
@@ -44,7 +52,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 			var (
 				ftsResults []index.PageResult
 				ftsErr     error
-				vresults   []librarian.SearchResult
+				vecResults []librarian.SearchResult
 				vecErr     error
 			)
 
@@ -55,7 +63,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 
 			lib, haveLib := h.librarians[project]
 			if haveLib {
-				vresults, vecErr = lib.Search(r.Context(), project, query, 20)
+				vecResults, vecErr = lib.Search(r.Context(), project, query, 20)
 				if vecErr != nil {
 					slog.Warn("web search: semantic path failed", "project", project, "error", vecErr)
 				}
@@ -73,15 +81,10 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			vecByID := make(map[string]librarian.SearchResult)
+			vecByID := make(map[string]librarian.SearchResult, len(vecResults))
 			var vecOrder []string
 			if haveLib && vecErr == nil {
-				seenVec := make(map[string]bool)
-				for _, vr := range vresults {
-					if seenVec[vr.PageID] {
-						continue
-					}
-					seenVec[vr.PageID] = true
+				for _, vr := range vecResults {
 					vecByID[vr.PageID] = vr
 					vecOrder = append(vecOrder, vr.PageID)
 				}
@@ -98,6 +101,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 				mergedIDs = vecOrder
 			}
 
+			var mergedPRs []index.PageResult
 			for _, id := range mergedIDs {
 				pr, inFts := ftsByID[id]
 				if !inFts {
@@ -108,8 +112,32 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 						pr = index.PageResult{ID: id, Title: id, Project: project}
 					}
 				}
+				mergedPRs = append(mergedPRs, pr)
+			}
+			mergedPRs = index.RerankSearchResults(mergedPRs, query)
 
-				vr, inVec := vecByID[id]
+			var ftsSnips map[string]string
+			if ftsErr == nil && query != "" {
+				ftsIDs := make([]string, 0, len(mergedPRs))
+				seenID := make(map[string]bool)
+				for _, pr := range mergedPRs {
+					if _, ok := ftsByID[pr.ID]; !ok || seenID[pr.ID] {
+						continue
+					}
+					seenID[pr.ID] = true
+					ftsIDs = append(ftsIDs, pr.ID)
+				}
+				var serr error
+				ftsSnips, serr = h.search.FTSSnippetsBody(project, ftsIDs, query)
+				if serr != nil {
+					slog.Warn("web search: fts snippet query failed", "project", project, "error", serr)
+					ftsSnips = nil
+				}
+			}
+
+			for _, pr := range mergedPRs {
+				_, inFts := ftsByID[pr.ID]
+				vr, inVec := vecByID[pr.ID]
 				var score string
 				switch {
 				case inFts && inVec:
@@ -120,11 +148,36 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 					score = fmt.Sprintf("%.0f%% [vec]", vr.Similarity*100)
 				}
 
+				var excerpt template.HTML
+				if inFts && ftsSnips != nil {
+					if snip, ok := ftsSnips[pr.ID]; ok && snip != "" {
+						excerpt = searchsnippet.FormatSearchExcerpt(snip, query)
+					}
+				}
+				if excerpt == "" && inVec && vr.VectorSnippet != "" {
+					if vr.MatchFromHistory {
+						excerpt = searchsnippet.HistoryVectorExcerptHTML(vr.HistoryCommit, vr.VectorSnippet, query)
+					} else {
+						excerpt = searchsnippet.VectorExcerptHTML(vr.VectorSnippet, query)
+					}
+				}
+
 				item := PageListItem{
 					ID: pr.ID, Title: pr.Title, Type: pr.Type,
 					Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
-					Score: score,
+					Score: score, Excerpt: excerpt,
 				}
+				var scoreSort float64
+				switch {
+				case inFts && inVec:
+					scoreSort = vr.Similarity + 1e-3
+				case inFts:
+					scoreSort = 0.3
+				default:
+					scoreSort = vr.Similarity
+				}
+				item.ScoreSort = strconv.FormatFloat(scoreSort, 'f', 8, 64)
+				FillPageTimestamps(&item, pr, editCache)
 				if h.treeHolder != nil && h.treeHolder.Get() != nil {
 					if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
 						item.TreeHref = "/" + ent.URLPath()
@@ -153,6 +206,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 					ID: pr.ID, Title: pr.Title, Type: pr.Type,
 					Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
 				}
+				FillPageTimestamps(&item, pr, editCache)
 				if h.treeHolder != nil && h.treeHolder.Get() != nil {
 					if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
 						item.TreeHref = "/" + ent.URLPath()

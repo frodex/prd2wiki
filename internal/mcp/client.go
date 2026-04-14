@@ -71,6 +71,7 @@ type PageResult struct {
 	Project    string `json:"project"`
 	TrustLevel int    `json:"trust_level"`
 	Tags       string `json:"tags"`
+	Excerpt    string `json:"excerpt,omitempty"`
 }
 
 // RefNode represents a node in the provenance reference tree.

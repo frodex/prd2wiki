@@ -279,12 +279,14 @@ func (c *Client) MemoryStore(ctx context.Context, namespace, pageUUID, content s
 
 // MemorySearchHit is one row from memory_search (matches pippi-librarian JSON).
 type MemorySearchHit struct {
-	PageUUID     string  `json:"page_uuid"`
-	RecordID     string  `json:"record_id"`
-	Title        string  `json:"title"`
-	Snippet      string  `json:"snippet"`
-	Score        float64 `json:"score"`
-	HistoryCount int     `json:"history_count"`
+	PageUUID       string  `json:"page_uuid"`
+	RecordID       string  `json:"record_id"`
+	Title          string  `json:"title"`
+	Snippet        string  `json:"snippet"`
+	Score          float64 `json:"score"`
+	HistoryCount   int     `json:"history_count"`
+	VersionStatus  string  `json:"version_status"`
+	SourceCommit   string  `json:"source_commit"`
 }
 
 // MemorySearch calls memory_search and returns decoded matches.

@@ -6,8 +6,30 @@ import (
 	"sync"
 
 	"github.com/frodex/prd2wiki/internal/index"
+	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/searchmerge"
+	"github.com/frodex/prd2wiki/internal/searchsnippet"
 )
+
+// searchHitResponse is the JSON shape for text search (current page row + optional vector excerpt).
+type searchHitResponse struct {
+	index.PageResult
+	Excerpt string `json:"excerpt,omitempty"`
+}
+
+func searchHitExcerpt(vecByID map[string]librarian.SearchResult, pageID string) string {
+	v, ok := vecByID[pageID]
+	if !ok {
+		return ""
+	}
+	if v.MatchFromHistory {
+		return searchsnippet.HistoryVectorExcerpt(v.HistoryCommit, v.VectorSnippet)
+	}
+	if v.VectorSnippet != "" {
+		return searchsnippet.VectorExcerpt(v.VectorSnippet)
+	}
+	return ""
+}
 
 func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
@@ -53,7 +75,7 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 		wg         sync.WaitGroup
 		sqlResults []index.PageResult
 		sqlErr     error
-		vecIDs     []string
+		vecResults []librarian.SearchResult
 		vecErr     error
 	)
 
@@ -65,24 +87,22 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 		sqlResults, sqlErr = s.search.FullText(project, query)
 	}()
 
-	// Librarian semantic search
+	// Librarian semantic search (deep: includes superseded rows; best hit per page is aggregated in librarian).
 	go func() {
 		defer wg.Done()
-		vresults, err := lib.Search(r.Context(), project, query, 20)
-		if err != nil {
-			vecErr = err
-			return
-		}
-		seen := make(map[string]bool)
-		for _, vr := range vresults {
-			if !seen[vr.PageID] {
-				seen[vr.PageID] = true
-				vecIDs = append(vecIDs, vr.PageID)
-			}
-		}
+		var err error
+		vecResults, err = lib.Search(r.Context(), project, query, 20)
+		vecErr = err
 	}()
 
 	wg.Wait()
+
+	vecByID := make(map[string]librarian.SearchResult, len(vecResults))
+	var vecIDs []string
+	for _, vr := range vecResults {
+		vecByID[vr.PageID] = vr
+		vecIDs = append(vecIDs, vr.PageID)
+	}
 
 	if vecErr != nil {
 		slog.Warn("api search: semantic/vector path failed; results are SQLite FTS only", "project", project, "error", vecErr)
@@ -128,5 +148,14 @@ func (s *Server) searchPages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, results)
+	results = index.RerankSearchResults(results, query)
+
+	out := make([]searchHitResponse, len(results))
+	for i, pr := range results {
+		out[i] = searchHitResponse{
+			PageResult: pr,
+			Excerpt:    searchHitExcerpt(vecByID, pr.ID),
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
