@@ -2,8 +2,13 @@
 {{$page := .Content}}
 
 <h1>{{if $page.IsNew}}New Page{{else}}Edit: {{$page.Title}}{{end}}</h1>
-{{if and (not $page.IsNew) $page.TreeViewURL}}
-<p class="edit-tree-hint">Wiki URL: <a href="{{$page.TreeViewURL}}">{{$page.TreeViewURL}}</a></p>
+{{if not $page.IsNew}}
+<p class="page-url-aliases edit-url-hint" aria-label="Page URLs">
+    {{if $page.WikiURL}}
+    <span class="url-alias"><span class="url-alias-label">wiki</span> <a href="{{$page.WikiURL}}" class="url-alias-link">{{$page.WikiURL}}</a></span>
+    {{end}}
+    <span class="url-alias"><span class="url-alias-label">project</span> <a href="/projects/{{$.Project}}/pages/{{$page.ID}}" class="url-alias-link">/projects/{{$.Project}}/pages/{{$page.ID}}</a></span>
+</p>
 {{end}}
 
 <form id="page-form" class="page-form" data-project="{{$.Project}}">
@@ -20,13 +25,17 @@
     <div class="form-group">
         <label for="field-type">Type</label>
         <select id="field-type" name="type">
-            <option value="requirement" {{if eq $page.Type "requirement"}}selected{{end}}>requirement</option>
-            <option value="concept" {{if eq $page.Type "concept"}}selected{{end}}>concept</option>
-            <option value="task" {{if eq $page.Type "task"}}selected{{end}}>task</option>
+            <option value="" {{if eq $page.Type ""}}selected{{end}}>(unclassified)</option>
+            <option value="research" {{if eq $page.Type "research"}}selected{{end}}>research</option>
+            <option value="spec" {{if eq $page.Type "spec"}}selected{{end}}>spec</option>
+            <option value="plan" {{if eq $page.Type "plan"}}selected{{end}}>plan</option>
+            <option value="report" {{if eq $page.Type "report"}}selected{{end}}>report</option>
+            <option value="review" {{if eq $page.Type "review"}}selected{{end}}>review</option>
             <option value="reference" {{if eq $page.Type "reference"}}selected{{end}}>reference</option>
-            <option value="decision" {{if eq $page.Type "decision"}}selected{{end}}>decision</option>
-            <option value="source" {{if eq $page.Type "source"}}selected{{end}}>source</option>
-            <option value="config" {{if eq $page.Type "config"}}selected{{end}}>config</option>
+            <option value="tracking" {{if eq $page.Type "tracking"}}selected{{end}}>tracking</option>
+            <option value="skill" {{if eq $page.Type "skill"}}selected{{end}}>skill</option>
+            <option value="rule" {{if eq $page.Type "rule"}}selected{{end}}>rule</option>
+            <option value="project" {{if eq $page.Type "project"}}selected{{end}}>project</option>
         </select>
     </div>
 
@@ -34,14 +43,13 @@
         <label for="field-status">Status</label>
         <select id="field-status" name="status">
             <option value="draft" {{if eq $page.Status "draft"}}selected{{end}}>draft</option>
-            <option value="review" {{if eq $page.Status "review"}}selected{{end}}>review</option>
+            <option value="submitted" {{if eq $page.Status "submitted"}}selected{{end}}>submitted</option>
             <option value="approved" {{if eq $page.Status "approved"}}selected{{end}}>approved</option>
             <option value="rejected" {{if eq $page.Status "rejected"}}selected{{end}}>rejected</option>
-            <option value="active" {{if eq $page.Status "active"}}selected{{end}}>active</option>
-            <option value="contested" {{if eq $page.Status "contested"}}selected{{end}}>contested</option>
-            <option value="stale" {{if eq $page.Status "stale"}}selected{{end}}>stale</option>
+            <option value="implemented" {{if eq $page.Status "implemented"}}selected{{end}}>implemented</option>
+            <option value="completed" {{if eq $page.Status "completed"}}selected{{end}}>completed</option>
             <option value="superseded" {{if eq $page.Status "superseded"}}selected{{end}}>superseded</option>
-            <option value="deprecated" {{if eq $page.Status "deprecated"}}selected{{end}}>deprecated</option>
+            <option value="retired" {{if eq $page.Status "retired"}}selected{{end}}>retired</option>
         </select>
     </div>
 

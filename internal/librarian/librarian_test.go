@@ -134,10 +134,12 @@ func TestLibrarianValidationError(t *testing.T) {
 	lib, _ := setupLibrarian(t)
 	ctx := context.Background()
 
-	// Missing ID and Type — should block conform.
+	// Invalid type and bad trust_level — should block conform.
 	fm := &schema.Frontmatter{
-		Title:  "Nameless Page",
-		Status: "draft",
+		Title:      "Invalid Page",
+		Type:       "nonexistent_type",
+		Status:     "draft",
+		TrustLevel: 99,
 	}
 	body := []byte("Some content.\n")
 

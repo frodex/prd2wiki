@@ -13,12 +13,12 @@ func filterSeverity(issues []Issue, sev string) []Issue {
 	return out
 }
 
-// TestValidateRequirement checks that a valid minimal requirement produces no errors.
-func TestValidateRequirement(t *testing.T) {
+// TestValidateSpec checks that a valid minimal spec produces no errors.
+func TestValidateSpec(t *testing.T) {
 	fm := &Frontmatter{
 		ID:     "REQ-001",
-		Title:  "My requirement",
-		Type:   "requirement",
+		Title:  "My spec",
+		Type:   "spec",
 		Status: "draft",
 		Provenance: Provenance{
 			Sources: []Source{
@@ -34,27 +34,152 @@ func TestValidateRequirement(t *testing.T) {
 	}
 }
 
-// TestValidateMissingRequired checks that missing id and type produce at least 2 errors.
+// TestValidateEmptyType checks that an empty type is valid (unclassified page).
+func TestValidateEmptyType(t *testing.T) {
+	fm := &Frontmatter{
+		ID:    "PAGE-001",
+		Title: "Unclassified page",
+		Type:  "",
+	}
+	issues := Validate(fm)
+	errs := filterSeverity(issues, SeverityError)
+	for _, e := range errs {
+		if e.Field == "type" {
+			t.Errorf("empty type should not produce an error, got: %v", e)
+		}
+	}
+}
+
+// TestValidateLegacyType checks that old type names produce a warning, not an error.
+func TestValidateLegacyType(t *testing.T) {
+	fm := &Frontmatter{
+		ID:    "REQ-002",
+		Title: "Legacy type",
+		Type:  "requirement",
+	}
+	issues := Validate(fm)
+	errs := filterSeverity(issues, SeverityError)
+	for _, e := range errs {
+		if e.Field == "type" {
+			t.Errorf("legacy type should not produce an error, got: %v", e)
+		}
+	}
+	warnings := filterSeverity(issues, SeverityWarning)
+	found := false
+	for _, w := range warnings {
+		if w.Field == "type" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected deprecation warning on legacy type 'requirement'")
+	}
+}
+
+// TestValidateNewTypes checks that all new types are accepted.
+func TestValidateNewTypes(t *testing.T) {
+	types := []string{"research", "spec", "plan", "report", "review", "reference", "tracking", "skill", "rule", "project", "_test"}
+	for _, typ := range types {
+		fm := &Frontmatter{
+			ID:    "T-001",
+			Title: "Test " + typ,
+			Type:  typ,
+		}
+		issues := Validate(fm)
+		errs := filterSeverity(issues, SeverityError)
+		for _, e := range errs {
+			if e.Field == "type" {
+				t.Errorf("type %q should be valid, got error: %v", typ, e)
+			}
+		}
+	}
+}
+
+// TestValidateNewStatuses checks that all new statuses are accepted.
+func TestValidateNewStatuses(t *testing.T) {
+	statuses := []string{"draft", "submitted", "approved", "rejected", "implemented", "completed", "superseded", "retired"}
+	for _, status := range statuses {
+		fm := &Frontmatter{
+			ID:     "S-001",
+			Title:  "Test " + status,
+			Type:   "spec",
+			Status: status,
+		}
+		issues := Validate(fm)
+		errs := filterSeverity(issues, SeverityError)
+		for _, e := range errs {
+			if e.Field == "status" {
+				t.Errorf("status %q should be valid, got error: %v", status, e)
+			}
+		}
+	}
+}
+
+// TestValidateLegacyStatus checks that old status names produce a warning, not an error.
+func TestValidateLegacyStatus(t *testing.T) {
+	for _, old := range []string{"active", "deprecated", "sketch", "stale", "review", "contested", "proposed"} {
+		fm := &Frontmatter{
+			ID:     "S-002",
+			Title:  "Legacy status " + old,
+			Type:   "spec",
+			Status: old,
+		}
+		issues := Validate(fm)
+		errs := filterSeverity(issues, SeverityError)
+		for _, e := range errs {
+			if e.Field == "status" {
+				t.Errorf("legacy status %q should not produce an error, got: %v", old, e)
+			}
+		}
+		warnings := filterSeverity(issues, SeverityWarning)
+		found := false
+		for _, w := range warnings {
+			if w.Field == "status" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected deprecation warning on legacy status %q", old)
+		}
+	}
+}
+
+// TestValidateRetiredStatus checks that retired is a valid status.
+func TestValidateRetiredStatus(t *testing.T) {
+	fm := &Frontmatter{
+		ID:     "S-003",
+		Title:  "Retired page",
+		Type:   "reference",
+		Status: "retired",
+	}
+	issues := Validate(fm)
+	errs := filterSeverity(issues, SeverityError)
+	for _, e := range errs {
+		if e.Field == "status" {
+			t.Errorf("retired status should not produce an error, got: %v", e)
+		}
+	}
+}
+
+// TestValidateMissingRequired checks that missing id produces an error.
+// Note: empty type is now valid (unclassified page), so only id is required.
 func TestValidateMissingRequired(t *testing.T) {
 	fm := &Frontmatter{
-		Title:  "No ID or Type",
+		Title:  "No ID",
 		Status: "draft",
 	}
 	issues := Validate(fm)
 	errs := filterSeverity(issues, SeverityError)
-	if len(errs) < 2 {
-		t.Errorf("expected at least 2 errors, got %d: %v", len(errs), errs)
-	}
-	// Verify id and type fields are represented
-	fields := map[string]bool{}
+	found := false
 	for _, e := range errs {
-		fields[e.Field] = true
+		if e.Field == "id" {
+			found = true
+		}
 	}
-	if !fields["id"] {
+	if !found {
 		t.Error("expected error on field 'id'")
-	}
-	if !fields["type"] {
-		t.Error("expected error on field 'type'")
 	}
 }
 
@@ -85,7 +210,7 @@ func TestValidateInvalidStatus(t *testing.T) {
 	fm := &Frontmatter{
 		ID:     "REQ-003",
 		Title:  "Bad status",
-		Type:   "requirement",
+		Type:   "spec",
 		Status: "bogus",
 	}
 	issues := Validate(fm)
@@ -107,7 +232,7 @@ func TestValidateWarningMissingProvenance(t *testing.T) {
 	fm := &Frontmatter{
 		ID:        "REQ-004",
 		Title:     "No sources",
-		Type:      "requirement",
+		Type:      "spec",
 		Status:    "draft",
 		DCCreator: "bob",
 	}
@@ -125,25 +250,31 @@ func TestValidateWarningMissingProvenance(t *testing.T) {
 	}
 }
 
-// TestValidateSourceTypeMissingSourceMeta checks type=source requires source_meta.
-func TestValidateSourceTypeMissingSourceMeta(t *testing.T) {
+// TestValidateLegacySourceType checks that old source type gets a warning, not an error.
+func TestValidateLegacySourceType(t *testing.T) {
 	fm := &Frontmatter{
 		ID:     "SRC-001",
-		Title:  "A source without meta",
+		Title:  "A source page",
 		Type:   "source",
-		Status: "active",
+		Status: "draft",
 	}
 	issues := Validate(fm)
 	errs := filterSeverity(issues, SeverityError)
-	found := false
 	for _, e := range errs {
-		if e.Field == "source_meta" {
+		if e.Field == "type" {
+			t.Errorf("legacy type 'source' should not produce error, got: %v", e)
+		}
+	}
+	warnings := filterSeverity(issues, SeverityWarning)
+	found := false
+	for _, w := range warnings {
+		if w.Field == "type" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected error on field 'source_meta', got: %v", errs)
+		t.Error("expected deprecation warning on legacy type 'source'")
 	}
 }
 
@@ -152,7 +283,7 @@ func TestValidateTrustLevelOutOfRange(t *testing.T) {
 	fm := &Frontmatter{
 		ID:         "REQ-005",
 		Title:      "Bad trust",
-		Type:       "requirement",
+		Type:       "spec",
 		Status:     "draft",
 		TrustLevel: 5,
 	}
@@ -175,7 +306,7 @@ func TestValidateWarnMissingDCCreator(t *testing.T) {
 	fm := &Frontmatter{
 		ID:    "REQ-006",
 		Title: "No creator",
-		Type:  "requirement",
+		Type:  "spec",
 		Status: "draft",
 		Provenance: Provenance{
 			Sources: []Source{{Ref: "prd-v1"}},

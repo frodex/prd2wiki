@@ -14,28 +14,53 @@ type Issue struct {
 }
 
 // validTypes lists all recognised page types.
+// An empty type is valid (unclassified page).
 var validTypes = map[string]bool{
-	"requirement": true,
-	"concept":     true,
-	"task":        true,
-	"reference":   true,
-	"decision":    true,
-	"source":      true,
-	"config":      true,
-	"project":     true,
+	"research":  true,
+	"spec":      true,
+	"plan":      true,
+	"report":    true,
+	"review":    true,
+	"reference": true,
+	"tracking":  true,
+	"skill":     true,
+	"rule":      true,
+	"project":   true,
+	"_test":     true,
+}
+
+// legacyTypes maps old type names to new ones (accepted with warning).
+var legacyTypes = map[string]string{
+	"requirement": "spec",
+	"concept":     "research",
+	"task":        "plan",
+	"decision":    "reference",
+	"source":      "reference",
+	"config":      "reference",
+	"feedback":    "report",
 }
 
 // validStatuses lists all recognised page statuses.
 var validStatuses = map[string]bool{
-	"draft":      true,
-	"review":     true,
-	"approved":   true,
-	"rejected":   true,
-	"active":     true,
-	"contested":  true,
-	"stale":      true,
-	"superseded": true,
-	"deprecated": true,
+	"draft":       true,
+	"submitted":   true,
+	"approved":    true,
+	"rejected":    true,
+	"implemented": true,
+	"completed":   true,
+	"superseded":  true,
+	"retired":     true,
+}
+
+// legacyStatuses maps old status names to new ones (accepted with warning).
+var legacyStatuses = map[string]string{
+	"review":     "submitted",
+	"proposed":   "submitted",
+	"active":     "approved",
+	"contested":  "submitted",
+	"stale":      "retired",
+	"deprecated": "retired",
+	"sketch":     "draft",
 }
 
 // Validate inspects a Frontmatter value and returns all issues found.
@@ -63,28 +88,40 @@ func Validate(fm *Frontmatter) []Issue {
 		})
 	}
 
-	// Required + valid: type
-	if fm.Type == "" {
-		issues = append(issues, Issue{
-			Severity: SeverityError,
-			Field:    "type",
-			Message:  "type is required",
-		})
-	} else if !validTypes[fm.Type] {
-		issues = append(issues, Issue{
-			Severity: SeverityError,
-			Field:    "type",
-			Message:  "type " + fm.Type + " is not valid; must be one of requirement, concept, task, reference, decision, source, config, project",
-		})
+	// Valid: type — empty is allowed (unclassified page)
+	if fm.Type != "" {
+		if !validTypes[fm.Type] {
+			if newType, ok := legacyTypes[fm.Type]; ok {
+				issues = append(issues, Issue{
+					Severity: SeverityWarning,
+					Field:    "type",
+					Message:  "type " + fm.Type + " is deprecated; use " + newType + " instead",
+				})
+			} else {
+				issues = append(issues, Issue{
+					Severity: SeverityError,
+					Field:    "type",
+					Message:  "type " + fm.Type + " is not valid; must be one of research, spec, plan, report, review, reference, tracking, skill, rule, project, _test (or empty for unclassified)",
+				})
+			}
+		}
 	}
 
 	// Valid (optional): status — if present must be a known value
 	if fm.Status != "" && !validStatuses[fm.Status] {
-		issues = append(issues, Issue{
-			Severity: SeverityError,
-			Field:    "status",
-			Message:  "status " + fm.Status + " is not valid; must be one of draft, review, active, contested, stale, superseded, deprecated",
-		})
+		if newStatus, ok := legacyStatuses[fm.Status]; ok {
+			issues = append(issues, Issue{
+				Severity: SeverityWarning,
+				Field:    "status",
+				Message:  "status " + fm.Status + " is deprecated; use " + newStatus + " instead",
+			})
+		} else {
+			issues = append(issues, Issue{
+				Severity: SeverityError,
+				Field:    "status",
+				Message:  "status " + fm.Status + " is not valid; must be one of draft, submitted, approved, rejected, implemented, completed, superseded, retired",
+			})
+		}
 	}
 
 	// Range: trust_level must be 0-3
@@ -96,14 +133,9 @@ func Validate(fm *Frontmatter) []Issue {
 		})
 	}
 
-	// Conditional required: source_meta required when type=source
-	if fm.Type == "source" && fm.SourceMeta == nil {
-		issues = append(issues, Issue{
-			Severity: SeverityError,
-			Field:    "source_meta",
-			Message:  "source_meta is required when type is 'source'",
-		})
-	}
+	// Note: source_meta is optional metadata for any page with external origin.
+	// The old type=source requirement has been removed — source is now a legacy
+	// type that maps to reference.
 
 	// --- Warnings ---
 
