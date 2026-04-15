@@ -47,6 +47,7 @@ type TreeDirEntry struct {
 
 func (h *Handler) preparePageData(d *PageData) {
 	d.Projects = h.projects()
+	d.WriteToken = h.writeToken
 	if h.treeHolder != nil {
 		if idx := h.treeHolder.Get(); idx != nil {
 			d.TreeNav = buildTreeSidebar(idx)

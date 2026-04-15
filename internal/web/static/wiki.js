@@ -1,5 +1,19 @@
 // prd2wiki editor — wiki.js
 
+// Read write token from meta tag (injected by server).
+function getWriteToken() {
+    const meta = document.querySelector('meta[name="write-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+// Build headers for mutation requests, including auth if available.
+function mutationHeaders(extra) {
+    const h = Object.assign({'Content-Type': 'application/json'}, extra || {});
+    const token = getWriteToken();
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    return h;
+}
+
 let editorInstance = null;
 let getMarkdownFn = null;
 let usingFallback = false;
@@ -53,7 +67,7 @@ async function initMilkdown() {
                 const formData = new FormData();
                 formData.append('file', file);
                 try {
-                    const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/pages/${encodeURIComponent(pageId)}/attachments`, { method: 'POST', body: formData });
+                    const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/pages/${encodeURIComponent(pageId)}/attachments`, { method: 'POST', body: formData, headers: getWriteToken() ? {'Authorization': 'Bearer ' + getWriteToken()} : {} });
                     if (!resp.ok) { alert('Upload failed: ' + resp.status); return; }
                     const { url } = await resp.json();
                     const pos = fallback.selectionStart;
@@ -79,7 +93,7 @@ async function initMilkdown() {
                     const formData = new FormData();
                     formData.append('file', file);
                     try {
-                        const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/pages/${encodeURIComponent(pageId)}/attachments`, { method: 'POST', body: formData });
+                        const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/pages/${encodeURIComponent(pageId)}/attachments`, { method: 'POST', body: formData, headers: getWriteToken() ? {'Authorization': 'Bearer ' + getWriteToken()} : {} });
                         if (!resp.ok) { alert('Upload failed: ' + resp.status); return; }
                         const { url } = await resp.json();
                         const pos = fallback.selectionStart;
@@ -287,7 +301,7 @@ async function submitPage(intent) {
     try {
         const resp = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: mutationHeaders(),
             body: JSON.stringify(data),
         });
 

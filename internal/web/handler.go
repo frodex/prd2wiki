@@ -1,9 +1,11 @@
 package web
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"sort"
 
@@ -35,6 +37,7 @@ type PageData struct {
 	Projects    []string    // top nav project keys
 	Breadcrumbs []Breadcrumb
 	TreeNav     *TreeNavData // optional; from on-disk tree index
+	WriteToken  string       // Bearer token for browser write operations; empty = no auth
 }
 
 // Handler serves the wiki web UI.
@@ -47,6 +50,7 @@ type Handler struct {
 	edits       map[string]*EditCache  // per-project edit info cache
 	treeHolder  *tree.IndexHolder      // optional; tree URLs and legacy redirects
 	keys        *auth.ServiceKeyStore   // optional; admin mutating routes require ScopeAdmin
+	writeToken  string                  // browser write token issued at startup
 	// migrationAliases maps post-migration git paths to prior paths (from data/migration-map.json).
 	migrationAliases map[string][]string
 }
@@ -63,6 +67,17 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		treeHolder:         treeHolder,
 		keys:               keys,
 		migrationAliases:   migrationAliases,
+	}
+
+	// Issue a browser write token so the web UI can authenticate mutations.
+	if keys != nil {
+		sk, raw, err := keys.Issue(context.Background(), "browser@prd2wiki", []string{"read", "write"}, 0, false)
+		if err != nil {
+			slog.Error("failed to issue browser write token", "error", err)
+		} else {
+			h.writeToken = raw
+			slog.Info("browser write token issued", "key_id", sk.ID)
+		}
 	}
 
 	// Build edit caches in background so startup isn't blocked.
