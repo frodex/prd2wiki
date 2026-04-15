@@ -26,6 +26,9 @@ var allowedTypes = map[string]string{
 func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	logMutation(r, "project", "uploadAttachment", project)
+	if s.keys != nil && !s.requireWriteScope(w, r) {
+		return
+	}
 	repo, ok := s.projectRepo(w, project)
 	if !ok {
 		return

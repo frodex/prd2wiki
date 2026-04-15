@@ -39,6 +39,10 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 	}
 	logMutation(r, "project", handler, project)
 
+	if s.keys != nil && !s.requireWriteScope(w, r) {
+		return
+	}
+
 	lib, ok := s.projectLibrarian(w, project)
 	if !ok {
 		return
@@ -191,6 +195,9 @@ func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deletePage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	logMutation(r, "project", "deletePage", project)
+	if s.keys != nil && !s.requireWriteScope(w, r) {
+		return
+	}
 	repo, ok := s.projectRepo(w, project)
 	if !ok {
 		return

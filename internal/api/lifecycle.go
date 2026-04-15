@@ -31,6 +31,9 @@ func (s *Server) deprecatePage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	id := r.PathValue("id")
 	logMutation(r, "project", "deprecatePage", project)
+	if s.keys != nil && !s.requireWriteScope(w, r) {
+		return
+	}
 
 	repo, ok := s.projectRepo(w, project)
 	if !ok {
@@ -71,6 +74,9 @@ func (s *Server) approvePage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	id := r.PathValue("id")
 	logMutation(r, "project", "approvePage", project)
+	if s.keys != nil && !s.requireWriteScope(w, r) {
+		return
+	}
 
 	repo, ok := s.projectRepo(w, project)
 	if !ok {
@@ -111,6 +117,9 @@ func (s *Server) restorePage(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	id := r.PathValue("id")
 	logMutation(r, "project", "restorePage", project)
+	if s.keys != nil && !s.requireWriteScope(w, r) {
+		return
+	}
 
 	repo, ok := s.projectRepo(w, project)
 	if !ok {
