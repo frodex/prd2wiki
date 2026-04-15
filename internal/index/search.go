@@ -209,6 +209,73 @@ func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 	return out, nil
 }
 
+// FTSHitCounts returns the number of times the query terms appear in each page's indexed body.
+func (s *Searcher) FTSHitCounts(project string, pageIDs []string, query string) (map[string]int, error) {
+	out := make(map[string]int)
+	query = strings.TrimSpace(query)
+	if len(pageIDs) == 0 || query == "" {
+		return out, nil
+	}
+
+	terms := strings.Fields(strings.ToLower(sanitizeFTSQuery(query)))
+	if len(terms) == 0 {
+		return out, nil
+	}
+
+	ph := make([]string, len(pageIDs))
+	args := make([]interface{}, 0, 1+len(pageIDs))
+	args = append(args, project)
+	for i, id := range pageIDs {
+		ph[i] = "?"
+		args = append(args, id)
+	}
+
+	q := fmt.Sprintf(`SELECT pages_fts.id, pages_fts.body FROM pages_fts
+		INNER JOIN pages ON pages.id = pages_fts.id
+		WHERE pages.project = ? AND pages.id IN (%s)`,
+		strings.Join(ph, ","))
+
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("hit count query: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id, body string
+		if err := rows.Scan(&id, &body); err != nil {
+			continue
+		}
+		lower := strings.ToLower(body)
+		count := 0
+		for _, term := range terms {
+			if len(term) >= 2 {
+				count += strings.Count(lower, term)
+			}
+		}
+		if count > 0 {
+			out[id] = count
+		}
+	}
+	return out, nil
+}
+
+// ExponentialHitScore returns an exponential score for hit count: 1st hit +1, 2nd +2, 3rd +4, etc.
+func ExponentialHitScore(hitCount int) float64 {
+	if hitCount <= 0 {
+		return 0
+	}
+	var score float64
+	for i := 0; i < hitCount && i < 20; i++ { // cap at 20 to avoid overflow
+		if i == 0 {
+			score += 1
+		} else {
+			score += float64(int(1) << i) // 1, 2, 4, 8, 16, ...
+		}
+	}
+	return score
+}
+
 // FTSSnippetsBody returns FTS5 body-column snippets for pages that match matchQuery (plain text, no HTML).
 func (s *Searcher) FTSSnippetsBody(project string, pageIDs []string, matchQuery string) (map[string]string, error) {
 	out := make(map[string]string)

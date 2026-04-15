@@ -23,6 +23,7 @@ type PageListItem struct {
 	LastEditDate   string
 	UpdatedAtSort  string // RFC3339 for client-side date sort
 	UpdatedDisplay string // shown in "Updated" column
+	HitCount       int    // number of times search term appears in page
 	Score          string // similarity score for search results
 	ScoreSort      string // numeric string for sorting relevance column
 	Excerpt        template.HTML // search snippet (trusted HTML: escaped text + <mark> from searchsnippet)

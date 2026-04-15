@@ -117,6 +117,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 			mergedPRs = index.RerankSearchResults(mergedPRs, query)
 
 			var ftsSnips map[string]string
+			var hitCounts map[string]int
 			if ftsErr == nil && query != "" {
 				ftsIDs := make([]string, 0, len(mergedPRs))
 				seenID := make(map[string]bool)
@@ -133,17 +134,27 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 					slog.Warn("web search: fts snippet query failed", "project", project, "error", serr)
 					ftsSnips = nil
 				}
+				// Get hit counts for all merged results
+				allIDs := make([]string, 0, len(mergedPRs))
+				for _, pr := range mergedPRs {
+					allIDs = append(allIDs, pr.ID)
+				}
+				hitCounts, _ = h.search.FTSHitCounts(project, allIDs, query)
 			}
 
 			for _, pr := range mergedPRs {
 				_, inFts := ftsByID[pr.ID]
 				vr, inVec := vecByID[pr.ID]
+				hits := 0
+				if hitCounts != nil {
+					hits = hitCounts[pr.ID]
+				}
 				var score string
 				switch {
 				case inFts && inVec:
-					score = fmt.Sprintf("%.0f%% [vec] + fts", vr.Similarity*100)
+					score = fmt.Sprintf("%.0f%% [vec] + fts (%d hits)", vr.Similarity*100, hits)
 				case inFts:
-					score = "[fts]"
+					score = fmt.Sprintf("[fts] (%d hits)", hits)
 				default:
 					score = fmt.Sprintf("%.0f%% [vec]", vr.Similarity*100)
 				}
@@ -165,14 +176,16 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 				item := PageListItem{
 					ID: pr.ID, Title: pr.Title, Type: pr.Type,
 					Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
-					Score: score, Excerpt: excerpt,
+					HitCount: hits, Score: score, Excerpt: excerpt,
 				}
+				// Exponential hit scoring: pages with more hits rank dramatically higher
+				hitScore := index.ExponentialHitScore(hits)
 				var scoreSort float64
 				switch {
 				case inFts && inVec:
-					scoreSort = vr.Similarity + 1e-3
+					scoreSort = vr.Similarity + hitScore*0.01 + 1e-3
 				case inFts:
-					scoreSort = 0.3
+					scoreSort = 0.3 + hitScore*0.01
 				default:
 					scoreSort = vr.Similarity
 				}
