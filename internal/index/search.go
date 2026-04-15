@@ -96,9 +96,62 @@ func (s *Searcher) ByTag(project, tag string) ([]PageResult, error) {
 	return s.query(selectPages+` WHERE project = ? AND tags LIKE ?`, project, "%"+tag+"%")
 }
 
+// sanitizeFTSQuery prepares a user query for FTS5 MATCH.
+// - Replaces hyphens with spaces (FTS5 unicode61 tokenizer splits on hyphens)
+// - Strips FTS5 operators that could cause syntax errors
+// - Trims whitespace
+func sanitizeFTSQuery(q string) string {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return q
+	}
+	// Replace hyphens with spaces so "go-git" matches pages containing "go" and "git"
+	q = strings.ReplaceAll(q, "-", " ")
+	// Collapse multiple spaces
+	for strings.Contains(q, "  ") {
+		q = strings.ReplaceAll(q, "  ", " ")
+	}
+	return strings.TrimSpace(q)
+}
+
+// looksLikePageID returns true if the query looks like a page ID (hex hash or UUID).
+func looksLikePageID(q string) bool {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return false
+	}
+	// UUID format: 8-4-4-4-12 hex
+	if len(q) == 36 && q[8] == '-' && q[13] == '-' {
+		return true
+	}
+	// Short hex hash (5-12 chars, all hex)
+	if len(q) >= 5 && len(q) <= 12 {
+		for _, c := range q {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
 // FullText searches the FTS5 index for pages matching the query within a project.
 // Rows are ordered by title-token relevance (all query terms in title first), then BM25, then shorter title.
+// If the query looks like a page ID, a direct ID lookup is prepended to the results.
 func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
+	var idResult []PageResult
+	if looksLikePageID(q) {
+		if pages, err := s.ByID(project, q); err == nil && len(pages) > 0 {
+			idResult = pages
+		}
+	}
+
+	ftsQ := sanitizeFTSQuery(q)
+	if ftsQ == "" {
+		return idResult, nil
+	}
+
 	sql := fmt.Sprintf(`SELECT %s,
 		bm25(pages_fts, 'title', %g, 'body', %g, 'tags', %g) AS fts_bm25
 		FROM pages
@@ -106,7 +159,7 @@ func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 		WHERE pages.project = ? AND pages_fts MATCH ?`,
 		selectPagesCols, ftsBM25WeightTitle, ftsBM25WeightBody, ftsBM25WeightTags)
 
-	rows, err := s.db.Query(sql, project, q)
+	rows, err := s.db.Query(sql, project, ftsQ)
 	if err != nil {
 		return nil, fmt.Errorf("search query: %w", err)
 	}
@@ -140,9 +193,18 @@ func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 		return len(buf[i].Title) < len(buf[j].Title)
 	})
 
-	out := make([]PageResult, len(buf))
+	out := make([]PageResult, 0, len(idResult)+len(buf))
+	seen := make(map[string]bool)
+	// Prepend ID match (if any) as the top result
+	for _, pr := range idResult {
+		out = append(out, pr)
+		seen[pr.ID] = true
+	}
+	// Append FTS results, skipping duplicates
 	for i := range buf {
-		out[i] = buf[i].PageResult
+		if !seen[buf[i].ID] {
+			out = append(out, buf[i].PageResult)
+		}
 	}
 	return out, nil
 }
@@ -150,7 +212,7 @@ func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 // FTSSnippetsBody returns FTS5 body-column snippets for pages that match matchQuery (plain text, no HTML).
 func (s *Searcher) FTSSnippetsBody(project string, pageIDs []string, matchQuery string) (map[string]string, error) {
 	out := make(map[string]string)
-	matchQuery = strings.TrimSpace(matchQuery)
+	matchQuery = sanitizeFTSQuery(matchQuery)
 	if len(pageIDs) == 0 || matchQuery == "" {
 		return out, nil
 	}
