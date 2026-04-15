@@ -179,14 +179,26 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 					Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
 					HitCount: hits, Score: score, Excerpt: excerpt,
 				}
-				// Exponential hit scoring: pages with more hits rank dramatically higher
+				// Scoring: MatchTier (title/tag/body) as major factor,
+				// exponential hit count as secondary factor within tier
 				hitScore := index.ExponentialHitScore(hits)
+				tier := index.MatchTier(pr.Title, pr.Tags, query) // 0=title, 1=tag, 2=body
+				// tierBonus: title match=1000, tag match=100, body only=0
+				var tierBonus float64
+				switch tier {
+				case 0:
+					tierBonus = 1000
+				case 1:
+					tierBonus = 100
+				default:
+					tierBonus = 0
+				}
 				var scoreSort float64
 				switch {
 				case inFts && inVec:
-					scoreSort = vr.Similarity + hitScore*0.01 + 1e-3
+					scoreSort = tierBonus + hitScore + vr.Similarity + 1e-3
 				case inFts:
-					scoreSort = 0.3 + hitScore*0.01
+					scoreSort = tierBonus + hitScore + 0.3
 				default:
 					scoreSort = vr.Similarity
 				}
@@ -201,7 +213,9 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 			}
 			// Re-sort by scoreSort (which includes exponential hit bonus) descending
 			sort.SliceStable(items, func(i, j int) bool {
-				return items[i].ScoreSort > items[j].ScoreSort
+				si, _ := strconv.ParseFloat(items[i].ScoreSort, 64)
+				sj, _ := strconv.ParseFloat(items[j].ScoreSort, 64)
+				return si > sj
 			})
 		} else {
 			// Structured filters go to SQLite
