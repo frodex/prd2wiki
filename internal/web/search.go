@@ -181,7 +181,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 				}
 				// Scoring: MatchTier (title/tag/body) as major factor,
 				// exponential hit count as secondary factor within tier
-				hitScore := index.ExponentialHitScore(hits)
+				hitScore := index.HitScore(hits)
 				tier := index.MatchTier(pr.Title, pr.Tags, query) // 0=title, 1=tag, 2=body
 				// tierBonus: title match=1000, tag match=100, body only=0
 				var tierBonus float64

@@ -260,20 +260,14 @@ func (s *Searcher) FTSHitCounts(project string, pageIDs []string, query string) 
 	return out, nil
 }
 
-// ExponentialHitScore returns an exponential score for hit count: 1st hit +1, 2nd +2, 3rd +4, etc.
-func ExponentialHitScore(hitCount int) float64 {
+// HitScore returns a linear-progressive score for hit count: 1st hit +1, 2nd +2, 3rd +3, Nth +N.
+// Total score for N hits = N*(N+1)/2.
+func HitScore(hitCount int) float64 {
 	if hitCount <= 0 {
 		return 0
 	}
-	var score float64
-	for i := 0; i < hitCount && i < 20; i++ { // cap at 20 to avoid overflow
-		if i == 0 {
-			score += 1
-		} else {
-			score += float64(int(1) << i) // 1, 2, 4, 8, 16, ...
-		}
-	}
-	return score
+	n := float64(hitCount)
+	return n * (n + 1) / 2
 }
 
 // FTSSnippetsBody returns FTS5 body-column snippets for pages that match matchQuery (plain text, no HTML).
