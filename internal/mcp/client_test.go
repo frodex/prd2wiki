@@ -26,6 +26,71 @@ func mustJSON(t *testing.T, v interface{}) []byte {
 }
 
 // ---------------------------------------------------------------------------
+// Bearer token injection
+// ---------------------------------------------------------------------------
+
+func TestPostSendsAuthHeader(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/projects/proj/pages", func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer test-token-123" {
+			t.Errorf("Authorization: got %q, want %q", auth, "Bearer test-token-123")
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(CreatePageResponse{ID: "t1"})
+	})
+
+	client, cleanup := newTestClient(t, mux)
+	defer cleanup()
+	client.SetToken("test-token-123")
+
+	_, err := client.CreatePage("proj", CreatePageRequest{ID: "t1", Title: "T", Type: "concept", Body: "b"})
+	if err != nil {
+		t.Fatalf("CreatePage with token: %v", err)
+	}
+}
+
+func TestDeleteSendsAuthHeader(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /api/projects/proj/pages/del-1", func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer my-delete-token" {
+			t.Errorf("Authorization: got %q, want %q", auth, "Bearer my-delete-token")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	client, cleanup := newTestClient(t, mux)
+	defer cleanup()
+	client.SetToken("my-delete-token")
+
+	if err := client.DeletePage("proj", "del-1", ""); err != nil {
+		t.Fatalf("DeletePage with token: %v", err)
+	}
+}
+
+func TestNoTokenNoAuthHeader(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/projects/proj/pages", func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth != "" {
+			t.Errorf("expected no Authorization header, got %q", auth)
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(CreatePageResponse{ID: "t2"})
+	})
+
+	client, cleanup := newTestClient(t, mux)
+	defer cleanup()
+	// No SetToken call — should not send Authorization header.
+
+	_, err := client.CreatePage("proj", CreatePageRequest{ID: "t2", Title: "T", Type: "concept", Body: "b"})
+	if err != nil {
+		t.Fatalf("CreatePage without token: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // GetPage
 // ---------------------------------------------------------------------------
 
