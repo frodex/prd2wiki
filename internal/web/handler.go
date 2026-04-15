@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"sort"
 
-	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/auth"
+	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/pagepath"
@@ -47,10 +47,10 @@ type Handler struct {
 	librarians map[string]*librarian.Librarian
 	db         *sql.DB
 	templates  map[string]*template.Template
-	edits       map[string]*EditCache  // per-project edit info cache
-	treeHolder  *tree.IndexHolder      // optional; tree URLs and legacy redirects
-	keys        *auth.ServiceKeyStore   // optional; admin mutating routes require ScopeAdmin
-	writeToken  string                  // browser write token issued at startup
+	edits      map[string]*EditCache // per-project edit info cache
+	treeHolder *tree.IndexHolder     // optional; tree URLs and legacy redirects
+	keys       *auth.ServiceKeyStore // optional; admin mutating routes require ScopeAdmin
+	writeToken string                // browser write token issued at startup
 	// migrationAliases maps post-migration git paths to prior paths (from data/migration-map.json).
 	migrationAliases map[string][]string
 }
@@ -58,15 +58,15 @@ type Handler struct {
 // NewHandler creates a Handler with pre-parsed templates.
 func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*librarian.Librarian, treeHolder *tree.IndexHolder, keys *auth.ServiceKeyStore, migrationAliases map[string][]string) *Handler {
 	h := &Handler{
-		repos:              repos,
-		search:             index.NewSearcher(db),
-		librarians:         librarians,
-		db:                 db,
-		templates:          make(map[string]*template.Template),
-		edits:              make(map[string]*EditCache),
-		treeHolder:         treeHolder,
-		keys:               keys,
-		migrationAliases:   migrationAliases,
+		repos:            repos,
+		search:           index.NewSearcher(db),
+		librarians:       librarians,
+		db:               db,
+		templates:        make(map[string]*template.Template),
+		edits:            make(map[string]*EditCache),
+		treeHolder:       treeHolder,
+		keys:             keys,
+		migrationAliases: migrationAliases,
 	}
 
 	// Issue a browser write token so the web UI can authenticate mutations.
@@ -116,6 +116,9 @@ func NewHandler(repos map[string]*wgit.Repo, db *sql.DB, librarians map[string]*
 		// page_view needs the page_actions partial
 		if pt == "templates/page_view.html" {
 			t := template.Must(template.ParseFS(content, "templates/layout.html", "templates/page_actions.html", pt))
+			h.templates[pt] = t
+		} else if pt == "templates/page_list.html" || pt == "templates/search.html" {
+			t := template.Must(template.ParseFS(content, "templates/layout.html", "templates/sortable_table_script.html", pt))
 			h.templates[pt] = t
 		} else {
 			t := template.Must(template.ParseFS(content, "templates/layout.html", pt))

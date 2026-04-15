@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -29,7 +30,12 @@ type PageViewData struct {
 	Branch       string
 	LastEditBy   string
 	LastEditDate string
-	TreeViewURL  string // canonical tree URL when indexed (e.g. /prd2wiki/foo)
+	// WikiURL is the on-disk tree URL when the page is indexed (e.g. /prd2wiki/foo).
+	WikiURL string
+	// ProjectPageURL is /projects/{project}/pages/{id} (API-style path; may redirect when followed).
+	ProjectPageURL string
+	OnWikiURL      bool // current request path matches WikiURL
+	OnProjectPage  bool // current request path matches ProjectPageURL
 }
 
 // PageEditData holds data for the page edit template.
@@ -40,8 +46,32 @@ type PageEditData struct {
 	Type        string
 	Status      string
 	TagsCSV     string
-	Body        string
-	TreeViewURL string // wiki tree URL when indexed (shown on edit existing page)
+	Body    string
+	WikiURL string // wiki tree URL when indexed (shown on edit existing page)
+}
+
+func pageURLPathMode(r *http.Request, wikiURL, projectPageURL string) (onWiki, onProject bool) {
+	if r == nil {
+		return false, false
+	}
+	cur := path.Clean(r.URL.Path)
+	if wikiURL != "" && cur == path.Clean(wikiURL) {
+		return true, false
+	}
+	if projectPageURL != "" && cur == path.Clean(projectPageURL) {
+		return false, true
+	}
+	return false, false
+}
+
+func (h *Handler) setPageViewURLs(pvd *PageViewData, r *http.Request) {
+	pvd.ProjectPageURL = "/projects/" + pvd.Project + "/pages/" + pvd.ID
+	if h.treeHolder != nil && h.treeHolder.Get() != nil {
+		if ent, ok := h.treeHolder.Get().PageByUUID(pvd.ID); ok {
+			pvd.WikiURL = "/" + ent.URLPath()
+		}
+	}
+	pvd.OnWikiURL, pvd.OnProjectPage = pageURLPathMode(r, pvd.WikiURL, pvd.ProjectPageURL)
 }
 
 // readPageNewest finds the most recently modified version of a page across all branches.
@@ -104,23 +134,24 @@ func (h *Handler) viewPage(w http.ResponseWriter, r *http.Request) {
 	// Determine the page path from the index (supports subdirectories).
 	path := h.resolvePagePath(project, id)
 
-	h.viewPageAtGitPath(w, project, path, repo)
+	h.viewPageAtGitPath(w, r, project, path, repo)
 }
 
 // viewPageAtGitPath renders a page from a resolved git path (used by /projects/... and tree routes).
-func (h *Handler) viewPageAtGitPath(w http.ResponseWriter, project, gitPath string, repo *wgit.Repo) {
+func (h *Handler) viewPageAtGitPath(w http.ResponseWriter, r *http.Request, project, gitPath string, repo *wgit.Repo) {
 	fm, body, pageBranch, err := readPageNewest(repo, gitPath, h.aliasPathsFor(gitPath)...)
 	if err != nil {
 		h.renderError(w, http.StatusNotFound, "Page not found.")
 		return
 	}
 
-	// Get last edit info from git history
+	// Get last edit info from cache (built at startup, updated on writes).
 	var lastEditBy, lastEditDate string
-	commits, _ := repo.PageHistoryAllBranches(gitPath, 1, h.aliasPathsFor(gitPath)...)
-	if len(commits) > 0 {
-		lastEditBy = commits[0].Author
-		lastEditDate = commits[0].Date.Format("2006-01-02 15:04")
+	if cache, ok := h.edits[project]; ok {
+		if info, ok := cache.Get(gitPath); ok {
+			lastEditBy = info.Author
+			lastEditDate = info.Date
+		}
 	}
 
 	// Render markdown body to HTML.
@@ -152,11 +183,7 @@ func (h *Handler) viewPageAtGitPath(w http.ResponseWriter, project, gitPath stri
 		pvd.Modified = fm.DCModified.Format("2006-01-02")
 	}
 
-	if h.treeHolder != nil && h.treeHolder.Get() != nil {
-		if ent, ok := h.treeHolder.Get().PageByUUID(fm.ID); ok {
-			pvd.TreeViewURL = "/" + ent.URLPath()
-		}
-	}
+	h.setPageViewURLs(&pvd, r)
 
 	data := PageData{
 		Project:     project,
@@ -226,7 +253,7 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.treeHolder != nil && h.treeHolder.Get() != nil {
 		if ent, ok := h.treeHolder.Get().PageByUUID(fm.ID); ok {
-			ped.TreeViewURL = "/" + ent.URLPath()
+			ped.WikiURL = "/" + ent.URLPath()
 		}
 	}
 

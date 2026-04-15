@@ -1,0 +1,35 @@
+<div class="twowiki-footer-link">
+  Reader UI: <a href="http://192.168.22.56:8082/projects/default/pages">prd2wiki</a>
+  · <a href="/ticket">All tickets</a>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+<script nonce="$nonce">
+(function(){
+  function runMermaid(){
+    if(!window.mermaid) return;
+    /* Fossil markdown_to_html: <pre><code class='language-mermaid'> (Goldmark-like) */
+    document.querySelectorAll('pre code.language-mermaid').forEach(function(code){
+      var pre = code.parentElement;
+      if(!pre || pre.tagName !== 'PRE') return;
+      var div = document.createElement('pre');
+      div.className = 'mermaid';
+      div.textContent = code.textContent;
+      pre.replaceWith(div);
+    });
+    mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+    mermaid.run();
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', runMermaid);
+  }else{
+    runMermaid();
+  }
+})();
+</script>
+<script nonce="$nonce">
+/* Fossil routes /ticket/HASH to the report picker, not the ticket reader — send readers to tktview */
+(function(){
+  var m = location.pathname.match(/^\/ticket\/([a-f0-9]{40})$/i);
+  if(m){ location.replace('/tktview/' + m[1].toLowerCase()); }
+})();
+</script>

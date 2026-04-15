@@ -8,11 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
-	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
 	"github.com/frodex/prd2wiki/internal/web"
 )
@@ -40,10 +38,8 @@ func setupTestServer(t *testing.T) *Server {
 	}
 
 	indexer := index.NewIndexer(db)
-	emb := embedder.ZeroEmbedder{Dims: 768}
-	vstore := vectordb.NewStore(emb)
 	vocab := vocabulary.NewStore(db)
-	lib := librarian.New(repo, indexer, vstore, vocab)
+	lib := librarian.New(repo, indexer, vocab)
 	librarians := map[string]*librarian.Librarian{"test-project": lib}
 	edits := map[string]*web.EditCache{"test-project": web.NewEditCache()}
 

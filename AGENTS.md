@@ -25,6 +25,12 @@ When documentation, scripts, or copy refer to **`3200.droidware.ai`**, use the l
 
 Treat that as the canonical base URL for browsing, curl checks, and links in this LAN setup.
 
+## Known issues
+
+**Canonical tracker (wiki):** [BUG REPORT: prd2wiki Wiki — Known Issues and Reproduction](http://192.168.22.56:8082/prd2wiki/bug-report-prd2wiki-wiki-known-issues-and-reproduction) — includes open bugs and **LIM-001 / LIM-002** (librarian `memory_search` path: `FindSimilar` fallthrough after filtering, `SearchResult` vs title/snippet, caller contract).
+
+Cross-repo constraints: **`docs/constraints-prd2wiki-pippi.md`**.
+
 ## PHAT TOAD — agent conduct (mandatory)
 
 **Source:** `/srv/PHAT-TOAD-with-Trails/steward/system.md` (v0.0.1, draft)

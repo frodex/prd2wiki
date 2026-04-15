@@ -102,6 +102,87 @@ func TestSearchByTag(t *testing.T) {
 	}
 }
 
+func TestFullTextPrefersTitleOverBodyRepetition(t *testing.T) {
+	dir := t.TempDir()
+	db, err := OpenDatabase(dir + "/fts_rank.db")
+	if err != nil {
+		t.Fatalf("OpenDatabase: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	ix := NewIndexer(db)
+
+	bodyHeavy := []byte("pippi librarian readme repeated pippi librarian readme pippi librarian readme")
+	titleHit := []byte("intro")
+
+	for _, tc := range []struct {
+		id    string
+		title string
+		body  []byte
+	}{
+		{"page-body", "Unrelated title", bodyHeavy},
+		{"page-title", "DRAFT: pippi-librarian README", titleHit},
+	} {
+		fm := &schema.Frontmatter{
+			ID:     tc.id,
+			Title:  tc.title,
+			Type:   "doc",
+			Status: "draft",
+		}
+		if err := ix.IndexPage("p", "main", "pages/"+tc.id+".md", fm, tc.body); err != nil {
+			t.Fatalf("IndexPage %s: %v", tc.id, err)
+		}
+	}
+
+	s := NewSearcher(db)
+	results, err := s.FullText("p", "pippi")
+	if err != nil {
+		t.Fatalf("FullText: %v", err)
+	}
+	if len(results) < 2 {
+		t.Fatalf("expected 2 hits, got %d", len(results))
+	}
+	if results[0].ID != "page-title" {
+		t.Fatalf("first result = %q (%s), want page-title (title match should beat body repetition)", results[0].ID, results[0].Title)
+	}
+}
+
+func TestFullTextAllQueryTermsInTitleBeforeBodyOnly(t *testing.T) {
+	dir := t.TempDir()
+	db, err := OpenDatabase(dir + "/fts_terms.db")
+	if err != nil {
+		t.Fatalf("OpenDatabase: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	ix := NewIndexer(db)
+
+	pages := []struct {
+		id    string
+		title string
+		body  []byte
+	}{
+		{"body-only", "Generic PLAN document", []byte("pippi readme pippi readme discussion")},
+		{"title-hit", "DRAFT: pippi-librarian README.md", []byte("short")},
+	}
+	for _, p := range pages {
+		fm := &schema.Frontmatter{ID: p.id, Title: p.title, Type: "doc", Status: "draft"}
+		if err := ix.IndexPage("p", "main", "pages/"+p.id+".md", fm, p.body); err != nil {
+			t.Fatalf("IndexPage: %v", err)
+		}
+	}
+
+	s := NewSearcher(db)
+	results, err := s.FullText("p", "pippi readme")
+	if err != nil {
+		t.Fatalf("FullText: %v", err)
+	}
+	if len(results) < 2 {
+		t.Fatalf("want 2 hits, got %d", len(results))
+	}
+	if results[0].ID != "title-hit" {
+		t.Fatalf("first = %q (%q), want title-hit (all query terms in title)", results[0].ID, results[0].Title)
+	}
+}
+
 func TestDependentsOf(t *testing.T) {
 	s, ix := setupSearchDB(t)
 

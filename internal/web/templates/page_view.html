@@ -31,6 +31,19 @@
 </div>
 {{end}}
 
+{{if $page.WikiURL}}
+<div class="page-url-aliases" aria-label="Alternate page URLs">
+    {{if and $page.OnWikiURL (not $page.OnProjectPage)}}
+    <span class="url-alias"><span class="url-alias-label">project</span> <a href="{{$page.ProjectPageURL}}" class="url-alias-link">{{$page.ProjectPageURL}}</a></span>
+    {{else if $page.OnProjectPage}}
+    <span class="url-alias"><span class="url-alias-label">wiki</span> <a href="{{$page.WikiURL}}" class="url-alias-link">{{$page.WikiURL}}</a></span>
+    {{else}}
+    <span class="url-alias"><span class="url-alias-label">wiki</span> <a href="{{$page.WikiURL}}" class="url-alias-link">{{$page.WikiURL}}</a></span>
+    <span class="url-alias"><span class="url-alias-label">project</span> <a href="{{$page.ProjectPageURL}}" class="url-alias-link">{{$page.ProjectPageURL}}</a></span>
+    {{end}}
+</div>
+{{end}}
+
 {{template "page-actions" $page}}
 
 <div class="page-body">

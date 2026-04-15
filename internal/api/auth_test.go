@@ -9,16 +9,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"os"
+
 	"github.com/frodex/prd2wiki/internal/auth"
-	"github.com/frodex/prd2wiki/internal/embedder"
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/tree"
-	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
 	"github.com/frodex/prd2wiki/internal/web"
-	"os"
 )
 
 // setupAuthServer creates a server with Keys configured but no tree index.
@@ -50,9 +49,8 @@ func setupAuthServer(t *testing.T) (*Server, string) {
 
 	repos := map[string]*wgit.Repo{"test-project": repo}
 	indexr := index.NewIndexer(db)
-	vstore := vectordb.NewStore(embedder.ZeroEmbedder{Dims: 768})
 	vocab := vocabulary.NewStore(db)
-	lib := librarian.New(repo, indexr, vstore, vocab)
+	lib := librarian.New(repo, indexr, vocab)
 
 	// Build tree index with symlink structure the scanner expects.
 	treeRoot := filepath.Join(tmp, "tree")

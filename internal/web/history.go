@@ -158,11 +158,7 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 		BodyHTML:   template.HTML(sanitizeHTML(htmlBuf.String())),
 		Sources:    fm.Provenance.Sources,
 	}
-	if h.treeHolder != nil && h.treeHolder.Get() != nil {
-		if ent, ok := h.treeHolder.Get().PageByUUID(fm.ID); ok {
-			pvd.TreeViewURL = "/" + ent.URLPath()
-		}
-	}
+	h.setPageViewURLs(&pvd, r)
 	if !fm.DCCreated.IsZero() {
 		pvd.Created = fm.DCCreated.Format("2006-01-02")
 	}

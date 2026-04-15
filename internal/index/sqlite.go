@@ -8,6 +8,51 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func migratePagesFTSUnindexed(db *sql.DB) error {
+	var sqlDef sql.NullString
+	err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='pages_fts'`).Scan(&sqlDef)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read pages_fts schema: %w", err)
+	}
+	if !sqlDef.Valid || strings.Contains(sqlDef.String, "id UNINDEXED") {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin fts migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`CREATE TABLE _pages_fts_migrate (id TEXT, title TEXT, body TEXT, tags TEXT)`); err != nil {
+		return fmt.Errorf("create fts backup table: %w", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO _pages_fts_migrate SELECT id, title, body, tags FROM pages_fts`); err != nil {
+		return fmt.Errorf("backup pages_fts: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE pages_fts`); err != nil {
+		return fmt.Errorf("drop old pages_fts: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE VIRTUAL TABLE pages_fts USING fts5(
+			id UNINDEXED, title, body, tags
+		)`); err != nil {
+		return fmt.Errorf("create pages_fts (id UNINDEXED): %w", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO pages_fts (id, title, body, tags) SELECT id, title, body, tags FROM _pages_fts_migrate`); err != nil {
+		return fmt.Errorf("restore pages_fts: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE _pages_fts_migrate`); err != nil {
+		return fmt.Errorf("drop fts backup: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit fts migration: %w", err)
+	}
+	return nil
+}
+
 // OpenDatabase opens a SQLite database with WAL mode and runs migrations.
 func OpenDatabase(path string) (*sql.DB, error) {
 	dsn := path + "?_journal_mode=wal&_busy_timeout=5000"
@@ -54,7 +99,7 @@ func migrate(db *sql.DB) error {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
-			id, title, body, tags
+			id UNINDEXED, title, body, tags
 		)`,
 		`CREATE TABLE IF NOT EXISTS provenance_edges (
 			source_page TEXT NOT NULL,
@@ -101,6 +146,10 @@ func migrate(db *sql.DB) error {
 	// Index on module — must run after ALTER TABLE for existing databases.
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_pages_module ON pages(module)`); err != nil {
 		return fmt.Errorf("create idx_pages_module: %w", err)
+	}
+
+	if err := migratePagesFTSUnindexed(db); err != nil {
+		return err
 	}
 
 	return nil

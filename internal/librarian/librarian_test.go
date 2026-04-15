@@ -10,10 +10,7 @@ import (
 	"github.com/frodex/prd2wiki/internal/index"
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/schema"
-	"github.com/frodex/prd2wiki/internal/vectordb"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
-
-	"github.com/frodex/prd2wiki/internal/embedder"
 )
 
 func setupLibrarian(t *testing.T) (*librarian.Librarian, *wgit.Repo) {
@@ -31,12 +28,10 @@ func setupLibrarian(t *testing.T) (*librarian.Librarian, *wgit.Repo) {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	emb := embedder.ZeroEmbedder{Dims: 16}
-	vstore := vectordb.NewStore(emb)
 	vocab := vocabulary.NewStore(db)
 	ix := index.NewIndexer(db)
 
-	lib := librarian.New(repo, ix, vstore, vocab)
+	lib := librarian.New(repo, ix, vocab)
 	return lib, repo
 }
 
@@ -139,10 +134,12 @@ func TestLibrarianValidationError(t *testing.T) {
 	lib, _ := setupLibrarian(t)
 	ctx := context.Background()
 
-	// Missing ID and Type — should block conform.
+	// Invalid type and bad trust_level — should block conform.
 	fm := &schema.Frontmatter{
-		Title:  "Nameless Page",
-		Status: "draft",
+		Title:      "Invalid Page",
+		Type:       "nonexistent_type",
+		Status:     "draft",
+		TrustLevel: 99,
 	}
 	body := []byte("Some content.\n")
 
@@ -424,12 +421,10 @@ func TestLibrarianIntegrate(t *testing.T) {
 		t.Fatalf("second page: expected saved=true; issues: %v", res2.Issues)
 	}
 
-	// With NoopEmbedder all vectors are zero, so no candidates will exceed the 0.85 threshold.
-	// Verify the result is structurally sound regardless.
-	for _, w := range res2.Warnings {
-		if !strings.HasPrefix(w, "potential duplicate: ") {
-			t.Errorf("unexpected warning format: %q", w)
-		}
+	// Dedup was removed (dead code — DedupDetector never called in production).
+	// Integrate intent now behaves like conform. No duplicate warnings expected.
+	if len(res2.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", res2.Warnings)
 	}
 }
 

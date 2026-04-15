@@ -1,0 +1,190 @@
+<div class="twowiki-tkt-shell">
+<div class="twowiki-tkt-meta">
+<th1>
+if {[info exists tkt_uuid]} {
+  html "<p class='twowiki-tkt-id'><span class='tktDspLabel'>Ticket</span>"
+  copybtn hash-tk 0 $tkt_uuid 2
+  html "</p>\n"
+}
+</th1>
+<h1 class="twowiki-tkt-title">$<title></h1>
+<div class="twowiki-tkt-badges">
+<span class="tw-badge tw-type">$<type></span>
+<span class="tw-badge tw-status">$<status></span>
+<th1>
+if {[info exists tags] && $tags ne ""} {
+  html "<span class='tw-badge tw-tags'>"
+  html $tags
+  html "</span>\n"
+}
+if {[info exists page_path] && $page_path ne ""} {
+  html "<span class='tw-badge tw-path'>"
+  html $page_path
+  html "</span>\n"
+}
+</th1>
+</div>
+<div class="twowiki-footer-link">
+  Reader UI: <a href="http://192.168.22.56:8082/projects/default/pages">prd2wiki</a>
+  · <a href="/ticket">All tickets</a>
+</div>
+</div>
+<th1>
+if {[lsearch [info commands] twowiki_md_hardbreaks_plain] < 0} {
+proc twowiki_md_hardbreaks_plain {txt} {
+  set out ""
+  set n [string length $txt]
+  for {set i 0} {$i < $n} {set i [expr {$i+1}]} {
+    set c [string index $txt $i]
+    if {$c eq "\n"} {
+      set out "${out}  \n"
+    } else {
+      set out "${out}$c"
+    }
+  }
+  return $out
+}
+}
+if {[lsearch [info commands] twowiki_md_hardbreaks] < 0} {
+proc twowiki_md_hardbreaks {txt} {
+  set res ""
+  for {} {[string length $txt] > 0} {} {
+    set p [string first "```" $txt]
+    if {$p < 0} {
+      set res "${res}[twowiki_md_hardbreaks_plain $txt]"
+      break
+    }
+    if {$p > 0} {
+      set head [string range $txt 0 [expr {$p-1}]]
+      set res "${res}[twowiki_md_hardbreaks_plain $head]"
+    }
+    set rest [string range $txt $p end]
+    set after [string range $rest 3 end]
+    set qrel [string first "```" $after]
+    if {$qrel < 0} {
+      set res "${res}$rest"
+      break
+    }
+    set abs [expr {3+$qrel}]
+    set res "${res}[string range $rest 0 [expr {$abs+2}]]"
+    set txt [string range $rest [expr {$abs+3}] end]
+  }
+  return $res
+}
+}
+if {[info exists body] && $body ne ""} {
+  set mdout [markdown [twowiki_md_hardbreaks $body]]
+  html {<div class='twowiki-doc markdown'>}
+  html [untaint [lindex $mdout 1]]
+  html {</div>}
+}
+if {[info exists section_overview] && $section_overview ne ""} {
+  set mdout [markdown [twowiki_md_hardbreaks $section_overview]]
+  html {<hr><h2 class='twowiki-section-h'>Overview</h2><div class='twowiki-doc markdown'>}
+  html [untaint [lindex $mdout 1]]
+  html {</div>}
+}
+if {[info exists section_api] && $section_api ne ""} {
+  set mdout [markdown [twowiki_md_hardbreaks $section_api]]
+  html {<hr><h2 class='twowiki-section-h'>API</h2><div class='twowiki-doc markdown'>}
+  html [untaint [lindex $mdout 1]]
+  html {</div>}
+}
+if {[info exists section_storage] && $section_storage ne ""} {
+  set mdout [markdown [twowiki_md_hardbreaks $section_storage]]
+  html {<hr><h2 class='twowiki-section-h'>Storage</h2><div class='twowiki-doc markdown'>}
+  html [untaint [lindex $mdout 1]]
+  html {</div>}
+}
+if {[info exists section_auth] && $section_auth ne ""} {
+  set mdout [markdown [twowiki_md_hardbreaks $section_auth]]
+  html {<hr><h2 class='twowiki-section-h'>Auth</h2><div class='twowiki-doc markdown'>}
+  html [untaint [lindex $mdout 1]]
+  html {</div>}
+}
+set twowiki_icmt_hdr 0
+query {SELECT icomment, login, datetime(tkt_mtime) AS cmt_time FROM ticketchng WHERE tkt_id=(SELECT tkt_id FROM ticket WHERE tkt_uuid=$tkt_uuid) AND icomment IS NOT NULL AND trim(icomment)!='' ORDER BY tkt_mtime} {
+  if {$twowiki_icmt_hdr==0} {
+    html {<hr class="twowiki-tkt-comments-hr"><h2 class='twowiki-section-h'>Comments</h2>}
+    set twowiki_icmt_hdr 1
+  }
+  html {<div class="twowiki-tkt-comment">}
+  html {<p class="twowiki-tkt-comment-meta">}
+  puts $login
+  html { · }
+  puts $cmt_time
+  html {</p>}
+  set mdout [markdown [twowiki_md_hardbreaks $icomment]]
+  html {<div class='twowiki-doc markdown twowiki-tkt-comment-body'>}
+  html [untaint [lindex $mdout 1]]
+  html {</div></div>}
+}
+</th1>
+<script type="module" nonce="$nonce">
+// ELK: intermittent "timeout after 5000ms" has been observed on heavy graphs in some browsers/sessions;
+// the canonical A/B fixture ticket was verified rendering all dagre+ELK pairs in-browser (2026-04-15) — see PRD matrix Hammer addendum (revised).
+// Prefer dagre in content when ELK is optional; simplify graphs if slow clients matter.
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs';
+
+mermaid.registerLayoutLoaders(elkLayouts);
+
+function enableTaskListCheckboxes(){
+  document.querySelectorAll('.twowiki-doc li').forEach(function(li){
+    if(li.querySelector('input[type="checkbox"]')) return;
+    var m = li.textContent && li.textContent.match(/^\s*\[( |x|X)\]\s+/);
+    if(!m) return;
+    var checked = m[1].toLowerCase() === 'x';
+    var text = li.textContent.replace(/^\s*\[( |x|X)\]\s+/, '');
+    li.textContent = '';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.disabled = true;
+    cb.checked = checked;
+    cb.style.marginRight = '0.45em';
+    li.appendChild(cb);
+    li.appendChild(document.createTextNode(text));
+  });
+}
+function enableSortableTables(){
+  document.querySelectorAll('.twowiki-doc table').forEach(function(table){
+    var tbody = table.tBodies && table.tBodies[0];
+    if(!tbody) return;
+    table.classList.add('twowiki-sortable');
+    table.querySelectorAll('thead th').forEach(function(th, idx){
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', function(){
+        var asc = th.getAttribute('data-sort') !== 'asc';
+        table.querySelectorAll('thead th').forEach(function(h){ h.removeAttribute('data-sort'); });
+        th.setAttribute('data-sort', asc ? 'asc' : 'desc');
+        var rows = Array.from(tbody.rows);
+        rows.sort(function(a,b){
+          var av = (a.cells[idx] ? a.cells[idx].textContent : '').trim();
+          var bv = (b.cells[idx] ? b.cells[idx].textContent : '').trim();
+          var an = Number(av), bn = Number(bv);
+          var cmp = (!Number.isNaN(an) && !Number.isNaN(bn)) ? (an-bn) : av.localeCompare(bv);
+          return asc ? cmp : -cmp;
+        });
+        rows.forEach(function(r){ tbody.appendChild(r); });
+      });
+    });
+  });
+}
+enableTaskListCheckboxes();
+enableSortableTables();
+
+document.querySelectorAll('code.language-mermaid').forEach(function(code){
+  var pre = code.parentElement;
+  if(!pre || pre.tagName !== 'PRE') return;
+  var div = document.createElement('pre');
+  div.className = 'mermaid';
+  div.textContent = code.textContent || '';
+  pre.replaceWith(div);
+});
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'neutral',
+  layout: 'elk'
+});
+</script>
+</div>

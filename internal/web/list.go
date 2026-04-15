@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html/template"
 	"net/http"
 	"sort"
 	"strings"
@@ -10,18 +11,23 @@ import (
 
 // PageListItem represents one row in the page listing table.
 type PageListItem struct {
-	ID           string
-	Title        string
-	Type         string
-	Status       string
-	TrustLevel   int
-	Path         string
-	Module       string
-	Category     string
-	LastEditBy   string
-	LastEditDate string
-	Score        string // similarity score for search results
-	TreeHref     string // canonical wiki tree URL when indexed (e.g. /prd2wiki/foo)
+	ID             string
+	Title          string
+	Type           string
+	Status         string
+	TrustLevel     int
+	Path           string
+	Module         string
+	Category       string
+	LastEditBy     string
+	LastEditDate   string
+	UpdatedAtSort  string // RFC3339 for client-side date sort
+	UpdatedDisplay string // shown in "Updated" column
+	HitCount       int    // number of times search term appears in page
+	Score          string // similarity score for search results
+	ScoreSort      string // numeric string for sorting relevance column
+	Excerpt        template.HTML // search snippet (trusted HTML: escaped text + <mark> from searchsnippet)
+	TreeHref       string // canonical wiki tree URL when indexed (e.g. /prd2wiki/foo)
 }
 
 // ModuleGroup groups page list items under a module heading.
@@ -78,12 +84,7 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 			Module:     pr.Module,
 			Category:   pr.Category,
 		}
-		if cache != nil {
-			if info, ok := cache.Get(pr.Path); ok {
-				allItems[i].LastEditBy = info.Author
-				allItems[i].LastEditDate = info.Date
-			}
-		}
+		FillPageTimestamps(&allItems[i], pr, cache)
 		if h.treeHolder != nil && h.treeHolder.Get() != nil {
 			if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
 				allItems[i].TreeHref = "/" + ent.URLPath()
@@ -108,7 +109,15 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].LastEditDate > filtered[j].LastEditDate
+		ki := filtered[i].UpdatedAtSort
+		kj := filtered[j].UpdatedAtSort
+		if ki == "" {
+			ki = "0000-01-01T00:00:00Z"
+		}
+		if kj == "" {
+			kj = "0000-01-01T00:00:00Z"
+		}
+		return ki > kj
 	})
 
 	// Group filtered items by module.
