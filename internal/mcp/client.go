@@ -14,6 +14,7 @@ import (
 // WikiClient is an HTTP client that wraps calls to the wiki core REST API.
 type WikiClient struct {
 	baseURL string
+	token   string // Bearer token for write operations; empty = no auth header
 	http    *http.Client
 }
 
@@ -23,6 +24,12 @@ func NewWikiClient(baseURL string) *WikiClient {
 		baseURL: baseURL,
 		http:    &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// SetToken configures a Bearer token for write operations.
+// When set, mutating requests (POST, PUT, DELETE) include an Authorization header.
+func (c *WikiClient) SetToken(token string) {
+	c.token = token
 }
 
 // PageResponse matches the API's GET page response.
@@ -238,7 +245,16 @@ func (c *WikiClient) post(path string, payload interface{}) ([]byte, error) {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	resp, err := c.http.Post(c.baseURL+path, "application/json", bytes.NewReader(data))
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("build POST request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("POST %s: %w", path, err)
 	}
@@ -251,6 +267,9 @@ func (c *WikiClient) delete(path string) error {
 	req, err := http.NewRequest(http.MethodDelete, c.baseURL+path, nil)
 	if err != nil {
 		return fmt.Errorf("build DELETE request: %w", err)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 
 	resp, err := c.http.Do(req)

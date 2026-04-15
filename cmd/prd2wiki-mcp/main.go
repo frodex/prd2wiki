@@ -33,6 +33,10 @@ func main() {
 	}
 
 	client := mcppkg.NewWikiClient(apiURL)
+	if token := os.Getenv("PRDWIKI_API_TOKEN"); token != "" {
+		client.SetToken(token)
+		slog.Info("prd2wiki-mcp Bearer token configured")
+	}
 	srv := mcppkg.NewServer(mcppkg.ServerConfig{Client: client, TreeHolder: treeHolder})
 
 	slog.Info("prd2wiki-mcp starting", "api_url", apiURL)
