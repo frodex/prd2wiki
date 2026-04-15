@@ -44,7 +44,8 @@ type LibrarianConfig struct {
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Addr string `yaml:"addr"`
+	Addr      string `yaml:"addr"`
+	DebugAddr string `yaml:"debug_addr"` // optional pprof/debug listener (e.g. "localhost:6060")
 }
 
 // DataConfig holds data directory settings.

@@ -1,6 +1,7 @@
 # config/prd2wiki.yaml
 server:
   addr: "0.0.0.0:8082"
+  debug_addr: "0.0.0.0:6060"
 
 data:
   dir: "./data"
