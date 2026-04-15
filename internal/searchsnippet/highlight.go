@@ -84,7 +84,7 @@ func HighlightPlainAsHTML(plain, query string) template.HTML {
 
 // FormatSearchExcerpt clamps a plain FTS (or other) snippet, then adds hit marks for query terms.
 func FormatSearchExcerpt(snip, query string) template.HTML {
-	return HighlightPlainAsHTML(ClampExcerpt(strings.TrimSpace(snip), 200, 2), query)
+	return HighlightPlainAsHTML(ClampExcerpt(strings.TrimSpace(snip), 300, 6), query)
 }
 
 // VectorExcerptHTML clamps a vector-store snippet and highlights query terms.
