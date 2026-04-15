@@ -39,3 +39,22 @@ Applies alongside the wiki plan. In practice:
 - **PRD discipline** — Unilateral specs are proposals; co-sign where multiple parties are involved. Tag inherited facts `[UNVERIFIED — …]` until verified in this codebase.
 - **Complete vs clean** — Handoff docs, constraint updates, and provenance matter as much as passing tests.
 - **Review via wiki** — When finishing implementer work tied to a wiki plan, record the handoff **on the wiki** (e.g. `{plan title} IMPLEMENTER-NOTES` or the plan page): commits, scope, verification commands, and explicit “for review” asks — not only in the chat session. Use `PUT /api/projects/{project}/pages/{id}` (see `internal/api/pages.go`) with the wiki base URL above; issue a Bearer key with `go run ./cmd/prd2wiki-keygen -db ./data/index.db` if writes are restricted.
+
+## MCP sidecar environment variables
+
+When running `prd2wiki-mcp` (the MCP stdio sidecar), these environment variables configure its behavior:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PRDWIKI_API_URL` | optional | Base URL for the wiki HTTP API (default `http://localhost:8080`) |
+| `PRDWIKI_TREE_ROOT` | recommended | Path to tree directory; enables tree-path tools |
+| `PRDWIKI_DATA_DIR` | with tree | Path to data directory; required when `PRDWIKI_TREE_ROOT` is set |
+| `PRDWIKI_API_TOKEN` | optional | Bearer token for authenticated write operations; when set, MCP mutating requests (create, delete) include `Authorization: Bearer` header |
+
+**`PRDWIKI_API_TOKEN`:** All write mutations now require authentication when the key store is configured. Set this to a write-scoped service key so the MCP sidecar can create and delete pages. Generate a key with:
+
+```bash
+go run -mod=mod ./cmd/prd2wiki-keygen -db ./data/index.db
+```
+
+**Never commit raw keys** to the repo or embed them in wiki page bodies.
