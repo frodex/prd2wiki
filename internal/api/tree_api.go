@@ -48,6 +48,16 @@ func (s *Server) handleTreeAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && !s.requireWriteScope(w, r) {
 		return
 	}
+	if r.Method != http.MethodGet {
+		// Extract project from the first segment of the tree path for logging.
+		treePath := strings.TrimPrefix(path.Clean(r.URL.Path), apiTreePrefix+"/")
+		treePath = strings.Trim(treePath, "/")
+		proj := treePath
+		if i := strings.IndexByte(proj, '/'); i >= 0 {
+			proj = proj[:i]
+		}
+		logMutation(r, "tree", r.Method, proj)
+	}
 	p := path.Clean(r.URL.Path)
 	if p == apiTreePrefix {
 		if r.Method != http.MethodGet {
