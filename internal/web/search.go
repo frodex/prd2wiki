@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/frodex/prd2wiki/internal/index"
@@ -198,6 +199,10 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 				}
 				items = append(items, item)
 			}
+			// Re-sort by scoreSort (which includes exponential hit bonus) descending
+			sort.SliceStable(items, func(i, j int) bool {
+				return items[i].ScoreSort > items[j].ScoreSort
+			})
 		} else {
 			// Structured filters go to SQLite
 			var results []index.PageResult
