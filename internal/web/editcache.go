@@ -37,8 +37,6 @@ func (c *EditCache) Build(repo *wgit.Repo, paths []string, migrationAliases map[
 	if repo == nil {
 		return
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	for _, path := range paths {
 		extras := migrationExtraPaths(path, migrationAliases)
 		commits, err := repo.PageHistoryAllBranches(path, editCacheHistoryLimit, extras...)
@@ -46,10 +44,12 @@ func (c *EditCache) Build(repo *wgit.Repo, paths []string, migrationAliases map[
 			continue
 		}
 		chosen := pickLastNonMigrateCommit(commits)
+		c.mu.Lock()
 		c.items[path] = EditInfo{
 			Author: chosen.Author,
 			Date:   chosen.Date.Format("2006-01-02 15:04"),
 		}
+		c.mu.Unlock()
 	}
 }
 

@@ -145,12 +145,13 @@ func (h *Handler) viewPageAtGitPath(w http.ResponseWriter, r *http.Request, proj
 		return
 	}
 
-	// Get last edit info from git history
+	// Get last edit info from cache (built at startup, updated on writes).
 	var lastEditBy, lastEditDate string
-	commits, _ := repo.PageHistoryAllBranches(gitPath, 1, h.aliasPathsFor(gitPath)...)
-	if len(commits) > 0 {
-		lastEditBy = commits[0].Author
-		lastEditDate = commits[0].Date.Format("2006-01-02 15:04")
+	if cache, ok := h.edits[project]; ok {
+		if info, ok := cache.Get(gitPath); ok {
+			lastEditBy = info.Author
+			lastEditDate = info.Date
+		}
 	}
 
 	// Render markdown body to HTML.
