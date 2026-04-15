@@ -171,10 +171,9 @@ func TestInvalidTokenReturns401(t *testing.T) {
 	}
 }
 
-// TestProjectMutationNoAuthToday documents that project API mutations currently
-// succeed without auth. Phase 2 will change these to require auth — update this
-// test to expect 401 when enforcement is added.
-func TestProjectMutationNoAuthToday(t *testing.T) {
+// TestProjectMutationRequiresAuth verifies that project API mutations return 401
+// without a Bearer token when the key store is configured (Phase 2 enforcement).
+func TestProjectMutationRequiresAuth(t *testing.T) {
 	srv, _ := setupAuthServer(t)
 	handler := srv.Handler()
 
@@ -187,7 +186,61 @@ func TestProjectMutationNoAuthToday(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("project POST without auth: expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestProjectMutationWithAuth verifies project API mutations succeed with a valid Bearer token.
+func TestProjectMutationWithAuth(t *testing.T) {
+	srv, token := setupAuthServer(t)
+	handler := srv.Handler()
+
+	body, _ := json.Marshal(CreatePageRequest{
+		ID: "auth-001", Title: "With Auth", Type: "concept", Body: "# Test",
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/projects/test-project/pages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("project POST without auth: expected 201 (pre-Phase-2), got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("project POST with auth: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestProjectLifecycleRequiresAuth verifies lifecycle mutations return 401 without Bearer.
+func TestProjectLifecycleRequiresAuth(t *testing.T) {
+	srv, token := setupAuthServer(t)
+	handler := srv.Handler()
+
+	// Create a page first (with auth).
+	body, _ := json.Marshal(CreatePageRequest{
+		ID: "lc-001", Title: "Lifecycle Test", Type: "concept", Body: "# Test",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/projects/test-project/pages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Lifecycle mutations without auth → 401.
+	endpoints := []string{
+		"/api/projects/test-project/pages/lc-001/deprecate",
+		"/api/projects/test-project/pages/lc-001/approve",
+		"/api/projects/test-project/pages/lc-001/restore",
+	}
+	for _, ep := range endpoints {
+		req = httptest.NewRequest(http.MethodPost, ep, nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s without auth: expected 401, got %d", ep, rec.Code)
+		}
 	}
 }
