@@ -1,0 +1,10 @@
+</div><!-- end .content -->
+
+<footer>
+  $<project_name> · Fossil $<release_version> [$<manifest_version>] $<manifest_date>
+</footer>
+
+</div><!-- end .wiki -->
+$<script>
+</body>
+</html>

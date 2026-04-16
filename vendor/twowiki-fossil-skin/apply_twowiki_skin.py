@@ -10,7 +10,7 @@ changes without risking core site behavior.
 Layout (full mode only — files merged into repo workflow):
   - ``lovable_01a/`` — Fossil skin package (css.txt, header.txt, details.txt, js.txt)
   - ``twowiki-fossil-th1-append.css`` — structural CSS
-  - ``one-line-menu-ticket-tags-02a/css.txt`` — design layer v7 when present; else ``01a/…/v6.css``, plus v6 **sortable tail** so ticket TH1 hooks stay styled.
+  - ``one-line-menu-ticket-tags-02a/css.txt`` — design layer (v8+) when present; else ``01a/…/v6.css``. If using ``02a/css.txt``, only the **sortable thead** block is still appended from ``01a/…/v6.css`` when missing in ``02a``.
   - ``footer.th1``, ``ticket-viewpage.th1``, ``ticket-editpage.th1``
 
 ``config.mainmenu`` is never emitted — site-specific.
@@ -39,36 +39,6 @@ def read_skin_file(rel: str) -> str:
         return f.read()
 
 
-def _v6_slice(v6_full: str, start_needle: str, end_needle: str) -> str:
-    s = v6_full.find(start_needle)
-    if s < 0:
-        return ""
-    e = v6_full.find(end_needle, s)
-    if e < 0:
-        return ""
-    return v6_full[s:e].rstrip()
-
-
-def v6_extras_after_v7(v6_full: str) -> str:
-    """v7/css.txt omits per-status pill colors, report row stripes, and v6 pill typography."""
-    parts = []
-    a = _v6_slice(
-        v6_full,
-        "/* Status pill — All-Caps, regular weight */",
-        "/* ===================== Report tables ====================== */",
-    )
-    if a:
-        parts.append(a)
-    b = _v6_slice(
-        v6_full,
-        "/* Fossil's classic priority/status row colors → override w/ left stripe */",
-        "/* =================== Ticket detail view =================== */",
-    )
-    if b:
-        parts.append(b)
-    return "\n\n".join(parts)
-
-
 def build_merged_css() -> str:
     skin = read_skin_file("css.txt")
     th1_append = open(os.path.join(HERE, "twowiki-fossil-th1-append.css"), encoding="utf-8").read()
@@ -81,18 +51,11 @@ def build_merged_css() -> str:
     use_v7 = os.path.isfile(v7_path)
     if use_v7:
         design = open(v7_path, encoding="utf-8").read()
-        # v7 omits status-* classes and tr.row* stripes; restore from v6.
-        patch = v6_extras_after_v7(v6_full)
-        outline_fix = os.path.join(HERE, "one-line-menu-ticket-tags-02a", "tag-outline-status-colors.css")
-        outline_css = (
-            "\n\n" + open(outline_fix, encoding="utf-8").read()
-            if os.path.isfile(outline_fix)
-            else ""
-        )
+        # Ticket markdown sortable hooks still live at end of v6 until folded into 02a/css.txt.
         mark = "/* --- Sortable markdown tables"
         p = v6_full.find(mark)
         sort_tail = ("\n\n" + v6_full[p:]) if p >= 0 else ""
-        merged_mid = design + ("\n\n" + patch if patch else "") + outline_css + sort_tail
+        merged_mid = design + sort_tail
     else:
         merged_mid = v6_full
     return skin + "\n\n" + th1_append + "\n\n" + merged_mid

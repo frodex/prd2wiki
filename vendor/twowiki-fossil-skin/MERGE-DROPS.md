@@ -2,7 +2,7 @@
 
 ## Principle: do not put “breaks the site if missing” in overwritable files
 
-Some files exist to be **refreshed or replaced wholesale** when design ships a new drop (e.g. **`…/twowiki-fossil-skin-v7.css`**, or the **pure palette/layout** parts of `lovable_01a/css.txt`). Treat those as **presentation-only**.
+Some files exist to be **refreshed or replaced wholesale** when design ships a new drop (e.g. **`one-line-menu-ticket-tags-02a/css.txt`**, or the **pure palette/layout** parts of `lovable_01a/css.txt`). Treat those as **presentation-only**.
 
 **Do not** rely on those files alone for anything that **breaks the site** if overwritten: Mermaid/ELK wiring, ticket redirects, `rpage-rptview` behavior, CSP, markdown/ticket TH1, sortable-table hooks, float resets against Fossil `default.css`, etc.
 
@@ -23,7 +23,7 @@ Exports from design tools are **full pages** (DOCTYPE + `header` + `footer` that
 
 | Piece | Source of truth today |
 |-------|------------------------|
-| Merged **`config.css`** | `lovable_01a/css.txt` + `twowiki-fossil-th1-append.css` + design layer (`01a` v6 CSS, soon maybe `02a` v7). |
+| Merged **`config.css`** | `lovable_01a/css.txt` + `twowiki-fossil-th1-append.css` + design layer (`02a/css.txt` when present, else `01a/…/v6.css`), plus the sortable thead tail from v6 until folded into `02a`. |
 | **`config.header`** | `lovable_01a/header.txt` — **partial** HTML + **TH1** (`$mainmenu`, `hbmenu.js`, guest/login). |
 | **`config.footer`** | `footer.th1` — Mermaid/ELK, ticket redirect, report-view JS, Setup links — **not** Lovable `footer.txt`. |
 | **Tickets** | `ticket-viewpage.th1` / `ticket-editpage.th1` — behavior + markdown; not in a pure CSS drop. |
@@ -32,12 +32,12 @@ Exports from design tools are **full pages** (DOCTYPE + `header` + `footer` that
 
 ## Better workflow than “replace and pray”
 
-1. **Treat the drop as read-only input** — keep `02a/` unchanged; merged results live in `lovable_01a/` and/or a **single new design file** (e.g. `02a/twowiki-fossil-skin-v7.css` cut from `css.txt`).
+1. **Treat the drop as read-only input** — keep `02a/` as the vendor drop; `apply_twowiki_skin.py` reads `02a/css.txt` when present.
 
 2. **CSS (colors/layout)**  
    - **Diff** `02a/css.txt` against `one-line-menu-ticket-tags-01a/twowiki-fossil-skin-v6.css` (or against the concatenation you care about).  
-   - **Last layer wins:** append v7 **after** `twowiki-fossil-th1-append.css` in `apply_twowiki_skin.py`, or fold v7 rules into one reviewed file.  
-   - **Re-append** any small **repo-only** rules that must not disappear (sortable thead hover, etc.) — either at the end of v7 or in `twowiki-fossil-th1-append.css`.
+   - **Last layer wins:** `02a/css.txt` is appended **after** `twowiki-fossil-th1-append.css` by `apply_twowiki_skin.py`.  
+   - **Re-append** any small **repo-only** rules that must not disappear (today: sortable thead tail from v6) — either at the end of `02a/css.txt` or in `twowiki-fossil-th1-append.css`.
 
 3. **Header**  
    - Compare **inner** markup (inside `<header>` … breadcrumb) to `lovable_01a/header.txt`.  

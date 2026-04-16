@@ -1,4 +1,4 @@
-/* TwoWiki Fossil Skin v7
+/* TwoWiki Fossil Skin v8
    - Wider 1280px content container with 78ch prose measure
    - Unified report card: status key + search + table flush-stacked
    - Admin / Edit mode action bars (.admin-actionbar) + per-row .row-edit
@@ -96,10 +96,30 @@ div.content a:hover { color: #1e40af; text-decoration: underline; }
 .searchForm input[type="submit"]:hover { background: #3b78e7; }
 
 .status-pill {
-  display: inline-flex; align-items: center; padding: 0.15em 0.6em;
-  font-size: 0.72rem; font-weight: 700; border-radius: 2px;
-  border: 1px solid; line-height: 1.4; white-space: nowrap; color: #1f2937;
+  display: inline-flex; align-items: center; padding: 0.25em 0.7em;
+  font-size: 0.68rem; font-weight: 500; border-radius: 2px;
+  border: 1px solid; line-height: 1.4; white-space: nowrap;
+  text-transform: uppercase; letter-spacing: 0.08em; color: #1f2937;
 }
+
+/* Per-status colors. Wrap status text in Fossil report SQL like:
+     <span class="status-pill status-active">Active</span> */
+.status-active   { background: #d94b4b; color: #fff; border-color: #a33333; }
+.status-review   { background: #3b78e7; color: #fff; border-color: #2a5bbf; }
+.status-fixed    { background: #3fa55f; color: #fff; border-color: #2d7a45; }
+.status-tested   { background: #f0c845; color: #3a2e0a; border-color: #b08e1f; }
+.status-deferred { background: #ec934a; color: #fff; border-color: #a85f24; }
+.status-closed   { background: #374151; color: #fff; border-color: #1f2937; }
+.status-open     { background: #d94b4b; color: #fff; border-color: #a33333; }
+.status-verified { background: #3fa55f; color: #fff; border-color: #2d7a45; }
+.status-draft       { background: #9ca3af; color: #fff; border-color: #6b7280; }
+.status-submitted   { background: #3b78e7; color: #fff; border-color: #2a5bbf; }
+.status-approved    { background: #3fa55f; color: #fff; border-color: #2d7a45; }
+.status-rejected    { background: #d94b4b; color: #fff; border-color: #a33333; }
+.status-implemented { background: #8b5cf6; color: #fff; border-color: #6d28d9; }
+.status-completed   { background: #2d7a45; color: #fff; border-color: #1f5733; }
+.status-superseded  { background: #f0c845; color: #3a2e0a; border-color: #b08e1f; }
+.status-retired     { background: #374151; color: #fff; border-color: #1f2937; }
 
 table.report {
   width: 100%; border-collapse: collapse; border: 1px solid #d1d5db; border-top: none;
@@ -120,6 +140,15 @@ table.report tbody td a {
   color: #1d4ed8; background: transparent; padding: 0; border-radius: 0; text-decoration: none;
 }
 table.report tbody td a:hover { text-decoration: underline; }
+
+
+/* Fossil's classic priority/status row colors → left-stripe accent */
+tr.row0 { box-shadow: inset 4px 0 0 #2d7a45; }   /* fixed/verified/completed */
+tr.row1 { box-shadow: inset 4px 0 0 #a33333; }   /* active/open/rejected */
+tr.row2 { box-shadow: inset 4px 0 0 #2a5bbf; }   /* review/submitted */
+tr.row3 { box-shadow: inset 4px 0 0 #b08e1f; }   /* tested/superseded */
+tr.row4 { box-shadow: inset 4px 0 0 #a85f24; }   /* deferred */
+tr.row5 { box-shadow: inset 4px 0 0 #1f2937; }   /* closed/retired */
 
 /* Ticket Detail */
 .twowiki-tkt-shell {
@@ -297,7 +326,7 @@ footer { max-width: 1000px; margin: 0 auto; padding: 1rem 2rem; font-size: 0.75r
     0 2px 2px rgba(0,0,0,0.2);
 }
 
-/* Outline: transparent fill */
+/* Outline: transparent fill, colored border+text */
 .tagvariant-outline .status-pill,
 .tagvariant-outline .tw-badge {
   background: transparent !important;
@@ -305,6 +334,22 @@ footer { max-width: 1000px; margin: 0 auto; padding: 1rem 2rem; font-size: 0.75r
   font-weight: 700;
   text-shadow: none;
 }
+.tagvariant-outline .status-active,
+.tagvariant-outline .status-open,
+.tagvariant-outline .status-rejected   { color: #a33333 !important; border-color: #a33333 !important; }
+.tagvariant-outline .status-review,
+.tagvariant-outline .status-submitted  { color: #2a5bbf !important; border-color: #2a5bbf !important; }
+.tagvariant-outline .status-fixed,
+.tagvariant-outline .status-verified,
+.tagvariant-outline .status-approved,
+.tagvariant-outline .status-completed  { color: #2d7a45 !important; border-color: #2d7a45 !important; }
+.tagvariant-outline .status-tested,
+.tagvariant-outline .status-superseded { color: #8a6a18 !important; border-color: #b08e1f !important; }
+.tagvariant-outline .status-deferred   { color: #a85f24 !important; border-color: #a85f24 !important; }
+.tagvariant-outline .status-closed,
+.tagvariant-outline .status-retired    { color: #1f2937 !important; border-color: #1f2937 !important; }
+.tagvariant-outline .status-draft      { color: #4b5563 !important; border-color: #6b7280 !important; }
+.tagvariant-outline .status-implemented{ color: #6d28d9 !important; border-color: #6d28d9 !important; }
 
 /* Glow: colored outer halo */
 .tagvariant-glow .status-pill,
