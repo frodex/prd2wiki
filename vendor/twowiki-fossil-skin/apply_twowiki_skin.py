@@ -17,6 +17,7 @@ Layout (full mode only — files merged into repo workflow):
 
 Usage:
   python3 apply_twowiki_skin.py                    # style-only (safe default)
+  python3 apply_twowiki_skin.py --with-footer --confirm-footer   # css + footer.th1 (keeps header/menu)
   python3 apply_twowiki_skin.py --full-skin --confirm-full   # all skin keys from checkout
   python3 apply_twowiki_skin.py --help
 """
@@ -74,6 +75,25 @@ def emit_style_only() -> None:
     sys.stdout.write("COMMIT;\n")
 
 
+def emit_style_and_footer() -> None:
+    """Merged css + default-skin + footer from checkout (does not touch header / mainmenu)."""
+    css = build_merged_css()
+    footer = open(os.path.join(HERE, "footer.th1"), encoding="utf-8").read()
+    sys.stdout.write("BEGIN;\n")
+    sys.stdout.write(
+        "INSERT OR REPLACE INTO config(name,value,mtime) VALUES('default-skin','custom',julianday('now'));\n"
+    )
+    sys.stdout.write(
+        "INSERT OR REPLACE INTO config(name,value,mtime) VALUES(%s,%s,julianday('now'));\n"
+        % (esc("css"), esc(css))
+    )
+    sys.stdout.write(
+        "INSERT OR REPLACE INTO config(name,value,mtime) VALUES(%s,%s,julianday('now'));\n"
+        % (esc("footer"), esc(footer))
+    )
+    sys.stdout.write("COMMIT;\n")
+
+
 def emit_full_skin() -> None:
     css = build_merged_css()
     header = read_skin_file("header.txt")
@@ -125,6 +145,16 @@ def main() -> None:
         action="store_true",
         help="Required with --full-skin so full deploys are never accidental.",
     )
+    p.add_argument(
+        "--with-footer",
+        action="store_true",
+        help="Emit merged css + default-skin + footer.th1 (report/ticket UX JS). Does not touch header.",
+    )
+    p.add_argument(
+        "--confirm-footer",
+        action="store_true",
+        help="Required with --with-footer.",
+    )
     args = p.parse_args()
 
     if args.full_skin:
@@ -136,11 +166,34 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(2)
+        if args.with_footer or args.confirm_footer:
+            print(
+                "apply_twowiki_skin.py: --with-footer/--confirm-footer are not used with --full-skin",
+                file=sys.stderr,
+            )
+            sys.exit(2)
         emit_full_skin()
         return
 
     if args.confirm_full:
         print("apply_twowiki_skin.py: --confirm-full only valid with --full-skin", file=sys.stderr)
+        sys.exit(2)
+
+    if args.with_footer:
+        if not args.confirm_footer:
+            print(
+                "apply_twowiki_skin.py: refusing --with-footer without --confirm-footer",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        emit_style_and_footer()
+        return
+
+    if args.confirm_footer:
+        print(
+            "apply_twowiki_skin.py: --confirm-footer only valid with --with-footer",
+            file=sys.stderr,
+        )
         sys.exit(2)
 
     emit_style_only()

@@ -84,11 +84,13 @@ const ELK = 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-
     var iTitle = -1;
     var iHash = -1;
     var iTags = -1;
+    var iStatus = -1;
     for(var i=0; i<heads.length; i++){
       var t = (heads[i].textContent || '').trim().toUpperCase();
       if(iTitle < 0 && t === 'TITLE') iTitle = i;
       if(iHash < 0 && t.indexOf('#') === 0) iHash = i;
       if(iTags < 0 && t === 'TAGS') iTags = i;
+      if(iStatus < 0 && t === 'STATUS') iStatus = i;
     }
     tbl.querySelectorAll('tbody tr').forEach(function(tr){
       var tds = tr.querySelectorAll('td');
@@ -131,6 +133,23 @@ const ELK = 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-
               tagsCell.appendChild(wrap);
               tagsCell.classList.add('twowiki-tag-cell');
             }
+          }
+        }
+      }
+
+      /* Plain-text STATUS cells → .status-pill + .status-<slug> so design CSS applies (same as keyed HTML in demos). */
+      if(iStatus >= 0 && tds.length > iStatus){
+        var stCell = tds[iStatus];
+        if(stCell && !stCell.querySelector('.status-pill')){
+          var stRaw = (stCell.textContent || '').trim();
+          if(stRaw){
+            var slug = stRaw.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+            if(!slug) slug = 'unknown';
+            var pill = document.createElement('span');
+            pill.className = 'status-pill status-' + slug;
+            pill.textContent = stRaw;
+            stCell.textContent = '';
+            stCell.appendChild(pill);
           }
         }
       }
