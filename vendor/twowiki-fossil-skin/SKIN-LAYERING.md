@@ -14,7 +14,7 @@ Pieces are concatenated **top to bottom**. Later rules win on specificity ties.
 |-------|--------|------|
 | 1 | `lovable_01a/css.txt` | Base chrome from the Lovable export (layout primitives). **Prefer not to hand-edit** — regenerate from export when possible. |
 | 2 | `twowiki-fossil-th1-append.css` | **Structural / compatibility** fixes (float resets, ticket column width, Mermaid overflow, setup tweaks). Small, reviewable edits. |
-| 3 | `one-line-menu-ticket-tags-02a/css.txt` (v7) if present, else `one-line-menu-ticket-tags-01a/twowiki-fossil-skin-v6.css` | **Style / palette / typography** (v7: wider column, report card, tag variants). **Plus** v6 **sortable thead** tail from `01a/…/v6.css` so tickets keep hover styling. |
+| 3 | `one-line-menu-ticket-tags-02a/css.txt` (v7) if present, else `01a/…/v6.css` | **Style / layout** (v7). When v7 is used, `apply_twowiki_skin.py` **appends** slices from v6: status pill + `.status-*` colors, `tr.row0–5` stripes, sortable thead tail, plus `02a/tag-outline-status-colors.css` for outline + status combos. |
 
 **Do not** fix ticket **behavior** in layer 3 only — if JS or CSP is required, change `ticket-viewpage.th1`, `footer.th1`, or `default-csp` in the apply script.
 
