@@ -20,7 +20,7 @@ This folder contains **repository `config` payloads** for Fossil 2.29+ to make `
 | `ticket-viewpage.th1` | `ticket-viewpage` | Ticket view: `.twowiki-doc`, sortable tables + task lists (classic script). |
 | `ticket-editpage.th1` | `ticket-editpage` | Ticket editor TH1. |
 | `footer.th1` | `footer` | Mermaid 11 + ELK (module), ticket `/ticket/HASH` redirect, Setup/skin links — **not** `lovable_01a/footer.txt`. |
-| `apply_twowiki_skin.py` | — | Emits SQL for `css`, `header`, `details`, `js`, `ticket-viewpage`, `ticket-editpage`, `footer`, `default-csp`. Does **not** overwrite **`mainmenu`** (preserve your Fossil menu). Re-run apply after skin file edits; merge any Admin-only tweaks back into this tree if you want them in git. |
+| `apply_twowiki_skin.py` | — | **Default:** style-only — `default-skin` + merged **`css`** only (safe for palette/layout). **`--full-skin --confirm-full`** syncs `header`, `details`, `js`, ticket TH1, `footer`, `default-csp` from checkout. Never overwrites **`mainmenu`**. |
 
 **Mermaid / ELK** stay in **`footer.th1`** (runs after content). **`header`** is the Lovable layout only; do not move Mermaid there without revisiting CSP and load order.
 
@@ -46,7 +46,9 @@ The ticket template in this folder uses **`markdown`** + **`untaint`** + **`lind
 ## Apply (twowiki host)
 
 ```bash
-python3 apply_twowiki_skin.py | fossil-json sql -R /opt/twowiki/repo.fossil
+python3 apply_twowiki_skin.py | fossil sql -R /opt/twowiki/repo.fossil
+# Full sync (footer, tickets, CSP) — requires explicit confirmation:
+# python3 apply_twowiki_skin.py --full-skin --confirm-full | fossil sql -R /opt/twowiki/repo.fossil
 ```
 
 **If the site looks unchanged after editing this repo:** the live `.fossil` still has the old `config` rows until you run the command above (or `scripts/apply-twowiki-skin-lab.sh`). Then hard-refresh `/style.css` in the browser (cache). To confirm what is deployed: `fossil sql -R repo.fossil "SELECT length(value) FROM config WHERE name='css';"`.

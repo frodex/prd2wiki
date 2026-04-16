@@ -54,6 +54,8 @@ Pipe tables in tickets must follow **Fossil’s** rules, not GitHub’s. A `|---
 
 ```bash
 python3 vendor/twowiki-fossil-skin/apply_twowiki_skin.py | fossil sql -R /path/to/repo.fossil
+# Default = style-only (css + default-skin). Full sync:
+# python3 vendor/twowiki-fossil-skin/apply_twowiki_skin.py --full-skin --confirm-full | fossil sql -R /path/to/repo.fossil
 ```
 
 Lab helper: `scripts/apply-twowiki-skin-lab.sh`.

@@ -50,7 +50,7 @@ Exports from design tools are **full pages** (DOCTYPE + `header` + `footer` that
 5. **Optional tooling** (future): a small script `merge_skin_review.py` that prints file sizes + `diff -u` summaries and refuses to write unless `--force` — still **human** merge for TH1.
 
 6. **Apply**  
-   - After merge, run `apply_twowiki_skin.py` once; confirm `config` lengths; hard-refresh `/style.css`.
+   - After merge, run `apply_twowiki_skin.py` (default **style-only**: `css` + `default-skin`) for palette/layout. Use **`--full-skin --confirm-full`** only when intentionally syncing header/footer/tickets/CSP from git.
 
 ## Why not one zip = one `fossil config`?
 

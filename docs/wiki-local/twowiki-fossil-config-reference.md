@@ -78,6 +78,7 @@ From a checkout:
 
 ```bash
 python3 vendor/twowiki-fossil-skin/apply_twowiki_skin.py | fossil sql -R /path/to/repo.fossil
+<!-- Default is style-only. Full: add --full-skin --confirm-full -->
 ```
 
 Lab helper script (same idea over SSH):

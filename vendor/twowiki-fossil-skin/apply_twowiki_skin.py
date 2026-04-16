@@ -1,21 +1,34 @@
 #!/usr/bin/env python3
 """Emit SQL to apply twoWiki Fossil skin overlay. Pipe to: fossil sql -R /path/to/repo.fossil
 
-Layout:
-  - ``lovable_01a/`` — Fossil skin package (css.txt, header.txt, details.txt, js.txt): chrome + palette.
-  - ``twowiki-fossil-th1-append.css`` — structural CSS (float resets, ticket column, Mermaid overflow).
-  - ``one-line-menu-ticket-tags-01a/twowiki-fossil-skin-v6.css`` — design layer (appended last). See ``SKIN-LAYERING.md``.
-  - ``footer.th1`` — twoWiki Mermaid/ELK, ticket URL redirect, Setup/skin footer links (not lovable's minimal footer.txt).
-  - ``ticket-viewpage.th1`` / ``ticket-editpage.th1`` — ticket reader/editor + sortable tables / task lists.
+**Default (no flags): style-only** — updates only merged ``config.css`` and ``default-skin``.
+Does **not** touch header, footer, ticket TH1, CSP, details, or js. Use that for palette/layout
+changes without risking core site behavior.
 
-  ``config.mainmenu`` is **not** emitted here — it is site-specific; set it in Fossil Admin or ``fossil config``. See ``examples/*.example.txt`` for optional starting points.
+**Full skin** requires explicit flags (see below). Agents and automation should use the default.
+
+Layout (full mode only — files merged into repo workflow):
+  - ``lovable_01a/`` — Fossil skin package (css.txt, header.txt, details.txt, js.txt)
+  - ``twowiki-fossil-th1-append.css`` — structural CSS
+  - ``one-line-menu-ticket-tags-01a/twowiki-fossil-skin-v6.css`` — design layer (last)
+  - ``footer.th1``, ``ticket-viewpage.th1``, ``ticket-editpage.th1``
+
+``config.mainmenu`` is never emitted — site-specific.
+
+Usage:
+  python3 apply_twowiki_skin.py                    # style-only (safe default)
+  python3 apply_twowiki_skin.py --full-skin --confirm-full   # all skin keys from checkout
+  python3 apply_twowiki_skin.py --help
 """
+from __future__ import annotations
+
+import argparse
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# Style-only skin drop-in (Lovable export); edit files here — ``twowiki-fossil-skin-v3.css`` is a duplicate snapshot.
 SKIN_PKG = os.path.join(HERE, "lovable_01a")
+
 
 def esc(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
@@ -26,7 +39,7 @@ def read_skin_file(rel: str) -> str:
         return f.read()
 
 
-def main() -> None:
+def build_merged_css() -> str:
     skin = read_skin_file("css.txt")
     th1_append = open(os.path.join(HERE, "twowiki-fossil-th1-append.css"), encoding="utf-8").read()
     v6_path = os.path.join(HERE, "one-line-menu-ticket-tags-01a", "twowiki-fossil-skin-v6.css")
@@ -34,18 +47,30 @@ def main() -> None:
         print("missing style layer: " + v6_path, file=sys.stderr)
         sys.exit(1)
     v6_style = open(v6_path, encoding="utf-8").read()
-    # Merge order: see SKIN-LAYERING.md — v6 last so palette / doc chrome win over stock lovable.
-    css = skin + "\n\n" + th1_append + "\n\n" + v6_style
+    return skin + "\n\n" + th1_append + "\n\n" + v6_style
+
+
+def emit_style_only() -> None:
+    css = build_merged_css()
+    sys.stdout.write("BEGIN;\n")
+    sys.stdout.write(
+        "INSERT OR REPLACE INTO config(name,value,mtime) VALUES('default-skin','custom',julianday('now'));\n"
+    )
+    sys.stdout.write(
+        "INSERT OR REPLACE INTO config(name,value,mtime) VALUES(%s,%s,julianday('now'));\n"
+        % (esc("css"), esc(css))
+    )
+    sys.stdout.write("COMMIT;\n")
+
+
+def emit_full_skin() -> None:
+    css = build_merged_css()
     header = read_skin_file("header.txt")
     details = read_skin_file("details.txt")
     js = read_skin_file("js.txt")
     tkt = open(os.path.join(HERE, "ticket-viewpage.th1"), encoding="utf-8").read()
     tkt_edit = open(os.path.join(HERE, "ticket-editpage.th1"), encoding="utf-8").read()
     footer = open(os.path.join(HERE, "footer.th1"), encoding="utf-8").read()
-    # $nonce in CSP is replaced by Fossil at runtime (see style.c style_csp).
-    # ELK (elkjs) uses WebAssembly; without 'wasm-unsafe-eval' browsers block it and Mermaid falls back
-    # or fails — stock Fossil skins often omit default-csp, so this only bites the custom skin.
-    # ELK/elkjs: wasm needs 'wasm-unsafe-eval'; workers may be blob: or jsdelivr — include both on script-src + worker-src.
     csp = (
         "default-src 'self' data:; "
         "script-src 'self' 'nonce-$nonce' https://cdn.jsdelivr.net 'wasm-unsafe-eval' blob:; "
@@ -55,10 +80,6 @@ def main() -> None:
         "worker-src blob: https://cdn.jsdelivr.net 'wasm-unsafe-eval';"
     )
     sys.stdout.write("BEGIN;\n")
-    # Repository `default-skin`: must not name a *built-in* (e.g. plain_gray) or that
-    # skin wins over CONFIG (css/header/footer). The literal `custom` is not a built-in
-    # label; Fossil falls through to CONFIG skin when no higher-priority override applies.
-    # Per-browser `skin=` cookie / URL still outrank this (see /skins?skin=custom).
     sys.stdout.write(
         "INSERT OR REPLACE INTO config(name,value,mtime) VALUES('default-skin','custom',julianday('now'));\n"
     )
@@ -77,6 +98,41 @@ def main() -> None:
             % (esc(name), esc(val))
         )
     sys.stdout.write("COMMIT;\n")
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(
+        description="Emit SQL for Fossil config. Default: style-only (css + default-skin)."
+    )
+    p.add_argument(
+        "--full-skin",
+        action="store_true",
+        help="Also emit header, details, js, ticket TH1, footer, default-csp (core site config).",
+    )
+    p.add_argument(
+        "--confirm-full",
+        action="store_true",
+        help="Required with --full-skin so full deploys are never accidental.",
+    )
+    args = p.parse_args()
+
+    if args.full_skin:
+        if not args.confirm_full:
+            print(
+                "apply_twowiki_skin.py: refusing --full-skin without --confirm-full "
+                "(prevents overwriting footer/tickets/CSP by mistake). "
+                "For colors/CSS only, run with no arguments.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        emit_full_skin()
+        return
+
+    if args.confirm_full:
+        print("apply_twowiki_skin.py: --confirm-full only valid with --full-skin", file=sys.stderr)
+        sys.exit(2)
+
+    emit_style_only()
 
 
 if __name__ == "__main__":
