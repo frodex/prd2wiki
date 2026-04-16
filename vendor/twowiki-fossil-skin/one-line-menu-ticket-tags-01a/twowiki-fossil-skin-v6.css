@@ -1,0 +1,365 @@
+/* ============================================================
+   TwoWiki — Fossil Skin v6
+   Single-line dark header • slim breadcrumb • all-caps muted
+   status pills • accentuated search • status-striped tickets
+   ============================================================
+   STYLE LAYER ONLY — behavior (sort JS, redirects, CSP) lives in
+   ticket-viewpage.th1 / footer.th1 / apply_twowiki_skin.py.
+   Merge order: see ../SKIN-LAYERING.md (this file is appended LAST).
+   ============================================================ */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0; background-color: #f8f9fa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px; line-height: 1.6; color: #2d3436;
+  -webkit-font-smoothing: antialiased;
+}
+
+body, .wiki {
+  min-height: 100vh; display: flex; flex-direction: column;
+}
+
+a { color: #1d4ed8; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ======================== Header ========================= */
+header {
+  display: flex; align-items: center; width: 100%;
+  padding: 0 1.25rem; background: #111827;
+  border-bottom: 1px solid #000; min-height: 48px;
+  position: sticky; top: 0; z-index: 21;
+}
+.logo-area { flex-shrink: 0; margin-right: 0.6rem; display: flex; align-items: center; }
+.logo-area a { display: inline-flex; }
+.header-logo { height: 24px; width: 24px; display: block; }
+.brand {
+  flex-shrink: 0; font-size: 1rem; font-weight: 700; color: #fff;
+  letter-spacing: -0.01em; margin-right: 1.25rem;
+}
+div.status {
+  flex-shrink: 0; font-size: 0.78rem; color: #9ca3af;
+  margin-left: auto; padding-left: 1rem;
+}
+.status-user {
+  padding: 0.2em 0.6em; border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 3px; font-size: 0.72rem; color: #cbd5e1;
+}
+
+/* Main menu (inline in header) */
+header nav.mainmenu {
+  display: flex; align-items: center; gap: 0; padding: 0;
+  font-size: 0.85rem; font-weight: 500; text-transform: none;
+  letter-spacing: 0; background: transparent; color: #e5e7eb;
+  border: none; flex: 1;
+}
+nav.mainmenu .hbbtn {
+  display: none; background: none; border: none; color: #e5e7eb;
+  padding: 0.6rem; cursor: pointer;
+}
+nav.mainmenu a {
+  display: inline-flex; align-items: center; padding: 0 0.85rem;
+  height: 48px; color: #d1d5db; text-decoration: none;
+  transition: color 0.12s, background-color 0.12s;
+  border-bottom: 2px solid transparent;
+}
+nav.mainmenu a:hover {
+  color: #fff; background-color: rgba(255,255,255,0.05); text-decoration: none;
+}
+nav.mainmenu a.active {
+  color: #fff; border-bottom-color: #3b82f6;
+  background-color: rgba(255,255,255,0.05); font-weight: 600;
+}
+
+/* Hamburger drop (mobile sitemap) */
+nav.hbdrop {
+  display: none; background: #1f2937; border-bottom: 1px solid #000;
+  padding: 0.5rem 1rem;
+}
+nav.hbdrop ul { list-style: none; margin: 0; padding: 0; }
+nav.hbdrop a { display: block; padding: 0.5rem 0.85rem; color: #d1d5db; }
+nav.hbdrop a:hover { color: #fff; background: #111827; text-decoration: none; }
+
+/* ===================== Breadcrumb bar ===================== */
+.breadcrumb-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 1.25rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb;
+  font-size: 0.72rem; min-height: 28px; color: #6b7280;
+}
+.crumbs { display: flex; align-items: center; gap: 0.4rem; }
+.crumbs a { color: #4b5563; font-weight: 500; }
+.crumbs a:hover { color: #111827; }
+.crumb-sep { color: #9ca3af; }
+.crumb-current { color: #111827; font-weight: 600; }
+.crumb-actions { display: flex; gap: 0.85rem; }
+.crumb-actions a { color: #4b5563; font-weight: 500; }
+.crumb-actions a:hover { color: #111827; }
+
+/* ======================== Content ========================= */
+div.content {
+  max-width: 1000px; margin: 0 auto; padding: 1.5rem 2rem 3rem;
+  flex: 1; width: 100%;
+}
+div.content a { color: #1d4ed8; font-weight: 500; }
+div.content a:hover { color: #1e40af; text-decoration: underline; }
+
+/* ===================== Search form ======================== */
+.searchForm {
+  display: flex; gap: 0; margin: 1rem 0; max-width: 520px;
+  border: 2px solid #1f2937; border-radius: 4px; overflow: hidden;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.searchForm:focus-within {
+  border-color: #3b78e7; box-shadow: 0 0 0 3px rgba(59,120,231,0.18);
+}
+.searchForm input[type="text"] {
+  flex: 1; border: none; outline: none; padding: 0.55rem 0.85rem;
+  font-size: 0.9rem; color: #111827; background: transparent;
+}
+.searchForm input[type="text"]::placeholder { color: #9ca3af; }
+.searchForm input[type="submit"] {
+  border: none; background: #1f2937; color: #fff; padding: 0 1.2rem;
+  font-size: 0.82rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; cursor: pointer; transition: background 0.12s;
+}
+.searchForm input[type="submit"]:hover { background: #3b78e7; }
+
+/* =================== Status key + pills =================== */
+.status-key {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem;
+  padding: 0.6rem 0.85rem; background: #fff; border: 1px solid #d1d5db;
+  border-radius: 4px; margin: 1rem 0;
+}
+.status-key-label {
+  font-size: 0.75rem; font-weight: 700; color: #374151;
+  text-transform: uppercase; letter-spacing: 0.05em; margin-right: 0.4rem;
+}
+
+/* Status pill — All-Caps, regular weight */
+.status-pill {
+  display: inline-flex; align-items: center; padding: 0.25em 0.7em;
+  font-size: 0.68rem; font-weight: 500; border-radius: 2px;
+  border: 1px solid; line-height: 1.4; white-space: nowrap;
+  text-transform: uppercase; letter-spacing: 0.08em; color: #1f2937;
+}
+
+/* Per-status colors. To use in Fossil reports, wrap status text:
+     <span class="status-pill status-active">Active</span>
+   The TwoWiki report SQL can be patched to emit these classes. */
+.status-active   { background: #d94b4b; color: #fff; border-color: #a33333; }
+.status-review   { background: #3b78e7; color: #fff; border-color: #2a5bbf; }
+.status-fixed    { background: #3fa55f; color: #fff; border-color: #2d7a45; }
+.status-tested   { background: #f0c845; color: #3a2e0a; border-color: #b08e1f; }
+.status-deferred { background: #ec934a; color: #fff; border-color: #a85f24; }
+.status-closed   { background: #374151; color: #fff; border-color: #1f2937; }
+.status-open     { background: #d94b4b; color: #fff; border-color: #a33333; }
+.status-verified { background: #3fa55f; color: #fff; border-color: #2d7a45; }
+
+/* ===================== Report tables ====================== */
+table.report {
+  width: 100%; border-collapse: collapse; border: 1px solid #d1d5db;
+  margin: 1rem 0; font-size: 0.85rem; border-radius: 4px;
+  overflow: hidden; background: #fff;
+}
+table.report thead tr { background: #1f2937; }
+table.report thead th {
+  padding: 0.55rem 0.8rem; color: #f9fafb; font-weight: 600;
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
+  text-align: left; border-bottom: 1px solid #111827; cursor: pointer;
+  white-space: nowrap;
+}
+table.report tbody tr { transition: background 0.1s; background: #fff; }
+table.report tbody tr:nth-child(even) { background: #f9fafb; }
+table.report tbody tr:hover { background-color: #eef2ff !important; }
+table.report tbody td {
+  padding: 0.55rem 0.8rem; border-bottom: 1px solid #e5e7eb;
+  vertical-align: middle; color: #1f2937;
+}
+table.report tbody td a {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem; font-weight: 600; color: #1d4ed8;
+  background: transparent; padding: 0; border-radius: 0;
+}
+table.report tbody td a:hover { text-decoration: underline; }
+
+/* Fossil's classic priority/status row colors → override w/ left stripe */
+tr.row0 { box-shadow: inset 4px 0 0 #2d7a45; }   /* fixed/verified */
+tr.row1 { box-shadow: inset 4px 0 0 #a33333; }   /* active/open */
+tr.row2 { box-shadow: inset 4px 0 0 #2a5bbf; }   /* review */
+tr.row3 { box-shadow: inset 4px 0 0 #b08e1f; }   /* tested */
+tr.row4 { box-shadow: inset 4px 0 0 #a85f24; }   /* deferred */
+tr.row5 { box-shadow: inset 4px 0 0 #1f2937; }   /* closed */
+
+/* =================== Ticket detail view =================== */
+.twowiki-tkt-shell {
+  background: #fff; border: 1px solid #d1d5db; border-radius: 4px;
+  overflow: hidden; margin-top: 1rem;
+}
+.twowiki-tkt-meta {
+  background: #f3f4f6; color: #1f2937; padding: 1.25rem 2rem 1rem;
+  border-bottom: 1px solid #d1d5db; border-left: 4px solid #f59e0b;
+}
+.twowiki-tkt-id {
+  margin: 0 0 0.6rem; font-size: 0.78rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.twowiki-tkt-id .tktDspLabel {
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: #374151; font-size: 0.72rem;
+}
+.twowiki-tkt-id #hash-tk,
+.twowiki-tkt-id code {
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.76rem;
+  color: #111827; background: #fff; padding: 0.2em 0.5em;
+  border-radius: 3px; border: 1px solid #d1d5db;
+}
+.twowiki-tkt-id .copy-button {
+  background: #fff; border: 1px solid #9ca3af; border-radius: 3px;
+  color: #374151; cursor: pointer; padding: 0.1em 0.35em; font-size: 0.7rem;
+}
+.twowiki-tkt-title {
+  font-size: 1.45rem; font-weight: 800; margin: 0 0 0.7rem;
+  color: #0f172a; line-height: 1.25;
+}
+.twowiki-tkt-badges {
+  display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.85rem;
+}
+
+/* Badges — All-Caps, regular weight, primary muted colors */
+.tw-badge {
+  display: inline-flex; align-items: center; padding: 0.25em 0.7em;
+  font-size: 0.68rem; font-weight: 500; text-transform: uppercase;
+  letter-spacing: 0.08em; border-radius: 2px; border: 1px solid transparent;
+  color: #fff;
+}
+.tw-badge.tw-type   { background: #3b78e7; border-color: #2a5bbf; }
+.tw-badge.tw-status { background: #ec934a; border-color: #a85f24; }
+.tw-badge.tw-tags   {
+  background: #3fa55f; border-color: #2d7a45; color: #fff;
+  font-family: "SF Mono", Menlo, monospace; font-size: 0.7rem;
+  text-transform: none; letter-spacing: 0; font-weight: 600;
+}
+.tw-badge.tw-path {
+  background: #f9fafb; border-color: #374151; color: #1f2937;
+  font-size: 0.7rem; font-family: "SF Mono", Menlo, monospace;
+  text-transform: none; letter-spacing: 0; font-weight: 600;
+}
+
+.twowiki-footer-link { font-size: 0.78rem; color: #4b5563; }
+.twowiki-footer-link a {
+  color: #1d4ed8 !important; text-decoration: none !important; font-weight: 600;
+}
+.twowiki-footer-link a:hover { text-decoration: underline !important; }
+
+/* ===================== Doc / markdown ===================== */
+.twowiki-doc { padding: 1.5rem 2rem; }
+.twowiki-doc .markdown { line-height: 1.65; color: #374151; }
+.twowiki-doc h2 {
+  font-size: 1.1rem; font-weight: 600; color: #111827;
+  margin: 1.5rem 0 0.6rem; padding-bottom: 0.3rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+.twowiki-doc p { margin: 0 0 0.85rem; }
+.twowiki-doc ol, .twowiki-doc ul { margin: 0 0 0.85rem; padding-left: 1.5rem; }
+.twowiki-doc li { margin-bottom: 0.3rem; }
+.twowiki-doc code {
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.85em;
+  background: #f3f4f6; padding: 0.1em 0.35em; border-radius: 3px;
+  color: #1f2937; border: 1px solid #e5e7eb;
+}
+.twowiki-doc pre {
+  background: #f9fafb; color: #1f2937; padding: 0.9rem 1.1rem;
+  border-radius: 4px; border: 1px solid #e5e7eb; overflow-x: auto;
+  margin: 0.85rem 0; font-size: 0.82rem; line-height: 1.55;
+}
+.twowiki-doc pre code {
+  background: none; padding: 0; color: inherit; border: none;
+}
+.twowiki-doc table {
+  width: 100%; border-collapse: collapse; margin: 0.85rem 0;
+  font-size: 0.85rem; border: 1px solid #e5e7eb;
+}
+.twowiki-doc table thead th {
+  background: #f9fafb; padding: 0.45rem 0.75rem; text-align: left;
+  font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb;
+  font-size: 0.78rem;
+}
+.twowiki-doc table tbody td {
+  padding: 0.45rem 0.75rem; border-bottom: 1px solid #f3f4f6; color: #374151;
+}
+.twowiki-doc table tbody tr:last-child td { border-bottom: none; }
+.twowiki-doc table tbody tr:hover { background: #f9fafb; }
+
+/* ====================== Comments ========================== */
+hr.twowiki-tkt-comments-hr {
+  border: none; border-top: 1px solid #e5e7eb; margin: 0;
+}
+h2.twowiki-section-h {
+  font-size: 0.8rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: #4b5563; margin: 0;
+  padding: 0.75rem 2rem 0.5rem; background: #fafafa;
+  border-top: 1px solid #e5e7eb;
+}
+.twowiki-tkt-comment { border-top: 1px solid #f3f4f6; }
+.twowiki-tkt-comment-meta {
+  padding: 0.85rem 2rem 0; font-size: 0.76rem;
+  color: #6b7280; font-weight: 500; margin: 0;
+}
+.twowiki-tkt-comment-body { padding: 0 2rem 1.25rem; }
+
+/* ======================== Footer ========================== */
+footer {
+  max-width: 1000px; margin: 0 auto; padding: 1rem 2rem;
+  font-size: 0.75rem; color: #9ca3af; text-align: right;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* ====================== Forms (generic) =================== */
+input[type="text"], input[type="password"], input[type="email"],
+input[type="search"], textarea, select {
+  font-family: inherit; font-size: 0.9rem; padding: 0.45rem 0.65rem;
+  border: 1px solid #d1d5db; border-radius: 3px; background: #fff;
+  color: #111827; outline: none; transition: border-color 0.12s, box-shadow 0.12s;
+}
+input[type="text"]:focus, input[type="password"]:focus,
+input[type="email"]:focus, input[type="search"]:focus,
+textarea:focus, select:focus {
+  border-color: #3b78e7; box-shadow: 0 0 0 3px rgba(59,120,231,0.18);
+}
+input[type="submit"], button.btn {
+  font-family: inherit; font-size: 0.82rem; font-weight: 600;
+  padding: 0.45rem 0.95rem; background: #1f2937; color: #fff;
+  border: 1px solid #1f2937; border-radius: 3px; cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+input[type="submit"]:hover, button.btn:hover {
+  background: #3b78e7; border-color: #3b78e7;
+}
+
+/* ===================== Responsive ========================= */
+@media screen and (max-width: 700px) {
+  .desktoponly { display: none; }
+  nav.mainmenu .hbbtn { display: inline-flex; }
+  .wideonly { display: none; }
+  .brand { display: none; }
+}
+@media screen and (max-width: 640px) {
+  div.content { padding: 1rem; }
+  .twowiki-tkt-meta { padding: 1.5rem 1.25rem 1rem; }
+  .twowiki-doc { padding: 1.25rem; }
+  .twowiki-tkt-title { font-size: 1.35rem; }
+  .breadcrumb-bar { flex-direction: column; align-items: flex-start;
+                    padding: 0.4rem 1rem; gap: 0.2rem; min-height: 0; }
+}
+
+/* --- Sortable markdown tables (ticket-viewpage.th1 adds .twowiki-sortable after JS runs) --- */
+.twowiki-doc table.md-table.twowiki-sortable thead th {
+  cursor: pointer;
+}
+.twowiki-doc table.md-table.twowiki-sortable thead th:hover {
+  background: #eff6ff !important;
+  color: #1e40af !important;
+}

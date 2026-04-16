@@ -1,0 +1,354 @@
+/* ============================================================
+   TwoWiki Enhanced Fossil Skin
+   Paste into: Admin > Skins > Edit > CSS
+   ============================================================
+   Palette notes: Lovable “TwoWiki” SPA uses bundled CSS we don’t ship here; the
+   pasted prototype only exposed badge tokens (#1b1b1b, #c5c1b9, focus #575ECF).
+   Variables below map that look onto Fossil’s header/nav/content (not a React shell).
+   ============================================================ */
+
+:root {
+  --tw-bg: #f8f9fa;
+  --tw-surface: #ffffff;
+  --tw-header: #1b1b1b;
+  --tw-nav: #222230;
+  --tw-nav-border: rgba(255, 255, 255, 0.06);
+  --tw-text: #2d3436;
+  --tw-text-inverse: #f5f5f5;
+  --tw-muted: #c5c1b9;
+  --tw-nav-link: #a8a29e;
+  --tw-accent: #575ecf;
+  --tw-accent-soft: rgba(87, 94, 207, 0.14);
+  --tw-subnav: #2a2a35;
+}
+
+/* ---------- Base ---------- */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--tw-bg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--tw-text);
+  text-size-adjust: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Header ---------- */
+header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.45rem 1.25rem;
+  background: var(--tw-header);
+  box-sizing: border-box;
+}
+
+/* Site name + page title on one row (Fossil puts <h1> + <span class="page-title"> in .title). */
+div.title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--tw-text-inverse);
+  letter-spacing: 0.02em;
+  padding: 0;
+  text-align: left;
+}
+
+header div.title h1 {
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+  color: inherit;
+}
+
+header div.title .page-title {
+  margin: 0;
+  padding: 0;
+  font-size: 0.92em;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--tw-muted);
+}
+
+div.status {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--tw-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ---------- Main Menu ---------- */
+nav.mainmenu {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  text-align: left;
+  letter-spacing: 0.06em;
+  background: var(--tw-nav);
+  color: var(--tw-muted);
+  border-bottom: 1px solid var(--tw-nav-border);
+  position: sticky;
+  top: 0;
+  z-index: 21;
+}
+
+nav.mainmenu #hbbtn {
+  display: none;
+  color: var(--tw-muted);
+  font-size: 1.2rem;
+  padding: 0.75rem 0.75rem 0.75rem 0.25rem;
+  text-decoration: none;
+  line-height: 1;
+}
+nav.mainmenu #hbbtn:hover {
+  color: #fff;
+  background: transparent;
+}
+
+nav.mainmenu a,
+nav.mainmenu a:visited {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.7rem 1rem;
+  color: var(--tw-nav-link);
+  text-decoration: none;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+  border-bottom: 2px solid transparent;
+}
+nav.mainmenu a:hover {
+  color: #fff;
+  background-color: rgba(255,255,255,0.05);
+}
+/* Fossil marks the current top-level item with .active */
+nav.mainmenu a.active,
+nav.mainmenu a.active:visited {
+  color: #fff !important;
+  border-bottom-color: var(--tw-accent);
+  background-color: var(--tw-accent-soft);
+}
+
+/* ---------- Hamburger Dropdown ---------- */
+.hbdrop {
+  background: var(--tw-subnav);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 0 0 0.5rem 0.5rem;
+  position: absolute;
+  z-index: 20;
+  width: calc(100% - 2rem);
+  margin: 0 1rem;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+}
+div.hbdrop a,
+div.hbdrop a:link {
+  display: block;
+  padding: 0.6rem 1.25rem;
+  color: var(--tw-muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: background 0.12s;
+}
+div.hbdrop a:hover {
+  background: var(--tw-accent-soft);
+  color: #a5b4fc;
+}
+div.hbdrop a:visited {
+  color: #a5b4c8;
+}
+
+/* ---------- Submenu ---------- */
+div.submenu, div.sectionmenu {
+  padding: 0 1rem;
+  font-size: 0.82rem;
+  text-align: left;
+  background: var(--tw-subnav);
+  color: var(--tw-muted);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+div.submenu a,
+div.submenu a:visited,
+div.sectionmenu > a.button:link,
+div.sectionmenu > a.button:visited,
+div.submenu label {
+  padding: 0.6rem 1rem;
+  color: var(--tw-nav-link);
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+}
+div.submenu a:hover,
+div.sectionmenu > a.button:hover,
+div.submenu label:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.05);
+}
+
+/* ---------- Content ---------- */
+div.content {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 3rem;
+}
+div.content a { color: var(--tw-accent); text-decoration: none; transition: color 0.12s; }
+div.content a:hover { color: #4349b8; text-decoration: underline; }
+div.content a:link { color: var(--tw-accent); }
+div.content a:visited { color: #6d5dd0; }
+
+/* ---------- Sections ---------- */
+div.section {
+  margin: 2rem 0 1rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: linear-gradient(135deg, var(--tw-header) 0%, var(--tw-nav) 100%);
+  color: #e2e8f0;
+  border-radius: 6px;
+  border-left: 3px solid var(--tw-accent);
+  white-space: normal;
+}
+
+/* ---------- Timeline ---------- */
+table.timelineTable {
+  border-spacing: 0 6px;
+}
+.timelineModernCell, .timelineColumnarCell, .timelineDetailCell {
+  vertical-align: top;
+  padding: 0.6rem 0.75rem;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.timelineModernCell:hover {
+  border-color: #c7c8f5;
+  box-shadow: 0 2px 8px var(--tw-accent-soft);
+}
+tr.timelineCurrent .timelineModernCell {
+  border-color: #818cf8;
+  background: #f5f5ff;
+}
+td.timelineTime {
+  vertical-align: top;
+  text-align: right;
+  white-space: nowrap;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+span.timelineHash {
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--tw-accent);
+  background: #eef0ff;
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+}
+.timelineModernDetail {
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+span.tagDsp {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 0.15em 0.5em;
+  border-radius: 3px;
+  margin-left: 0.4em;
+}
+
+.tl-node {
+  border: 2px solid var(--tw-accent);
+  border-radius: 50%;
+  background: #fff;
+}
+tr.timelineCurrent .tl-node {
+  background: var(--tw-accent);
+}
+
+/* ---------- Columns ---------- */
+div.columns {
+  padding: 0.5rem 0 0.5rem 2em;
+  max-width: 700px;
+}
+div.columns li {
+  padding: 0.3rem 0;
+}
+
+/* ---------- Divider (date labels) ---------- */
+div.divider {
+  background: var(--tw-subnav);
+  border: none;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.3em 0.75em;
+  border-radius: 4px;
+  margin: 0.4em 0;
+}
+
+/* ---------- Verbatim ---------- */
+pre.verbatim {
+  background-color: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 1em;
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+/* ---------- Footer ---------- */
+footer {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem 2rem;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  text-align: right;
+  background: transparent;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* ---------- Links (general) ---------- */
+a, a:visited {
+  text-decoration: none;
+}
+
+/* ---------- Responsive ---------- */
+@media screen and (max-width: 600px) {
+  .desktoponly { display: none; }
+  nav.mainmenu #hbbtn { display: inline-flex; }
+}
+@media screen and (max-width: 1200px) {
+  .wideonly { display: none; }
+}
+@media screen and (max-width: 640px) {
+  div.content { padding: 1rem; }
+  header { padding: 0.4rem 1rem; }
+  nav.mainmenu { padding: 0 0.5rem; }
+  nav.mainmenu a { padding: 0.6rem 0.6rem; font-size: 0.78rem; }
+}

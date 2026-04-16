@@ -10,6 +10,8 @@ mkdir -p "$OUT"
 IDS=(
   8634f02 92657c7 de836ff c6525ac 6ccd407 56803d5 cec9acb 97a0970 6dbbae9
   13c87ad 7d06afa d6eb1d3 7eafc7b
+  # twoWiki bench / TWOWIKI-001 (plan tracker + resolution)
+  3436fe3 bb219262-74c8-4a92-8379-9b3132227398
 )
 
 for id in "${IDS[@]}"; do

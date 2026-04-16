@@ -1,29 +1,141 @@
+<th1>
+if {[capexpr {s a}]} {
+  html "<div class=\"twowiki-admin-strip\" role=\"navigation\" aria-label=\"Skin and setup\">"
+  html "<span class=\"twowiki-admin-strip-label\">Setup</span> "
+  html "<a href=\"$home/setup_skinedit\">Edit skin (CSS / header / footer)</a>"
+  html "<span class=\"twowiki-admin-sep\">·</span>"
+  html "<a href=\"$home/setup_skin\">Skins overview</a>"
+  html "<span class=\"twowiki-admin-sep\">·</span>"
+  html "<a href=\"$home/setup_config\">Configuration</a>"
+  html "</div>\n"
+}
+</th1>
 <div class="twowiki-footer-link">
   Reader UI: <a href="http://192.168.22.56:8082/projects/default/pages">prd2wiki</a>
   · <a href="/ticket">All tickets</a>
+  · <a href="/skins?skin=custom" title="Clears built-in skin cookie; use this repo’s CONFIG skin">Site skin</a>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+<script type="module" nonce="$nonce">
+/* Site-wide Mermaid 11 + ELK on non-ticket pages. /tktview uses ticket-viewpage.th1 (static imports) — same as before site-wide merge; do not run both. */
+/* Use layout-elk *.esm.min.mjs (not *.core.mjs): core chunks use bare "d3" imports that fail in browsers without an import map. */
+const MERMAID = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+const ELK = 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs';
+
+(async function(){
+  if(document.body && document.body.classList.contains('rpage-tktview')) return;
+  var mermaidMod;
+  try {
+    mermaidMod = await import(MERMAID);
+  } catch (e) {
+    console.error('twoWiki: Mermaid 11 failed to load.', e);
+    return;
+  }
+  var mermaid = mermaidMod.default;
+  var elkOk = false;
+  try {
+    var elkMod = await import(ELK);
+    var loaders = elkMod.default;
+    if (loaders) {
+      mermaid.registerLayoutLoaders(loaders);
+      elkOk = true;
+    }
+  } catch (e) {
+    console.warn('twoWiki: ELK not available; using dagre.', e);
+  }
+  /* Mermaid 11: global `layout` alone does not drive flowcharts; set flowchart.defaultRenderer to elk when ELK is registered. */
+  var initOpts = {
+    startOnLoad: false,
+    theme: 'neutral',
+    securityLevel: 'loose'
+  };
+  if (elkOk) {
+    initOpts.layout = 'elk';
+    initOpts.flowchart = { defaultRenderer: 'elk' };
+    initOpts.state = { defaultRenderer: 'elk' };
+    initOpts.class = { defaultRenderer: 'elk' };
+  }
+  document.querySelectorAll('pre code.language-mermaid').forEach(function(code){
+    var pre = code.parentElement;
+    if(!pre || pre.tagName !== 'PRE') return;
+    var div = document.createElement('pre');
+    div.className = 'mermaid';
+    div.textContent = code.textContent || '';
+    pre.replaceWith(div);
+  });
+  mermaid.initialize(initOpts);
+  /* startOnLoad hooks DOMContentLoaded; this module awaits CDN imports, so that event often fires before initialize() — diagrams never ran or used wrong path. */
+  try {
+    await mermaid.run({ querySelector: '.mermaid' });
+  } catch (e) {
+    console.error('twoWiki: mermaid.run failed.', e);
+  }
+})();
+</script>
 <script nonce="$nonce">
+/* Report view UX: make Title cell link to the same tktview target as the '#' UUID link.
+   Keep '#' column present in SQL so Fossil still emits built-in tktview/edit links. */
 (function(){
-  function runMermaid(){
-    if(!window.mermaid) return;
-    /* Fossil markdown_to_html: <pre><code class='language-mermaid'> (Goldmark-like) */
-    document.querySelectorAll('pre code.language-mermaid').forEach(function(code){
-      var pre = code.parentElement;
-      if(!pre || pre.tagName !== 'PRE') return;
-      var div = document.createElement('pre');
-      div.className = 'mermaid';
-      div.textContent = code.textContent;
-      pre.replaceWith(div);
+  if(!document.body || !document.body.classList.contains('rpage-rptview')) return;
+  var tables = document.querySelectorAll('table.report');
+  if(!tables || !tables.length) return;
+  tables.forEach(function(tbl){
+    var heads = tbl.querySelectorAll('thead th');
+    if(!heads || !heads.length) return;
+    var iTitle = -1;
+    var iHash = -1;
+    var iTags = -1;
+    for(var i=0; i<heads.length; i++){
+      var t = (heads[i].textContent || '').trim().toUpperCase();
+      if(iTitle < 0 && t === 'TITLE') iTitle = i;
+      if(iHash < 0 && t.indexOf('#') === 0) iHash = i;
+      if(iTags < 0 && t === 'TAGS') iTags = i;
+    }
+    tbl.querySelectorAll('tbody tr').forEach(function(tr){
+      var tds = tr.querySelectorAll('td');
+      if(!tds) return;
+
+      if(iTitle >= 0 && iHash >= 0 && tds.length > iHash && tds.length > iTitle){
+        var titleCell = tds[iTitle];
+        var hashCell = tds[iHash];
+        if(titleCell && !titleCell.querySelector('a')){
+          var hashLink = hashCell.querySelector('a[href*=\"/tktview/\"]');
+          if(hashLink && hashLink.getAttribute('href')){
+            var titleText = (titleCell.textContent || '').trim();
+            if(titleText){
+              var a = document.createElement('a');
+              a.href = hashLink.getAttribute('href');
+              a.textContent = titleText;
+              titleCell.textContent = '';
+              titleCell.appendChild(a);
+            }
+          }
+        }
+      }
+
+      if(iTags >= 0 && tds.length > iTags){
+        var tagsCell = tds[iTags];
+        if(tagsCell && !tagsCell.querySelector('.twowiki-tag-chip')){
+          var raw = (tagsCell.textContent || '').trim();
+          if(raw){
+            var tags = raw.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+            if(tags.length > 1 || (tags.length === 1 && tags[0] !== raw)){
+              var wrap = document.createElement('div');
+              wrap.className = 'twowiki-tag-wrap';
+              tags.forEach(function(tag){
+                var chip = document.createElement('span');
+                chip.className = 'twowiki-tag-chip';
+                chip.textContent = tag;
+                wrap.appendChild(chip);
+              });
+              tagsCell.textContent = '';
+              tagsCell.appendChild(wrap);
+              tagsCell.classList.add('twowiki-tag-cell');
+            }
+          }
+        }
+      }
     });
-    mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
-    mermaid.run();
-  }
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', runMermaid);
-  }else{
-    runMermaid();
-  }
+  });
 })();
 </script>
 <script nonce="$nonce">

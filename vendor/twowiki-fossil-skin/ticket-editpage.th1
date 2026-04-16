@@ -58,6 +58,11 @@
       set mimetype text/plain
     }
     submit_ticket
+    # Server-side redirect to the ticket reader — avoids Fossil’s default post-save
+    # landing on /info/{hash} (generic artifact view) instead of /tktview/{hash}.
+    if {[info exists tkt_uuid] && $tkt_uuid ne ""} {
+      redirect /tktview/$tkt_uuid
+    }
     set preview 1
   }
 </th1>

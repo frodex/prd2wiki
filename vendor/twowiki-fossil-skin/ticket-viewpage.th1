@@ -24,9 +24,17 @@ if {[info exists page_path] && $page_path ne ""} {
 }
 </th1>
 </div>
+<div class="twowiki-tkt-repo-links">
+  <a class="twowiki-repo-link" href="/dir?ci=tip">Browse files</a>
+  <span class="twowiki-repo-sep">·</span>
+  <a class="twowiki-repo-link" href="/tree?ci=tip">File tree</a>
+  <span class="twowiki-repo-sep">·</span>
+  <a class="twowiki-repo-link" href="/timeline">Timeline</a>
+</div>
 <div class="twowiki-footer-link">
   Reader UI: <a href="http://192.168.22.56:8082/projects/default/pages">prd2wiki</a>
   · <a href="/ticket">All tickets</a>
+  · <a href="/skins?skin=custom" title="Use this repository CONFIG skin">Site skin</a>
 </div>
 </div>
 <th1>
@@ -120,15 +128,9 @@ query {SELECT icomment, login, datetime(tkt_mtime) AS cmt_time FROM ticketchng W
   html {</div></div>}
 }
 </th1>
-<script type="module" nonce="$nonce">
-// ELK: intermittent "timeout after 5000ms" has been observed on heavy graphs in some browsers/sessions;
-// the canonical A/B fixture ticket was verified rendering all dagre+ELK pairs in-browser (2026-04-15) — see PRD matrix Hammer addendum (revised).
-// Prefer dagre in content when ELK is optional; simplify graphs if slow clients matter.
-import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs';
-
-mermaid.registerLayoutLoaders(elkLayouts);
-
+<script nonce="$nonce">
+/* Task lists + sortable tables run outside the Mermaid module so they still work if CDN ESM import fails (CSP, network, ad-block). */
+(function(){
 function enableTaskListCheckboxes(){
   document.querySelectorAll('.twowiki-doc li').forEach(function(li){
     if(li.querySelector('input[type="checkbox"]')) return;
@@ -147,33 +149,92 @@ function enableTaskListCheckboxes(){
   });
 }
 function enableSortableTables(){
+  function isSeparatorRow(tr){
+    var cells = tr.cells;
+    if(!cells || cells.length === 0) return false;
+    for(var i = 0; i < cells.length; i++){
+      var t = (cells[i].textContent || '').replace(/\s+/g, '');
+      if(t === '') return false;
+      if(!/^[\-—:=.|]+$/.test(t)) return false;
+    }
+    return true;
+  }
   document.querySelectorAll('.twowiki-doc table').forEach(function(table){
     var tbody = table.tBodies && table.tBodies[0];
-    if(!tbody) return;
+    if(!tbody || tbody.rows.length < 1) return;
+    var thead = table.querySelector('thead');
+    var headerCells;
+    var dataRowSlice;
+    if(thead && thead.rows[0]){
+      headerCells = thead.rows[0].cells;
+      dataRowSlice = function(){ return Array.from(tbody.rows); };
+    } else if(tbody.rows.length >= 2){
+      headerCells = tbody.rows[0].cells;
+      dataRowSlice = function(){ return Array.from(tbody.rows).slice(1); };
+    } else {
+      return;
+    }
+    if(!headerCells || headerCells.length === 0) return;
+    var optIn = table.classList.contains('twowiki-table-sort');
+    function partitionDataRows(){
+      var raw = dataRowSlice();
+      var seps = [];
+      var data = [];
+      for(var i = 0; i < raw.length; i++){
+        if(isSeparatorRow(raw[i])) seps.push(raw[i]);
+        else data.push(raw[i]);
+      }
+      return {separators: seps, data: data};
+    }
+    var part0 = partitionDataRows();
+    /* Fossil markdown emits class md-table. Qualifying tests use many 1-row md-tables — keep sort on those.
+       Raw HTML tables (no md-table) stay conservative: need 2+ data rows unless twowiki-table-sort. */
+    var isMdTable = table.classList.contains('md-table');
+    if(optIn){
+      if(part0.data.length < 1) return;
+    } else if(isMdTable){
+      if(part0.data.length < 1) return;
+    } else {
+      if(part0.data.length < 2) return;
+    }
     table.classList.add('twowiki-sortable');
-    table.querySelectorAll('thead th').forEach(function(th, idx){
-      th.style.cursor = 'pointer';
-      th.addEventListener('click', function(){
-        var asc = th.getAttribute('data-sort') !== 'asc';
-        table.querySelectorAll('thead th').forEach(function(h){ h.removeAttribute('data-sort'); });
-        th.setAttribute('data-sort', asc ? 'asc' : 'desc');
-        var rows = Array.from(tbody.rows);
-        rows.sort(function(a,b){
-          var av = (a.cells[idx] ? a.cells[idx].textContent : '').trim();
-          var bv = (b.cells[idx] ? b.cells[idx].textContent : '').trim();
-          var an = Number(av), bn = Number(bv);
-          var cmp = (!Number.isNaN(an) && !Number.isNaN(bn)) ? (an-bn) : av.localeCompare(bv);
-          return asc ? cmp : -cmp;
+    for(var idx = 0; idx < headerCells.length; idx++){
+      (function(colIdx){
+        var th = headerCells[colIdx];
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', function(){
+          var asc = th.getAttribute('data-sort') !== 'asc';
+          for(var j = 0; j < headerCells.length; j++){ headerCells[j].removeAttribute('data-sort'); }
+          th.setAttribute('data-sort', asc ? 'asc' : 'desc');
+          var part = partitionDataRows();
+          var rows = part.data.slice();
+          rows.sort(function(a,b){
+            var av = (a.cells[colIdx] ? a.cells[colIdx].textContent : '').trim();
+            var bv = (b.cells[colIdx] ? b.cells[colIdx].textContent : '').trim();
+            var an = Number(av), bn = Number(bv);
+            var bothNum = !Number.isNaN(an) && !Number.isNaN(bn) && av !== '' && bv !== '';
+            var cmp = bothNum ? (an - bn) : av.localeCompare(bv);
+            return asc ? cmp : -cmp;
+          });
+          part.separators.forEach(function(r){ tbody.appendChild(r); });
+          rows.forEach(function(r){ tbody.appendChild(r); });
         });
-        rows.forEach(function(r){ tbody.appendChild(r); });
-      });
-    });
+      })(idx);
+    }
   });
 }
 enableTaskListCheckboxes();
 enableSortableTables();
+})();
+</script>
+<script type="module" nonce="$nonce">
+/* Mermaid 11 + ELK on ticket view only (static imports — matches pre–site-wide-footer behavior; avoids bare "d3" in layout-elk.core.mjs). */
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs';
 
-document.querySelectorAll('code.language-mermaid').forEach(function(code){
+mermaid.registerLayoutLoaders(elkLayouts);
+
+document.querySelectorAll('pre code.language-mermaid').forEach(function(code){
   var pre = code.parentElement;
   if(!pre || pre.tagName !== 'PRE') return;
   var div = document.createElement('pre');
@@ -182,9 +243,14 @@ document.querySelectorAll('code.language-mermaid').forEach(function(code){
   pre.replaceWith(div);
 });
 mermaid.initialize({
-  startOnLoad: true,
+  startOnLoad: false,
   theme: 'neutral',
-  layout: 'elk'
+  layout: 'elk',
+  securityLevel: 'loose',
+  flowchart: { defaultRenderer: 'elk' },
+  state: { defaultRenderer: 'elk' },
+  class: { defaultRenderer: 'elk' }
 });
+await mermaid.run({ querySelector: '.mermaid' });
 </script>
 </div>

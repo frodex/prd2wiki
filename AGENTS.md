@@ -15,6 +15,8 @@ The **WebFetch / browser fetch tool** blocks private IPs, so it cannot load LAN 
 
 **Offline mirror (when wiki is stopped):** plan + architecture pages under **`docs/wiki-local/`** (`*.md` body, `*.json` full API). Refresh with **`scripts/fetch-wiki-local.sh`** while the wiki is up.
 
+**Wiki-first for agent-facing docs:** Issues, resolutions, and plan trackers that agents must read without a git checkout live on **prd2wiki** (LAN base above). Files under `docs/twowiki/issues/` and similar are **optional pointers** only; do not treat them as the source of truth.
+
 **Cross-repo (prd2wiki ↔ pippi-librarian):** Read **`docs/constraints-prd2wiki-pippi.md`** before Phase 2, Phase 3a.7 (`libclient` / `syncToLibrarian`), or any code that opens the librarian socket — binding with the Master Plan § Cross-Repo Boundary.
 
 ## Wiki base URL (this environment)
@@ -24,6 +26,22 @@ When documentation, scripts, or copy refer to **`3200.droidware.ai`**, use the l
 **`http://192.168.22.56:8082`**
 
 Treat that as the canonical base URL for browsing, curl checks, and links in this LAN setup.
+
+## Fossil (twoWiki) skin — institutional doc (wiki)
+
+Ticket UI for the **twoWiki** Fossil lab is customized via repository **`config`** (TH1 + CSS). **Agents** (including those **without** this repo checkout) must use the **prd2wiki** page **[twoWiki Fossil skin — implementation notes (agents)](http://192.168.22.56:8082/prd2wiki/twowiki-fossil-skin-implementation-notes)** as the canonical source for behavior (**post-submit `redirect`**, **`/ticket/` → `/tktview`**, TH1 constraints, verification). Public mirror: `https://wiki.droidware.ai/prd2wiki/twowiki-fossil-skin-implementation-notes`.
+
+Repo **`vendor/twowiki-fossil-skin/README.md`** is only a **file map + apply commands**; it points at that wiki page for institutional detail.
+
+**MANDATORY — twoWiki vs prd2wiki (do not forget):** **twoWiki** work is **only** the Fossil bench: files under **`vendor/twowiki-fossil-skin/`**, SQL into the **`.fossil` `config`** table, and ticket/repo ops on the **Fossil host** (dashboard, `fossil sql`, `fossil ticket`, JSON ticket API when enabled). The **`vendor/`** path is the cue: packaged skin overlay for Fossil, **not** the prd2wiki Go app. **Do not** change **`internal/web/`** (prd2wiki’s own wiki UI) for twoWiki chrome, colors, nav, or breadcrumbs unless the user **explicitly** asks to modify **prd2wiki** — that would be like changing twoWiki’s background by editing SQLite because Fossil uses it. This skin process has been applied before; stay on the **same** Fossil apply path unless told otherwise.
+
+**twoWiki bench — editing tickets (agents have multiple paths):** On the LAN lab host, tickets in `/opt/twowiki/repo.fossil` can be updated by **(1)** SSH + `fossil ticket change|set UUID … --quote … -R /opt/twowiki/repo.fossil` (what we used for the sortable-matrix fix), **(2)** the **JSON API** when the server is built with `--json` — `POST /json/ticket/save` (see `vendor/fossil-json-ticket/README.md`; auth + Referer rules apply), or **(3)** the normal **human web UI** (`/tktedit/…`) in a browser. Prefer (1) or (2) for scripted, verifiable edits; use (3) when validating UX or when API/SSH is unavailable.
+
+**Bench issue TWOWIKI-001** (sortable tables / `gt` artifacts on ticket view): resolution and checklist on wiki — [/projects/default/pages/bb219262-74c8-4a92-8379-9b3132227398](http://192.168.22.56:8082/projects/default/pages/bb219262-74c8-4a92-8379-9b3132227398); plan tracker — [/projects/default/pages/3436fe3](http://192.168.22.56:8082/projects/default/pages/3436fe3).
+
+**Today:** twoWiki is **qualification / bench** only. **prd2wiki** is the source of truth for real project pages, trackers, and agent-facing docs.
+
+**Roadmap (not in effect yet):** the team may later track some projects **in both** systems, with **twoWiki as a live A/B** against prd2wiki, once the twoWiki **feature set** is far enough along. Until that is explicitly announced and documented on the wiki, assume **no dual-write** and **no parity obligation** between the two surfaces.
 
 ## Known issues
 

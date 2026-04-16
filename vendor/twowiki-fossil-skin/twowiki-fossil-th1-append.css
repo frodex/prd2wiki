@@ -1,0 +1,401 @@
+/* Appended after lovable_01a/css.txt by apply_twowiki_skin.py — ticket-viewpage.th1 + footer Mermaid/ELK; see apply_twowiki_skin.py docstring. */
+
+/*
+ * Fossil concatenates builtin default.css *before* repo skin CSS on /style.css.
+ * default.css uses floats (.title{float:left}, .status{float:right}, .mainmenu{clear:both})
+ * which breaks flex layouts. Cancel those so the skin package wins.
+ */
+header > .logo,
+header > .logo-area,
+header > .title,
+header > .status {
+  float: none !important;
+  clear: none !important;
+}
+nav.mainmenu {
+  clear: none !important;
+}
+
+/* Logo: stock Fossil uses div.logo; lovable_01a/header.txt uses div.logo-area + .header-logo. */
+header > .logo,
+header > .logo-area {
+  flex-shrink: 0;
+  margin-right: 1rem;
+}
+header .logo,
+header .logo-area {
+  flex: 0 0 auto;
+}
+header .logo img,
+header .logo-area img,
+header .logo-area img.header-logo {
+  vertical-align: middle;
+  border-radius: 2px;
+  height: 36px;
+  width: 36px;
+  max-height: 36px;
+  object-fit: contain;
+}
+
+/* Title row: stock Fossil uses h1 + span.page-title; lovable header uses small + title fragment. */
+header div.title {
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+}
+header div.title h1 {
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+  color: inherit;
+}
+header div.title .page-title {
+  margin: 0;
+  padding: 0;
+  font-size: 0.92em;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #9ca3af;
+}
+header div.title small {
+  margin: 0;
+  padding: 0;
+  font-size: 0.88em;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #9ca3af;
+  letter-spacing: 0.02em;
+}
+
+/* Section menu (tickets/wiki): not styled in lovable css.txt; mirror div.submenu look */
+div.sectionmenu {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 0 1rem;
+  font-size: 0.8rem;
+  background: #1e293b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+div.sectionmenu > a.button:link,
+div.sectionmenu > a.button:visited {
+  padding: 0.5rem 1rem;
+  color: #94a3b8;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s, background 0.15s;
+}
+div.sectionmenu > a.button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Setup / skin admin: sticky main menu (z-index from skin) can sit above form controls and eat clicks. */
+body[class*="setup_"] nav.mainmenu {
+  position: relative;
+  top: auto;
+  z-index: 1;
+}
+body[class*="setup_"] .hbdrop {
+  z-index: 2;
+}
+
+/* Footer: visible escape hatch to Fossil skin editor (see footer.th1 TH1 block). */
+.twowiki-admin-strip {
+  max-width: 1000px;
+  margin: 0 auto 0.65rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  background: #fef9c3;
+  border: 1px solid #facc15;
+  border-radius: 6px;
+  color: #713f12;
+}
+.twowiki-admin-strip-label {
+  font-weight: 700;
+  margin-right: 0.35rem;
+}
+.twowiki-admin-strip a {
+  color: #a16207;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.twowiki-admin-strip a:hover {
+  color: #713f12;
+}
+.twowiki-admin-sep {
+  margin: 0 0.35rem;
+  color: #a8a29e;
+  font-weight: 400;
+}
+
+h1.page-title {
+  font-family: inherit !important;
+  font-size: 1.25rem !important;
+  font-weight: 600;
+  color: #1a1a1a !important;
+  margin: 0.75rem 1.5rem 0.25rem;
+}
+
+body.tkt.rpage-tktview .content {
+  max-width: 52rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  padding-bottom: 2rem;
+}
+
+.twowiki-tkt-shell {
+  margin-top: 0.5rem;
+}
+.twowiki-tkt-meta {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+.twowiki-tkt-id {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin: 0 0 0.35rem 0;
+  font-family: ui-monospace, monospace;
+}
+.twowiki-tkt-id .tktDspLabel {
+  font-weight: 600;
+  margin-right: 0.35rem;
+}
+h1.twowiki-tkt-title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0.25rem 0 0.75rem 0;
+  line-height: 1.25;
+}
+.twowiki-tkt-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.tw-badge {
+  display: inline-block;
+  padding: 0.2em 0.55em;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.tw-badge.tw-type {
+  background: #fef9c3;
+  color: #854d0e;
+}
+.tw-badge.tw-status {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.tw-badge.tw-tags {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+.tw-badge.tw-path {
+  background: #f1f5f9;
+  color: #334155;
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+/* Ticket reader: quick links to repo browser / tree (Fossil has no per-ticket file tree). */
+.twowiki-tkt-repo-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.35rem;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.twowiki-tkt-repo-links .twowiki-repo-link {
+  color: #2563eb;
+  text-decoration: none;
+}
+.twowiki-tkt-repo-links .twowiki-repo-link:hover {
+  text-decoration: underline;
+}
+.twowiki-tkt-repo-links .twowiki-repo-sep {
+  color: #94a3b8;
+  user-select: none;
+}
+
+.twowiki-tkt-comments-hr {
+  margin: 2rem 0 0.75rem;
+  border: none;
+  border-top: 1px solid #e5e7eb;
+}
+.twowiki-tkt-comment {
+  margin-bottom: 1.25rem;
+  padding: 0.85rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.twowiki-tkt-comment-meta {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin: 0 0 0.5rem 0;
+}
+.twowiki-tkt-comment-body {
+  margin-bottom: 0 !important;
+}
+
+.twowiki-doc {
+  line-height: 1.7;
+  margin-bottom: 1.5rem;
+  color: #1a1a1a;
+}
+.twowiki-doc h1 {
+  font-size: 1.5rem;
+  margin: 1.25rem 0 0.5rem;
+}
+.twowiki-doc h2 {
+  font-size: 1.3rem;
+  margin: 1.5rem 0 0.5rem;
+  font-weight: 600;
+}
+.twowiki-doc h3 {
+  font-size: 1.1rem;
+  margin: 1.2rem 0 0.4rem;
+  font-weight: 600;
+}
+.twowiki-doc p {
+  margin-bottom: 0.8rem;
+}
+.twowiki-doc ul,
+.twowiki-doc ol {
+  margin: 0.5rem 0 0.8rem 1.5rem;
+}
+.twowiki-doc code {
+  background: #f0f0f0;
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+.twowiki-doc pre {
+  background: #f5f5f5;
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+.twowiki-doc pre code {
+  background: none;
+  padding: 0;
+}
+.twowiki-doc table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+.twowiki-doc th,
+.twowiki-doc td {
+  border: 1px solid #ddd;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.twowiki-doc th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+.twowiki-doc tr:nth-child(even) {
+  background: #fafafa;
+}
+.twowiki-doc blockquote {
+  border-left: 4px solid #cbd5e1;
+  margin: 1rem 0;
+  padding-left: 1rem;
+  color: #475569;
+}
+.twowiki-doc hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 1.5rem 0;
+}
+h2.twowiki-section-h {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.twowiki-mermaid-wrap {
+  overflow-x: auto;
+  padding: 0.35rem 0 0.5rem;
+  margin: 0.75rem 0 1rem;
+}
+.twowiki-mermaid-wrap .mermaid {
+  min-width: max-content;
+}
+.twowiki-mermaid-wrap .mermaid svg {
+  max-width: none !important;
+  height: auto !important;
+}
+.twowiki-doc pre.mermaid {
+  overflow-x: auto;
+  margin: 0.75rem 0 1rem;
+}
+.twowiki-doc pre.mermaid svg {
+  max-width: none !important;
+  height: auto !important;
+}
+.twowiki-mermaid-error {
+  background: #fff1f2;
+  color: #9f1239;
+  border: 1px solid #fecdd3;
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+  white-space: pre-wrap;
+}
+
+.twowiki-footer-link {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+.twowiki-footer-link a {
+  color: #2563eb;
+  text-decoration: none;
+}
+.twowiki-footer-link a:hover {
+  text-decoration: underline;
+}
+
+/* Report tables: tags column as wrapped chips */
+table.report td.twowiki-tag-cell {
+  white-space: normal;
+}
+.twowiki-tag-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.twowiki-tag-chip {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #3730a3;
+  background: #e0e7ff;
+  border: 1px solid #c7d2fe;
+}

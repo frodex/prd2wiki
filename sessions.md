@@ -54,6 +54,13 @@ Documentation teardown and governance. As-built PRD fully restructured with 14 n
 
 ## Session History (most recent first)
 
+### 2026-04-15 — Tree API Phase 2 retest (local wiki)
+
+- `GET http://127.0.0.1:8082/api/tree/prd2wiki/agent-wiki-access-and-mcp-runbook` → **200**
+- `GET …/prd2wiki/phat-toad-with-trails` → **200**
+- `PUT` same small page **without** Bearer → **401**
+- `PUT` with write-scoped key from `prd2wiki-keygen`, JSON via file, `intent: verbatim` → **200** in **~243ms**, body included HTML comment marker `tree-api-smoke: 2026-04-15 retest`. Temporary key **revoked** after use.
+
 ### SESSION-2 / 2026-04-13 — Documentation Teardown and Governance
 - Deep dive documentation: created 3 architecture pages (system diagram, entry points, internal flows) with Mermaid diagrams
 - Created PRD2WIKI Architecture Overview index page linking all 3

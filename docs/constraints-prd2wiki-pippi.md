@@ -13,7 +13,20 @@
 
 ---
 
-## 2. Non-negotiable semantics
+## 2. Librarian integration posture (avoid “leakage”)
+
+Treat **pippi-librarian** as a **separate codebase** that we depend on and control—**not** as a place to push prd2wiki-specific shortcuts. The useful analogy is **SQLite**: you do not fork or rewrite SQLite because your application wants a slightly different API shape; you fix **your** usage and your integration layer.
+
+| Do here (prd2wiki) | Do there (librarian) — sparingly |
+|--------------------|----------------------------------|
+| Fix **call sites**: `libclient`, HTTP/MCP handlers, tree orchestration, correct use of **`Librarian.Submit`**, **`RemoveFromIndexes`**, and other **published** APIs. | Fix **bugs**, **security**, or **correctness** issues that are genuinely **in** librarian. |
+| If cleanup or sync is wrong because we **bypassed** the librarian API (e.g. talked to SQLite or index only), fix **prd2wiki** to use the **intended** orchestration path. | Add **features** when they are justified as **librarian** capabilities with a clear contract for **all** legitimate callers—not “prd2wiki needs this, so we’ll implement it in librarian.” |
+
+**Anti-pattern:** “It’s easier to add a special function or branch in **librarian** so prd2wiki can wire X in fewer steps—so we’ll do it there.” That is **leakage**: prd2wiki concerns belong in prd2wiki unless the change is a real librarian product or protocol improvement.
+
+---
+
+## 3. Non-negotiable semantics
 
 | Topic | Rule |
 |--------|------|
@@ -27,7 +40,7 @@
 
 ---
 
-## 3. Transport and auth (must not regress)
+## 4. Transport and auth (must not regress)
 
 | Topic | Rule |
 |--------|------|
@@ -38,7 +51,7 @@
 
 ---
 
-## 4. What must not break
+## 5. What must not break
 
 - **pippi-librarian:** Existing **MCP / HTTP** entrypoints used by **other** clients (if any) must remain working, or changes must be **explicitly versioned** and documented.
 - **prd2wiki:** Page submit to **git** and **SQLite/index** paths must remain correct when `PageUUID == ""` during migration (sync no-op).
@@ -46,7 +59,7 @@
 
 ---
 
-## 5. Tests that must stay green before merge (minimum)
+## 6. Tests that must stay green before merge (minimum)
 
 **prd2wiki**
 
@@ -64,7 +77,7 @@
 
 ---
 
-## 6. Known failure modes (do not repeat)
+## 7. Known failure modes (do not repeat)
 
 | Failure | Reference |
 |---------|-----------|
@@ -76,14 +89,28 @@
 
 ---
 
-## 7. Change control
+## 8. Change control
 
 - Any change to **socket path**, **ticket format**, **`memory_*` JSON schema**, or **Store signatures** requires **updating this file** + **wiki tool page [6ccd407](http://192.168.22.56:8082/projects/default/pages/6ccd407)** (or a linked schema) in the **same** merge window.
 
 ---
 
-## 8. Revision
+## 9. Revision
 
 | Date | Change |
 |------|--------|
 | 2026-04-12 | Initial constraint declaration for cross-repo implementation. |
+| 2026-04-15 | §2 Librarian integration posture (SQLite analogy; avoid leakage into librarian). |
+| 2026-04-15 | §10 Implementer planning note (status vs implementation plan). |
+
+---
+
+## 10. Implementer note — understanding, agreement, and planning gate
+
+**Understanding:** This file binds **cross-repo** work (prd2wiki ↔ pippi-librarian). **§2** states how we treat librarian: as a **dependency** with a **published** API—fix **our** integration and call paths first; change **librarian** only for genuine flaws or librarian-scope features, not for prd2wiki convenience.
+
+**Agreement:** That posture matches how implementers should execute **Phase 3 / write-core** decisions that touch sync and cleanup (e.g. using **`RemoveFromIndexes`** where appropriate): **caller and orchestration fixes in prd2wiki**, not ad hoc librarian rewrites.
+
+**Status (not “done”):** The **planner** is still working **open items on their side** (process, wiki plan alignment, owner gates, and any issues raised in design-brief review). **We do not consider the overall Phase 3 picture resolved enough** to treat it as a closed design: remaining gaps should be **closed in the wiki plan / design brief** before coding proceeds as the only source of truth.
+
+**Gate:** Cross-boundary and write-core work should move into a **dedicated implementation plan phase** **after** those planner-side issues are cleared and the implementer’s concerns are **explicitly addressed or rejected with rationale** on the plan. Until then, treat Phase 3 as **design-in-progress**, not approved implementation scope.
