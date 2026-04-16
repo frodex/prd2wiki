@@ -119,8 +119,9 @@ const ELK = 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-
         if(tagsCell && !tagsCell.querySelector('.twowiki-tag-chip')){
           var raw = (tagsCell.textContent || '').trim();
           if(raw){
-            var tags = raw.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-            if(tags.length > 1 || (tags.length === 1 && tags[0] !== raw)){
+            var tags = raw.split(/[,;\n]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+            /* Always chip-wrap so .twowiki-tag-chip CSS applies (single-tag rows were skipped before). */
+            if(tags.length >= 1){
               var wrap = document.createElement('div');
               wrap.className = 'twowiki-tag-wrap';
               tags.forEach(function(tag){

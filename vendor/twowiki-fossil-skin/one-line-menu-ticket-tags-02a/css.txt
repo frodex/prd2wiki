@@ -132,8 +132,9 @@ table.report thead th {
   border-bottom: 1px solid #111827; cursor: pointer; white-space: nowrap;
 }
 table.report tbody tr { transition: background 0.1s; background: #fff; }
-table.report tbody tr:nth-child(even) { background: #f9fafb; }
-table.report tbody tr:hover { background-color: #eef2ff !important; }
+/* Zebra only when row has no workflow status pill (pills get per-status tint below). */
+table.report tbody tr:nth-child(even):not(:has(.status-pill)) { background: #f9fafb; }
+table.report tbody tr:hover:not(:has(.status-pill)) { background-color: #eef2ff !important; }
 table.report tbody td { padding: 0.55rem 0.8rem; border-bottom: 1px solid #e5e7eb; vertical-align: middle; color: #1f2937; }
 table.report tbody td a {
   font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.78rem; font-weight: 600;
@@ -142,13 +143,13 @@ table.report tbody td a {
 table.report tbody td a:hover { text-decoration: underline; }
 
 
-/* Fossil's classic priority/status row colors → left-stripe accent */
-tr.row0 { box-shadow: inset 4px 0 0 #2d7a45; }   /* fixed/verified/completed */
-tr.row1 { box-shadow: inset 4px 0 0 #a33333; }   /* active/open/rejected */
-tr.row2 { box-shadow: inset 4px 0 0 #2a5bbf; }   /* review/submitted */
-tr.row3 { box-shadow: inset 4px 0 0 #b08e1f; }   /* tested/superseded */
-tr.row4 { box-shadow: inset 4px 0 0 #a85f24; }   /* deferred */
-tr.row5 { box-shadow: inset 4px 0 0 #1f2937; }   /* closed/retired */
+/* Fossil priority classes: left stripe when server assigns tr.row* (no workflow pill yet). */
+table.report tbody tr:not(:has(.status-pill)).row0 { box-shadow: inset 4px 0 0 #2d7a45; }
+table.report tbody tr:not(:has(.status-pill)).row1 { box-shadow: inset 4px 0 0 #a33333; }
+table.report tbody tr:not(:has(.status-pill)).row2 { box-shadow: inset 4px 0 0 #2a5bbf; }
+table.report tbody tr:not(:has(.status-pill)).row3 { box-shadow: inset 4px 0 0 #b08e1f; }
+table.report tbody tr:not(:has(.status-pill)).row4 { box-shadow: inset 4px 0 0 #a85f24; }
+table.report tbody tr:not(:has(.status-pill)).row5 { box-shadow: inset 4px 0 0 #1f2937; }
 
 /* Ticket Detail */
 .twowiki-tkt-shell {
@@ -359,4 +360,78 @@ footer { max-width: 1000px; margin: 0 auto; padding: 1rem 2rem; font-size: 0.75r
     0 0 8px 0 currentColor,
     0 0 14px -2px currentColor;
   font-weight: 700;
+}
+
+/* ----- Report list: full-row tint from STATUS pill (workflow v2; beats zebra + Fossil tr.row*) ----- */
+table.report tbody tr:has(.status-pill) { box-shadow: none; }
+table.report tbody tr:has(.status-active),
+table.report tbody tr:has(.status-open) {
+  background: rgba(217, 75, 75, 0.14) !important;
+}
+table.report tbody tr:hover:has(.status-active),
+table.report tbody tr:hover:has(.status-open) {
+  background: rgba(217, 75, 75, 0.22) !important;
+}
+table.report tbody tr:has(.status-review) { background: rgba(59, 120, 231, 0.12) !important; }
+table.report tbody tr:hover:has(.status-review) { background: rgba(59, 120, 231, 0.2) !important; }
+table.report tbody tr:has(.status-fixed),
+table.report tbody tr:has(.status-verified) {
+  background: rgba(63, 165, 95, 0.14) !important;
+}
+table.report tbody tr:hover:has(.status-fixed),
+table.report tbody tr:hover:has(.status-verified) {
+  background: rgba(63, 165, 95, 0.22) !important;
+}
+table.report tbody tr:has(.status-tested) { background: rgba(240, 200, 69, 0.22) !important; }
+table.report tbody tr:hover:has(.status-tested) { background: rgba(240, 200, 69, 0.32) !important; }
+table.report tbody tr:has(.status-deferred) { background: rgba(236, 147, 74, 0.16) !important; }
+table.report tbody tr:hover:has(.status-deferred) { background: rgba(236, 147, 74, 0.26) !important; }
+table.report tbody tr:has(.status-closed) { background: rgba(55, 65, 81, 0.12) !important; }
+table.report tbody tr:hover:has(.status-closed) { background: rgba(55, 65, 81, 0.2) !important; }
+table.report tbody tr:has(.status-draft) { background: rgba(156, 163, 175, 0.22) !important; }
+table.report tbody tr:hover:has(.status-draft) { background: rgba(156, 163, 175, 0.32) !important; }
+table.report tbody tr:has(.status-submitted) { background: rgba(59, 120, 231, 0.12) !important; }
+table.report tbody tr:hover:has(.status-submitted) { background: rgba(59, 120, 231, 0.2) !important; }
+table.report tbody tr:has(.status-approved),
+table.report tbody tr:has(.status-completed) {
+  background: rgba(45, 122, 69, 0.12) !important;
+}
+table.report tbody tr:hover:has(.status-approved),
+table.report tbody tr:hover:has(.status-completed) {
+  background: rgba(45, 122, 69, 0.2) !important;
+}
+table.report tbody tr:has(.status-rejected) { background: rgba(217, 75, 75, 0.14) !important; }
+table.report tbody tr:hover:has(.status-rejected) { background: rgba(217, 75, 75, 0.22) !important; }
+table.report tbody tr:has(.status-implemented) { background: rgba(139, 92, 246, 0.12) !important; }
+table.report tbody tr:hover:has(.status-implemented) { background: rgba(139, 92, 246, 0.2) !important; }
+table.report tbody tr:has(.status-superseded) { background: rgba(240, 200, 69, 0.18) !important; }
+table.report tbody tr:hover:has(.status-superseded) { background: rgba(240, 200, 69, 0.28) !important; }
+table.report tbody tr:has(.status-retired) { background: rgba(55, 65, 81, 0.12) !important; }
+table.report tbody tr:hover:has(.status-retired) { background: rgba(55, 65, 81, 0.2) !important; }
+
+/* TAGS column: chips must win over table td defaults (this layer is last in apply merge). */
+table.report td.twowiki-tag-cell { white-space: normal; vertical-align: middle; }
+table.report td.twowiki-tag-cell .twowiki-tag-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.28rem;
+}
+table.report td.twowiki-tag-cell .twowiki-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #3730a3;
+  background: linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%);
+  border: 1px solid #c7d2fe;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+}
+table.report td.twowiki-tag-cell .twowiki-tag-chip:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e3a8a;
 }
