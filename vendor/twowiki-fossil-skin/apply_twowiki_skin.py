@@ -10,7 +10,7 @@ changes without risking core site behavior.
 Layout (full mode only — files merged into repo workflow):
   - ``lovable_01a/`` — Fossil skin package (css.txt, header.txt, details.txt, js.txt)
   - ``twowiki-fossil-th1-append.css`` — structural CSS
-  - ``one-line-menu-ticket-tags-01a/twowiki-fossil-skin-v6.css`` — design layer (last)
+  - ``one-line-menu-ticket-tags-02a/css.txt`` — design layer v7 when present; else ``01a/…/v6.css``, plus v6 **sortable tail** so ticket TH1 hooks stay styled.
   - ``footer.th1``, ``ticket-viewpage.th1``, ``ticket-editpage.th1``
 
 ``config.mainmenu`` is never emitted — site-specific.
@@ -46,8 +46,17 @@ def build_merged_css() -> str:
     if not os.path.isfile(v6_path):
         print("missing style layer: " + v6_path, file=sys.stderr)
         sys.exit(1)
-    v6_style = open(v6_path, encoding="utf-8").read()
-    return skin + "\n\n" + th1_append + "\n\n" + v6_style
+    v6_full = open(v6_path, encoding="utf-8").read()
+    v7_path = os.path.join(HERE, "one-line-menu-ticket-tags-02a", "css.txt")
+    if os.path.isfile(v7_path):
+        design = open(v7_path, encoding="utf-8").read()
+    else:
+        design = v6_full
+    # v7 drop omits ticket sortable thead rules; keep tail from v6 (see v6 file).
+    mark = "/* --- Sortable markdown tables"
+    p = v6_full.find(mark)
+    sort_tail = ("\n\n" + v6_full[p:]) if p >= 0 else ""
+    return skin + "\n\n" + th1_append + "\n\n" + design + sort_tail
 
 
 def emit_style_only() -> None:

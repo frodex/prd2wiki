@@ -1,0 +1,317 @@
+/* TwoWiki Fossil Skin v7
+   - Wider 1280px content container with 78ch prose measure
+   - Unified report card: status key + search + table flush-stacked
+   - Admin / Edit mode action bars (.admin-actionbar) + per-row .row-edit
+   - Tag variants: caps, metallic, threed, outline, glow */
+* { box-sizing: border-box; }
+body, body > div.wiki {
+  margin: 0; padding: 0; background-color: #f8f9fa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px; line-height: 1.6; color: #2d3436;
+  -webkit-font-smoothing: antialiased; min-height: 100vh;
+  display: flex; flex-direction: column;
+}
+
+header {
+  display: flex; align-items: center; width: 100%; padding: 0 1.25rem; background: #111827;
+  border-bottom: 1px solid #000; min-height: 48px;
+  position: sticky; top: 0; z-index: 21;
+}
+.logo-area { flex-shrink: 0; margin-right: 0.6rem; display: flex; align-items: center; }
+.header-logo { height: 24px; width: 24px; }
+.brand {
+  flex-shrink: 0; font-size: 1rem; font-weight: 700; color: #fff; letter-spacing: -0.01em;
+  margin-right: 1.25rem;
+}
+div.status { flex-shrink: 0; font-size: 0.78rem; color: #9ca3af; margin-left: auto; padding-left: 1rem; }
+.status-user { padding: 0.2em 0.6em; border: 1px solid rgba(255,255,255,0.15); border-radius: 3px; font-size: 0.72rem; color: #cbd5e1; }
+
+header nav.mainmenu {
+  display: flex; align-items: center; gap: 0; padding: 0;
+  font-size: 0.85rem; font-weight: 500; text-transform: none; letter-spacing: 0;
+  background: transparent; color: #e5e7eb; border: none;
+  position: static; flex: 1;
+}
+nav.mainmenu .hbbtn { display: none; background: none; border: none; color: #e5e7eb; padding: 0.6rem; cursor: pointer; }
+nav.mainmenu a {
+  display: inline-flex; align-items: center; padding: 0 0.85rem; height: 48px;
+  color: #d1d5db; text-decoration: none; transition: color 0.12s, background-color 0.12s;
+  border-bottom: 2px solid transparent;
+}
+nav.mainmenu a:hover { color: #fff; background-color: rgba(255,255,255,0.05); }
+nav.mainmenu a.active { color: #fff; border-bottom-color: #3b82f6; background-color: rgba(255,255,255,0.05); font-weight: 600; }
+
+.breadcrumb-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 1.25rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb;
+  font-size: 0.72rem; min-height: 28px; color: #6b7280;
+}
+.crumbs { display: flex; align-items: center; gap: 0.4rem; }
+.crumbs a { color: #4b5563; text-decoration: none; font-weight: 500; }
+.crumbs a:hover { color: #111827; text-decoration: underline; }
+.crumb-sep { color: #9ca3af; }
+.crumb-current { color: #111827; font-weight: 600; }
+.crumb-actions { display: flex; gap: 0.85rem; }
+.crumb-actions a { color: #4b5563; text-decoration: none; font-weight: 500; }
+.crumb-actions a:hover { color: #111827; text-decoration: underline; }
+
+div.content {
+  max-width: 1280px; margin: 0 auto; padding: 0.85rem 2rem 3rem; flex: 1;
+}
+div.content a { color: #1d4ed8; text-decoration: none; font-weight: 500; }
+div.content a:hover { color: #1e40af; text-decoration: underline; }
+
+/* Status key bar */
+.status-key {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem;
+  padding: 0.5rem 0.85rem; background: #fff; border: 1px solid #d1d5db;
+  border-bottom: none; border-radius: 4px 4px 0 0; margin: 0;
+}
+.status-key-label {
+  font-size: 0.75rem; font-weight: 700; color: #374151; text-transform: uppercase;
+  letter-spacing: 0.05em; margin-right: 0.4rem;
+}
+
+/* Search form */
+.searchForm {
+  display: flex; gap: 0; margin: 0; max-width: none; width: 100%;
+  border: 1px solid #d1d5db; border-top: 1px solid #e5e7eb;
+  border-radius: 0; overflow: hidden;
+  background: #fff;
+  transition: box-shadow 0.15s;
+}
+.searchForm:focus-within {
+  box-shadow: inset 0 0 0 2px #3b78e7;
+}
+.searchForm input[type="text"] {
+  flex: 1; border: none; outline: none; padding: 0.55rem 0.85rem;
+  font-size: 0.9rem; color: #111827; background: transparent;
+}
+.searchForm input[type="text"]::placeholder { color: #9ca3af; }
+.searchForm input[type="submit"] {
+  border: none; background: #1f2937; color: #fff; padding: 0 1.2rem;
+  font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  cursor: pointer; transition: background 0.12s;
+}
+.searchForm input[type="submit"]:hover { background: #3b78e7; }
+
+.status-pill {
+  display: inline-flex; align-items: center; padding: 0.15em 0.6em;
+  font-size: 0.72rem; font-weight: 700; border-radius: 2px;
+  border: 1px solid; line-height: 1.4; white-space: nowrap; color: #1f2937;
+}
+
+table.report {
+  width: 100%; border-collapse: collapse; border: 1px solid #d1d5db; border-top: none;
+  margin: 0; font-size: 0.85rem; border-radius: 0 0 4px 4px; overflow: hidden; background: #fff;
+}
+table.report thead tr { background: #1f2937; }
+table.report thead th {
+  padding: 0.55rem 0.8rem; color: #f9fafb; font-weight: 600; font-size: 0.78rem;
+  text-transform: uppercase; letter-spacing: 0.04em; text-align: left;
+  border-bottom: 1px solid #111827; cursor: pointer; white-space: nowrap;
+}
+table.report tbody tr { transition: background 0.1s; background: #fff; }
+table.report tbody tr:nth-child(even) { background: #f9fafb; }
+table.report tbody tr:hover { background-color: #eef2ff !important; }
+table.report tbody td { padding: 0.55rem 0.8rem; border-bottom: 1px solid #e5e7eb; vertical-align: middle; color: #1f2937; }
+table.report tbody td a {
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.78rem; font-weight: 600;
+  color: #1d4ed8; background: transparent; padding: 0; border-radius: 0; text-decoration: none;
+}
+table.report tbody td a:hover { text-decoration: underline; }
+
+/* Ticket Detail */
+.twowiki-tkt-shell {
+  background: #fff; border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden;
+}
+.twowiki-tkt-meta {
+  background: #f3f4f6; color: #1f2937; padding: 1.25rem 2rem 1rem;
+  border-bottom: 1px solid #d1d5db; border-left: 4px solid #f59e0b;
+}
+.twowiki-tkt-id { margin: 0 0 0.6rem; font-size: 0.78rem; display: flex; align-items: center; gap: 0.5rem; }
+.twowiki-tkt-id .tktDspLabel { font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #374151; font-size: 0.72rem; }
+.twowiki-tkt-id #hash-tk,
+.twowiki-tkt-id code {
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.76rem; color: #111827;
+  background: #fff; padding: 0.2em 0.5em; border-radius: 3px; border: 1px solid #d1d5db;
+}
+.twowiki-tkt-id .copy-button {
+  background: #fff; border: 1px solid #9ca3af;
+  border-radius: 3px; color: #374151; cursor: pointer; padding: 0.1em 0.35em; font-size: 0.7rem;
+}
+.twowiki-tkt-title { font-size: 1.45rem; font-weight: 800; margin: 0 0 0.7rem; color: #0f172a; line-height: 1.25; }
+.twowiki-tkt-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.85rem; }
+.tw-badge {
+  display: inline-flex; align-items: center; padding: 0.2em 0.65em;
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; border-radius: 2px;
+  border: 1px solid transparent; color: #ffffff;
+}
+.tw-badge.tw-type { background: #3b78e7; border-color: #2a5bbf; }
+.tw-badge.tw-status { background: #ec934a; border-color: #a85f24; }
+.tw-badge.tw-tags { background: #3fa55f; border-color: #2d7a45; color: #ffffff; font-family: "SF Mono", Menlo, monospace; font-size: 0.7rem; text-transform: none; font-weight: 600; }
+.tw-badge.tw-path {
+  background: #f9fafb; border-color: #374151; color: #1f2937;
+  font-size: 0.7rem; font-family: "SF Mono", Menlo, monospace; text-transform: none; font-weight: 600;
+}
+.twowiki-footer-link { font-size: 0.78rem; color: #4b5563; }
+.twowiki-footer-link a { color: #1d4ed8 !important; text-decoration: none !important; font-weight: 600; }
+.twowiki-footer-link a:hover { text-decoration: underline !important; }
+
+.twowiki-doc { padding: 1.5rem 2rem; }
+.twowiki-doc .markdown { line-height: 1.65; color: #374151; }
+/* Constrain prose to a comfortable measure (~78ch) but let block elements span full width */
+.twowiki-doc p,
+.twowiki-doc li { max-width: 78ch; }
+.twowiki-doc h2 { font-size: 1.1rem; font-weight: 600; color: #111827; margin: 1.5rem 0 0.6rem; padding-bottom: 0.3rem; border-bottom: 1px solid #e5e7eb; }
+.twowiki-doc p { margin: 0 0 0.85rem; }
+.twowiki-doc ol, .twowiki-doc ul { margin: 0 0 0.85rem; padding-left: 1.5rem; }
+.twowiki-doc li { margin-bottom: 0.3rem; }
+.twowiki-doc code {
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.85em;
+  background: #f3f4f6; padding: 0.1em 0.35em; border-radius: 3px; color: #1f2937;
+  border: 1px solid #e5e7eb;
+}
+.twowiki-doc pre {
+  background: #f9fafb; color: #1f2937; padding: 0.9rem 1.1rem; border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  overflow-x: auto; margin: 0.85rem 0; font-size: 0.82rem; line-height: 1.55;
+}
+.twowiki-doc pre code { background: none; padding: 0; color: inherit; border: none; }
+
+.twowiki-doc table { width: 100%; border-collapse: collapse; margin: 0.85rem 0; font-size: 0.85rem; border: 1px solid #e5e7eb; }
+.twowiki-doc table thead th {
+  background: #f9fafb; padding: 0.45rem 0.75rem; text-align: left; font-weight: 600; color: #374151;
+  border-bottom: 1px solid #e5e7eb; font-size: 0.78rem; text-transform: none; letter-spacing: 0;
+}
+.twowiki-doc table tbody td { padding: 0.45rem 0.75rem; border-bottom: 1px solid #f3f4f6; color: #374151; }
+.twowiki-doc table tbody tr:last-child td { border-bottom: none; }
+.twowiki-doc table tbody tr:hover { background: #f9fafb; }
+
+/* Comments */
+hr.twowiki-tkt-comments-hr { border: none; border-top: 1px solid #e5e7eb; margin: 0; }
+h2.twowiki-section-h {
+  font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: #4b5563; margin: 0; padding: 0.75rem 2rem 0.5rem; background: #fafafa; border-top: 1px solid #e5e7eb;
+}
+.twowiki-tkt-comment { border-top: 1px solid #f3f4f6; }
+.twowiki-tkt-comment-meta { padding: 0.85rem 2rem 0; font-size: 0.76rem; color: #6b7280; font-weight: 500; margin: 0; }
+.twowiki-tkt-comment-body { padding: 0 2rem 1.25rem; }
+
+footer { max-width: 1000px; margin: 0 auto; padding: 1rem 2rem; font-size: 0.75rem; color: #9ca3af; text-align: right; border-top: 1px solid #e5e7eb; }
+
+@media screen and (max-width: 600px) {
+  .desktoponly { display: none; }
+  nav.mainmenu .hbbtn { display: inline-flex; }
+}
+@media screen and (max-width: 640px) {
+  div.content { padding: 1rem; }
+  .twowiki-tkt-meta { padding: 1.5rem 1.25rem 1rem; }
+  .twowiki-doc { padding: 1.25rem; }
+  .twowiki-tkt-title { font-size: 1.35rem; }
+}
+
+/* ============ Admin / Edit mode action bar ============ */
+.admin-actionbar {
+  display: flex; align-items: stretch; flex-wrap: wrap; gap: 0;
+  margin: 0 0 0.6rem; background: #1f2937;
+  border: 1px solid #111827; border-radius: 4px; overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+.admin-actionbar-tkt {
+  margin: 0; border-radius: 0; border-left: none; border-right: none; border-top: none;
+}
+.admin-action {
+  display: inline-flex; align-items: center; padding: 0.5rem 1rem;
+  font-size: 0.78rem; font-weight: 600; color: #e5e7eb !important;
+  text-decoration: none !important; border-right: 1px solid rgba(255,255,255,0.08);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  transition: background 0.12s, color 0.12s;
+}
+.admin-action:hover {
+  background: #374151; color: #fff !important; text-decoration: none !important;
+}
+.admin-action-primary {
+  background: #3b78e7; color: #fff !important;
+}
+.admin-action-primary:hover { background: #2a5bbf; }
+.admin-action-danger { color: #fca5a5 !important; }
+.admin-action-danger:hover { background: #7f1d1d; color: #fff !important; }
+
+/* Per-row "edit" link in admin mode */
+.row-actions { width: 1%; white-space: nowrap; text-align: right; padding-right: 0.6rem; }
+.row-edit {
+  display: inline-block; padding: 0.15em 0.55em;
+  font-size: 0.7rem !important; font-weight: 600 !important;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  color: #4b5563 !important; background: #f3f4f6;
+  border: 1px solid #d1d5db; border-radius: 3px;
+  text-decoration: none !important; font-family: inherit !important;
+}
+.row-edit:hover {
+  background: #1f2937; color: #fff !important; border-color: #1f2937;
+}
+
+/* ============ Tag variants ============ */
+
+/* All-Caps */
+.tagvariant-caps .status-pill,
+.tagvariant-caps .tw-badge {
+  text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500;
+  font-size: 0.68rem; padding: 0.25em 0.7em;
+}
+
+/* Metallic: glossy sheen + bevel */
+.tagvariant-metallic .status-pill,
+.tagvariant-metallic .tw-badge {
+  background-image: linear-gradient(180deg,
+    rgba(255,255,255,0.45) 0%,
+    rgba(255,255,255,0.12) 48%,
+    rgba(0,0,0,0.10) 52%,
+    rgba(0,0,0,0.28) 100%);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.55),
+    inset 0 -1px 0 rgba(0,0,0,0.28),
+    0 1px 2px rgba(0,0,0,0.18);
+  font-weight: 700;
+}
+
+/* 3D: hard drop shadow + press effect */
+.tagvariant-threed .status-pill,
+.tagvariant-threed .tw-badge {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    0 2px 0 rgba(0,0,0,0.4),
+    0 3px 4px rgba(0,0,0,0.2);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.3);
+  transition: transform 0.08s, box-shadow 0.08s;
+  font-weight: 800;
+}
+.tagvariant-threed .status-pill:hover,
+.tagvariant-threed .tw-badge:hover {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    0 1px 0 rgba(0,0,0,0.4),
+    0 2px 2px rgba(0,0,0,0.2);
+}
+
+/* Outline: transparent fill */
+.tagvariant-outline .status-pill,
+.tagvariant-outline .tw-badge {
+  background: transparent !important;
+  border-width: 1.5px;
+  font-weight: 700;
+  text-shadow: none;
+}
+
+/* Glow: colored outer halo */
+.tagvariant-glow .status-pill,
+.tagvariant-glow .tw-badge {
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.2),
+    0 0 8px 0 currentColor,
+    0 0 14px -2px currentColor;
+  font-weight: 700;
+}
