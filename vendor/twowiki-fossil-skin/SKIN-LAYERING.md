@@ -4,6 +4,8 @@ Agent-facing wiki detail can also live on prd2wiki; this file is the **checkout-
 
 New **Lovable drops** (e.g. `one-line-menu-ticket-tags-02a/`) must be **merged**, not copied over the repo wholesale — see **`MERGE-DROPS.md`**.
 
+**Policy:** Files that are **meant to be overwritten** by design refreshes should hold **presentation only**. Anything that **breaks the site if missing** belongs in **`footer.th1`**, **ticket TH1**, **`twowiki-fossil-th1-append.css`**, or **`apply_twowiki_skin.py`** — not solely in a volatile design CSS blob.
+
 ## Merge order (CSS, single `config.css` value)
 
 Pieces are concatenated **top to bottom**. Later rules win on specificity ties.

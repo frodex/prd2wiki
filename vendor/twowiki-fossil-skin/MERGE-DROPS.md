@@ -1,5 +1,24 @@
 # Merging a new skin drop (e.g. `one-line-menu-ticket-tags-02a/`)
 
+## Principle: do not put “breaks the site if missing” in overwritable files
+
+Some files exist to be **refreshed or replaced wholesale** when design ships a new drop (e.g. **`…/twowiki-fossil-skin-v7.css`**, or the **pure palette/layout** parts of `lovable_01a/css.txt`). Treat those as **presentation-only**.
+
+**Do not** rely on those files alone for anything that **breaks the site** if overwritten: Mermaid/ELK wiring, ticket redirects, `rpage-rptview` behavior, CSP, markdown/ticket TH1, sortable-table hooks, float resets against Fossil `default.css`, etc.
+
+Put **behavior-critical** material in **dedicated, intentionally merged** files that are **not** meant to be replaced by a Lovable export:
+
+| Keep behavior here | Why |
+|--------------------|-----|
+| `footer.th1` | Scripts, redirects, site-wide Mermaid gate. |
+| `ticket-viewpage.th1` / `ticket-editpage.th1` | Ticket rendering, markdown helpers, sort JS. |
+| `twowiki-fossil-th1-append.css` | Structural / compatibility CSS that must survive a design refresh (or duplicate tiny “must keep” rules here if they were only in an old v6 tail). |
+| `apply_twowiki_skin.py` | `default-csp` and merge order — not in a designer CSS file. |
+
+If a rule is **required** for correctness and might be lost when someone drops in a new v8 CSS file, **move it** (or copy it) into **`twowiki-fossil-th1-append.css`** (or the appropriate TH1), not only into the volatile design layer.
+
+---
+
 Exports from design tools are **full pages** (DOCTYPE + `header` + `footer` that close the document). The twoWiki stack is **split** on purpose:
 
 | Piece | Source of truth today |
