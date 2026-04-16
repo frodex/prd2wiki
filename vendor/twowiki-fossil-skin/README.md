@@ -28,6 +28,8 @@ This folder contains **repository `config` payloads** for Fossil 2.29+ to make `
 
 **Fossil ticket pipe tables:** Not the same as GitHub GFM. A `|-----|-------|` row is **data**, not a delimiter, and splits the matrix into many one-row tables. See **`FOSSIL-TICKET-MARKDOWN-TABLES.md`**.
 
+**Leading `#` in ticket markdown:** Fossil promotes the first top-level heading to the markdown list’s title slot and removes it from the body HTML. See **`FOSSIL-MARKDOWN-FIRST-HEADING.md`** and the `twowiki_emit_markdown_fragment` helper in **`ticket-viewpage.th1`**.
+
 ## Markdown vs wiki (important)
 
 - TH1 **`wiki`** renders [Fossil wiki](https://fossil-scm.org/home/doc/trunk/www/wiki.wiki) markup — **not** CommonMark and **not** the same as prd2wiki’s **Goldmark** pipeline.
