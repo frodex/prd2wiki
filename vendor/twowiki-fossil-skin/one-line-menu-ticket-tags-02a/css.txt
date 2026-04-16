@@ -132,9 +132,9 @@ table.report thead th {
   border-bottom: 1px solid #111827; cursor: pointer; white-space: nowrap;
 }
 table.report tbody tr { transition: background 0.1s; background: #fff; }
-/* Zebra only when row has no workflow status pill (pills get per-status tint below). */
-table.report tbody tr:nth-child(even):not(:has(.status-pill)) { background: #f9fafb; }
-table.report tbody tr:hover:not(:has(.status-pill)) { background-color: #eef2ff !important; }
+/* Zebra for data rows without data-tw-status (footer.js sets attribute from STATUS column). */
+table.report.sortable tbody tr:nth-child(even):not([data-tw-status]) { background: #f9fafb; }
+table.report.sortable tbody tr:hover:not([data-tw-status]) { background-color: #eef2ff !important; }
 table.report tbody td { padding: 0.55rem 0.8rem; border-bottom: 1px solid #e5e7eb; vertical-align: middle; color: #1f2937; }
 table.report tbody td a {
   font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.78rem; font-weight: 600;
@@ -143,13 +143,25 @@ table.report tbody td a {
 table.report tbody td a:hover { text-decoration: underline; }
 
 
-/* Fossil priority classes: left stripe when server assigns tr.row* (no workflow pill yet). */
-table.report tbody tr:not(:has(.status-pill)).row0 { box-shadow: inset 4px 0 0 #2d7a45; }
-table.report tbody tr:not(:has(.status-pill)).row1 { box-shadow: inset 4px 0 0 #a33333; }
-table.report tbody tr:not(:has(.status-pill)).row2 { box-shadow: inset 4px 0 0 #2a5bbf; }
-table.report tbody tr:not(:has(.status-pill)).row3 { box-shadow: inset 4px 0 0 #b08e1f; }
-table.report tbody tr:not(:has(.status-pill)).row4 { box-shadow: inset 4px 0 0 #a85f24; }
-table.report tbody tr:not(:has(.status-pill)).row5 { box-shadow: inset 4px 0 0 #1f2937; }
+/* Fossil tr.row* — left stripe on first td (inset box-shadow; use first-of-type for whitespace in <tr>) */
+table.report.sortable tbody tr:not([data-tw-status]).row0 td:first-of-type {
+  box-shadow: inset 5px 0 0 #2d7a45 !important;
+}
+table.report.sortable tbody tr:not([data-tw-status]).row1 td:first-of-type {
+  box-shadow: inset 5px 0 0 #a33333 !important;
+}
+table.report.sortable tbody tr:not([data-tw-status]).row2 td:first-of-type {
+  box-shadow: inset 5px 0 0 #2a5bbf !important;
+}
+table.report.sortable tbody tr:not([data-tw-status]).row3 td:first-of-type {
+  box-shadow: inset 5px 0 0 #b08e1f !important;
+}
+table.report.sortable tbody tr:not([data-tw-status]).row4 td:first-of-type {
+  box-shadow: inset 5px 0 0 #a85f24 !important;
+}
+table.report.sortable tbody tr:not([data-tw-status]).row5 td:first-of-type {
+  box-shadow: inset 5px 0 0 #1f2937 !important;
+}
 
 /* Ticket Detail */
 .twowiki-tkt-shell {
@@ -362,52 +374,72 @@ footer { max-width: 1000px; margin: 0 auto; padding: 1rem 2rem; font-size: 0.75r
   font-weight: 700;
 }
 
-/* ----- Report list: full-row tint from STATUS pill (workflow v2; beats zebra + Fossil tr.row*) ----- */
-table.report tbody tr:has(.status-pill) { box-shadow: none; }
-table.report tbody tr:has(.status-active),
-table.report tbody tr:has(.status-open) {
-  background: rgba(217, 75, 75, 0.14) !important;
+/* KEY legend table (footer.js adds .twowiki-status-key) */
+table.report.twowiki-status-key {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 4px 4px 0 0;
+  margin: 0 0 0;
+  overflow: hidden;
+  background: #fff;
+  border-collapse: collapse;
 }
-table.report tbody tr:hover:has(.status-active),
-table.report tbody tr:hover:has(.status-open) {
-  background: rgba(217, 75, 75, 0.22) !important;
+table.report.twowiki-status-key tbody td {
+  padding: 0.45rem 0.55rem;
+  text-align: center;
+  vertical-align: middle;
+  border-right: 1px solid #e5e7eb;
+  border-bottom: none;
+  background: #fafafa;
 }
-table.report tbody tr:has(.status-review) { background: rgba(59, 120, 231, 0.12) !important; }
-table.report tbody tr:hover:has(.status-review) { background: rgba(59, 120, 231, 0.2) !important; }
-table.report tbody tr:has(.status-fixed),
-table.report tbody tr:has(.status-verified) {
-  background: rgba(63, 165, 95, 0.14) !important;
+table.report.twowiki-status-key tbody td:last-child { border-right: none; }
+
+/* Ticket/wiki edit bar — Fossil uses div.sectionmenu; some pages use div.submenu */
+div.sectionmenu,
+div.submenu {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 0;
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: #1f2937;
+  border-bottom: 1px solid #111827;
 }
-table.report tbody tr:hover:has(.status-fixed),
-table.report tbody tr:hover:has(.status-verified) {
-  background: rgba(63, 165, 95, 0.22) !important;
+div.sectionmenu > a.button:link,
+div.sectionmenu > a.button:visited,
+div.submenu a:link,
+div.submenu a:visited {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.55rem 1rem;
+  color: #e5e7eb !important;
+  text-decoration: none !important;
+  font-weight: 700 !important;
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  background: transparent;
+  transition: background 0.12s, color 0.12s;
 }
-table.report tbody tr:has(.status-tested) { background: rgba(240, 200, 69, 0.22) !important; }
-table.report tbody tr:hover:has(.status-tested) { background: rgba(240, 200, 69, 0.32) !important; }
-table.report tbody tr:has(.status-deferred) { background: rgba(236, 147, 74, 0.16) !important; }
-table.report tbody tr:hover:has(.status-deferred) { background: rgba(236, 147, 74, 0.26) !important; }
-table.report tbody tr:has(.status-closed) { background: rgba(55, 65, 81, 0.12) !important; }
-table.report tbody tr:hover:has(.status-closed) { background: rgba(55, 65, 81, 0.2) !important; }
-table.report tbody tr:has(.status-draft) { background: rgba(156, 163, 175, 0.22) !important; }
-table.report tbody tr:hover:has(.status-draft) { background: rgba(156, 163, 175, 0.32) !important; }
-table.report tbody tr:has(.status-submitted) { background: rgba(59, 120, 231, 0.12) !important; }
-table.report tbody tr:hover:has(.status-submitted) { background: rgba(59, 120, 231, 0.2) !important; }
-table.report tbody tr:has(.status-approved),
-table.report tbody tr:has(.status-completed) {
-  background: rgba(45, 122, 69, 0.12) !important;
+div.sectionmenu > a.button:hover,
+div.submenu a:hover {
+  background: #374151 !important;
+  color: #fff !important;
 }
-table.report tbody tr:hover:has(.status-approved),
-table.report tbody tr:hover:has(.status-completed) {
-  background: rgba(45, 122, 69, 0.2) !important;
+div.sectionmenu > a.button[href*="tktnew"],
+div.submenu a[href*="tktnew"] {
+  background: #3b78e7 !important;
+  color: #fff !important;
 }
-table.report tbody tr:has(.status-rejected) { background: rgba(217, 75, 75, 0.14) !important; }
-table.report tbody tr:hover:has(.status-rejected) { background: rgba(217, 75, 75, 0.22) !important; }
-table.report tbody tr:has(.status-implemented) { background: rgba(139, 92, 246, 0.12) !important; }
-table.report tbody tr:hover:has(.status-implemented) { background: rgba(139, 92, 246, 0.2) !important; }
-table.report tbody tr:has(.status-superseded) { background: rgba(240, 200, 69, 0.18) !important; }
-table.report tbody tr:hover:has(.status-superseded) { background: rgba(240, 200, 69, 0.28) !important; }
-table.report tbody tr:has(.status-retired) { background: rgba(55, 65, 81, 0.12) !important; }
-table.report tbody tr:hover:has(.status-retired) { background: rgba(55, 65, 81, 0.2) !important; }
+div.sectionmenu > a.button[href*="tktnew"]:hover,
+div.submenu a[href*="tktnew"]:hover {
+  background: #2a5bbf !important;
+}
 
 /* TAGS column: chips must win over table td defaults (this layer is last in apply merge). */
 table.report td.twowiki-tag-cell { white-space: normal; vertical-align: middle; }
@@ -435,3 +467,102 @@ table.report td.twowiki-tag-cell .twowiki-tag-chip:hover {
   border-color: #93c5fd;
   color: #1e3a8a;
 }
+
+/* (repeat) Report row stripes — must be last in this file so TAG/td rules do not override */
+/* ----- Report data rows: left stripe via data-tw-status (set in footer.js; avoids :has() + table quirks) ----- */
+table.report.sortable tbody tr[data-tw-status="active"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="active"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #a33333 !important;
+}
+table.report.sortable tbody tr[data-tw-status="active"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="open"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="open"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #a33333 !important;
+}
+table.report.sortable tbody tr[data-tw-status="open"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="review"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="review"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #2a5bbf !important;
+}
+table.report.sortable tbody tr[data-tw-status="review"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="fixed"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="fixed"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #2d7a45 !important;
+}
+table.report.sortable tbody tr[data-tw-status="fixed"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="verified"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="verified"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #2d7a45 !important;
+}
+table.report.sortable tbody tr[data-tw-status="verified"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="tested"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="tested"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #b08e1f !important;
+}
+table.report.sortable tbody tr[data-tw-status="tested"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="deferred"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="deferred"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #a85f24 !important;
+}
+table.report.sortable tbody tr[data-tw-status="deferred"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="closed"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="closed"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #1f2937 !important;
+}
+table.report.sortable tbody tr[data-tw-status="closed"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="draft"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="draft"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #6b7280 !important;
+}
+table.report.sortable tbody tr[data-tw-status="draft"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="submitted"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="submitted"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #2a5bbf !important;
+}
+table.report.sortable tbody tr[data-tw-status="submitted"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="approved"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="approved"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #2d7a45 !important;
+}
+table.report.sortable tbody tr[data-tw-status="approved"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="completed"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="completed"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #2d7a45 !important;
+}
+table.report.sortable tbody tr[data-tw-status="completed"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="rejected"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="rejected"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #a33333 !important;
+}
+table.report.sortable tbody tr[data-tw-status="rejected"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="implemented"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="implemented"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #6d28d9 !important;
+}
+table.report.sortable tbody tr[data-tw-status="implemented"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="superseded"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="superseded"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #b08e1f !important;
+}
+table.report.sortable tbody tr[data-tw-status="superseded"]:hover { background: #f1f5f9 !important; }
+
+table.report.sortable tbody tr[data-tw-status="retired"] { background: #f9fafb !important; }
+table.report.sortable tbody tr[data-tw-status="retired"] td:first-of-type {
+  box-shadow: inset 5px 0 0 #1f2937 !important;
+}
+table.report.sortable tbody tr[data-tw-status="retired"]:hover { background: #f1f5f9 !important; }
+

@@ -78,6 +78,50 @@ const ELK = 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-
   if(!document.body || !document.body.classList.contains('rpage-rptview')) return;
   var tables = document.querySelectorAll('table.report');
   if(!tables || !tables.length) return;
+
+  function slugifyStatus(s){
+    var slug = (s || '').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+    return slug || 'unknown';
+  }
+
+  /* Left stripe colors (must match 02a/css.txt .status-* border tones). Inline — Fossil table/border cascade often drops td box-shadow from CONFIG css. */
+  var STRIPE_HEX = {
+    active: '#a33333', open: '#a33333', review: '#2a5bbf', fixed: '#2d7a45', verified: '#2d7a45',
+    tested: '#b08e1f', deferred: '#a85f24', closed: '#1f2937', draft: '#6b7280', submitted: '#2a5bbf',
+    approved: '#2d7a45', completed: '#2d7a45', rejected: '#a33333', implemented: '#6d28d9',
+    superseded: '#b08e1f', retired: '#1f2937'
+  };
+  function paintRowStripe(tr){
+    var slug = tr.getAttribute('data-tw-status');
+    if(!slug || !tr.cells || !tr.cells.length) return;
+    var hx = STRIPE_HEX[slug];
+    if(!hx) return;
+    tr.cells[0].style.setProperty('box-shadow', 'inset 5px 0 0 ' + hx, 'important');
+  }
+
+  /* First table with no thead + single body row = status KEY legend (Fossil HTML, not .status-key div). */
+  var keyTbl = tables[0];
+  if(keyTbl && !keyTbl.querySelector('thead')){
+    var kRows = keyTbl.querySelectorAll('tbody tr');
+    if(kRows.length === 1){
+      var kCells = kRows[0].querySelectorAll('td');
+      if(kCells.length >= 3){
+        keyTbl.classList.add('twowiki-status-key');
+        for(var ci = 0; ci < kCells.length; ci++){
+          var ktd = kCells[ci];
+          if(ktd.querySelector('.status-pill')) continue;
+          var kt = (ktd.textContent || '').trim();
+          if(!kt) continue;
+          var kp = document.createElement('span');
+          kp.className = 'status-pill status-' + slugifyStatus(kt);
+          kp.textContent = kt;
+          ktd.textContent = '';
+          ktd.appendChild(kp);
+        }
+      }
+    }
+  }
+
   tables.forEach(function(tbl){
     var heads = tbl.querySelectorAll('thead th');
     if(!heads || !heads.length) return;
@@ -141,19 +185,28 @@ const ELK = 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-
       /* Plain-text STATUS cells → .status-pill + .status-<slug> so design CSS applies (same as keyed HTML in demos). */
       if(iStatus >= 0 && tds.length > iStatus){
         var stCell = tds[iStatus];
-        if(stCell && !stCell.querySelector('.status-pill')){
-          var stRaw = (stCell.textContent || '').trim();
-          if(stRaw){
-            var slug = stRaw.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
-            if(!slug) slug = 'unknown';
-            var pill = document.createElement('span');
-            pill.className = 'status-pill status-' + slug;
-            pill.textContent = stRaw;
-            stCell.textContent = '';
-            stCell.appendChild(pill);
+        if(stCell){
+          var existing = stCell.querySelector('.status-pill');
+          if(existing){
+            var cls = existing.className.split(/\s+/).filter(function(c){
+              return c.indexOf('status-') === 0 && c !== 'status-pill';
+            });
+            if(cls.length){ tr.setAttribute('data-tw-status', cls[0].replace(/^status-/, '')); }
+          } else {
+            var stRaw = (stCell.textContent || '').trim();
+            if(stRaw){
+              var slug = slugifyStatus(stRaw);
+              var pill = document.createElement('span');
+              pill.className = 'status-pill status-' + slug;
+              pill.textContent = stRaw;
+              stCell.textContent = '';
+              stCell.appendChild(pill);
+              tr.setAttribute('data-tw-status', slug);
+            }
           }
         }
       }
+      paintRowStripe(tr);
     });
   });
 })();
