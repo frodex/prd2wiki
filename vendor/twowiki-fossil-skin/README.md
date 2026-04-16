@@ -12,14 +12,15 @@ This folder contains **repository `config` payloads** for Fossil 2.29+ to make `
 |------|----------------------|---------|
 | `lovable_01a/css.txt` | (part of `css`) | Base skin CSS from the Lovable export (first layer in merged `css`). |
 | `one-line-menu-ticket-tags-01a/twowiki-fossil-skin-v6.css` | (part of `css`) | Design layer (last in merge). Single-line header, v6 doc/ticket chrome. |
-| `lovable_01a/header.txt` | `header` | Chrome: logo area, title, `nav.mainmenu` + hamburger (`hbmenu.js`). |
+| `lovable_01a/header.txt` | `header` | Chrome: logo, **brand**, `nav.mainmenu` (hamburger + `$mainmenu` loop), **breadcrumb-bar**, opens `<div class="content">`. Keep in sync with the Lovable export in `one-line-menu-ticket-tags-01a/twowiki-fossil-skin-v6.zip` (do not paste `$<menu.*>` literals — use the TH1 `foreach` pattern). |
+| `mainmenu.txt` | `mainmenu` | Full top bar (Home, Timeline, Files, …); merged into SQL by `apply_twowiki_skin.py`. |
 | `lovable_01a/details.txt` | `details` | Skin details (pikchr / graph toggles). |
 | `lovable_01a/js.txt` | `js` | Optional skin JS (package ships a comment-only placeholder). |
 | `twowiki-fossil-th1-append.css` | (part of `css`) | Appended after package CSS: float resets, `.sectionmenu`, ticket column width, Mermaid overflow, setup-page tweaks. |
 | `ticket-viewpage.th1` | `ticket-viewpage` | Ticket view: `.twowiki-doc`, sortable tables + task lists (classic script). |
 | `ticket-editpage.th1` | `ticket-editpage` | Ticket editor TH1. |
 | `footer.th1` | `footer` | Mermaid 11 + ELK (module), ticket `/ticket/HASH` redirect, Setup/skin links — **not** `lovable_01a/footer.txt`. |
-| `apply_twowiki_skin.py` | — | Emits SQL for `css`, `header`, `details`, `js`, **`mainmenu`** (stock bar + **Tickets → `/rptview/1`**), tickets, `footer`, `default-csp`. Re-run apply after editing Admin **Configuration** if you want this file to remain source of truth. |
+| `apply_twowiki_skin.py` | — | Emits SQL for `css`, `header`, `details`, `js`, **`mainmenu`**, `ticket-viewpage`, `ticket-editpage`, `footer`, `default-csp`. Re-run apply after editing Admin **Configuration** if you want this file to remain source of truth. |
 
 **Mermaid / ELK** stay in **`footer.th1`** (runs after content). **`header`** is the Lovable layout only; do not move Mermaid there without revisiting CSP and load order.
 

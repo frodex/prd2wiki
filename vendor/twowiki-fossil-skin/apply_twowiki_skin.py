@@ -6,6 +6,7 @@ Layout:
   - ``twowiki-fossil-th1-append.css`` — structural CSS (float resets, ticket column, Mermaid overflow).
   - ``one-line-menu-ticket-tags-01a/twowiki-fossil-skin-v6.css`` — design layer (appended last). See ``SKIN-LAYERING.md``.
   - ``footer.th1`` — twoWiki Mermaid/ELK, ticket URL redirect, Setup/skin footer links (not lovable's minimal footer.txt).
+  - ``mainmenu.txt`` — Fossil ``config.mainmenu`` (Home, Timeline, Tickets, …); see Fossil help ``mainmenu``.
   - ``ticket-viewpage.th1`` / ``ticket-editpage.th1`` — ticket reader/editor + sortable tables / task lists.
 """
 import os
@@ -40,6 +41,7 @@ def main() -> None:
     tkt = open(os.path.join(HERE, "ticket-viewpage.th1"), encoding="utf-8").read()
     tkt_edit = open(os.path.join(HERE, "ticket-editpage.th1"), encoding="utf-8").read()
     footer = open(os.path.join(HERE, "footer.th1"), encoding="utf-8").read()
+    mainmenu = open(os.path.join(HERE, "mainmenu.txt"), encoding="utf-8").read().strip() + "\n"
     # $nonce in CSP is replaced by Fossil at runtime (see style.c style_csp).
     # ELK (elkjs) uses WebAssembly; without 'wasm-unsafe-eval' browsers block it and Mermaid falls back
     # or fails — stock Fossil skins often omit default-csp, so this only bites the custom skin.
@@ -65,6 +67,7 @@ def main() -> None:
         ("header", header),
         ("details", details),
         ("js", js),
+        ("mainmenu", mainmenu),
         ("ticket-viewpage", tkt),
         ("ticket-editpage", tkt_edit),
         ("footer", footer),
