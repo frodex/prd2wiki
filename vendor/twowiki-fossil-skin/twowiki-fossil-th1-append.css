@@ -269,6 +269,13 @@ h1.twowiki-tkt-title {
   margin: 1.5rem 0 0.5rem;
   font-weight: 600;
 }
+/* Leading # line: Fossil markdown puts plain text in list[0], body in list[1]. */
+.twowiki-doc h2.twowiki-md-from-atx-h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+  color: #0f172a;
+}
 .twowiki-doc h3 {
   font-size: 1.1rem;
   margin: 1.2rem 0 0.4rem;

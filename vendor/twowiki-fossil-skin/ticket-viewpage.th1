@@ -80,34 +80,45 @@ proc twowiki_md_hardbreaks {txt} {
   return $res
 }
 }
-if {[info exists body] && $body ne ""} {
-  set mdout [markdown [twowiki_md_hardbreaks $body]]
-  html {<div class='twowiki-doc markdown'>}
+# Fossil markdown omits a leading # ... line from the HTML body and returns it as
+# list element 0 (see fossil doc markdown.md "Special Features For Fossil"). Wiki skins
+# show that title in the page chrome; ticket-viewpage only used [lindex $mdout 1], so
+# in-body H1 text disappeared. Emit element 0 as h2 under the ticket title (page h1).
+if {[lsearch [info commands] twowiki_emit_markdown_fragment] < 0} {
+proc twowiki_emit_markdown_fragment {raw} {
+  set mdout [markdown [twowiki_md_hardbreaks $raw]]
+  set lead [lindex $mdout 0]
+  if {$lead ne ""} {
+    html {<h2 class="twowiki-md-from-atx-h1">}
+    html $lead
+    html {</h2>}
+  }
   html [untaint [lindex $mdout 1]]
+}
+}
+if {[info exists body] && $body ne ""} {
+  html {<div class='twowiki-doc markdown'>}
+  twowiki_emit_markdown_fragment $body
   html {</div>}
 }
 if {[info exists section_overview] && $section_overview ne ""} {
-  set mdout [markdown [twowiki_md_hardbreaks $section_overview]]
   html {<hr><h2 class='twowiki-section-h'>Overview</h2><div class='twowiki-doc markdown'>}
-  html [untaint [lindex $mdout 1]]
+  twowiki_emit_markdown_fragment $section_overview
   html {</div>}
 }
 if {[info exists section_api] && $section_api ne ""} {
-  set mdout [markdown [twowiki_md_hardbreaks $section_api]]
   html {<hr><h2 class='twowiki-section-h'>API</h2><div class='twowiki-doc markdown'>}
-  html [untaint [lindex $mdout 1]]
+  twowiki_emit_markdown_fragment $section_api
   html {</div>}
 }
 if {[info exists section_storage] && $section_storage ne ""} {
-  set mdout [markdown [twowiki_md_hardbreaks $section_storage]]
   html {<hr><h2 class='twowiki-section-h'>Storage</h2><div class='twowiki-doc markdown'>}
-  html [untaint [lindex $mdout 1]]
+  twowiki_emit_markdown_fragment $section_storage
   html {</div>}
 }
 if {[info exists section_auth] && $section_auth ne ""} {
-  set mdout [markdown [twowiki_md_hardbreaks $section_auth]]
   html {<hr><h2 class='twowiki-section-h'>Auth</h2><div class='twowiki-doc markdown'>}
-  html [untaint [lindex $mdout 1]]
+  twowiki_emit_markdown_fragment $section_auth
   html {</div>}
 }
 set twowiki_icmt_hdr 0
@@ -122,9 +133,8 @@ query {SELECT icomment, login, datetime(tkt_mtime) AS cmt_time FROM ticketchng W
   html { · }
   puts $cmt_time
   html {</p>}
-  set mdout [markdown [twowiki_md_hardbreaks $icomment]]
   html {<div class='twowiki-doc markdown twowiki-tkt-comment-body'>}
-  html [untaint [lindex $mdout 1]]
+  twowiki_emit_markdown_fragment $icomment
   html {</div></div>}
 }
 </th1>
