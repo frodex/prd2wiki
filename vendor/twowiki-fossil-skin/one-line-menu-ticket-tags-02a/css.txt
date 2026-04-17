@@ -55,8 +55,10 @@ nav.mainmenu a.active { color: #fff; border-bottom-color: #3b82f6; background-co
 .crumb-actions a { color: #4b5563; text-decoration: none; font-weight: 500; }
 .crumb-actions a:hover { color: #111827; text-decoration: underline; }
 
+/* Same column width on /rptview, /tktview, wiki (v8 measure). */
 div.content {
   max-width: 1280px; margin: 0 auto; padding: 0.85rem 2rem 3rem; flex: 1;
+  box-sizing: border-box;
 }
 div.content a { color: #1d4ed8; text-decoration: none; font-weight: 500; }
 div.content a:hover { color: #1e40af; text-decoration: underline; }
@@ -240,7 +242,7 @@ h2.twowiki-section-h {
 .twowiki-tkt-comment-meta { padding: 0.85rem 2rem 0; font-size: 0.76rem; color: #6b7280; font-weight: 500; margin: 0; }
 .twowiki-tkt-comment-body { padding: 0 2rem 1.25rem; }
 
-footer { max-width: 1000px; margin: 0 auto; padding: 1rem 2rem; font-size: 0.75rem; color: #9ca3af; text-align: right; border-top: 1px solid #e5e7eb; }
+footer { max-width: 1280px; margin: 0 auto; padding: 1rem 2rem; font-size: 0.75rem; color: #9ca3af; text-align: right; border-top: 1px solid #e5e7eb; box-sizing: border-box; }
 
 @media screen and (max-width: 600px) {
   .desktoponly { display: none; }
