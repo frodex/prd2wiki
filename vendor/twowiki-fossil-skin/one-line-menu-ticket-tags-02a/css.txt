@@ -568,3 +568,14 @@ table.report.sortable tbody tr[data-tw-status="retired"] td:first-of-type {
 }
 table.report.sortable tbody tr[data-tw-status="retired"]:hover { background: #f1f5f9 !important; }
 
+/* Main column: lovable layer sets div.content { max-width: 1000px } earlier in the merge.
+   Ticket pages (/tktview) must match reports — reinforce so nothing (cache, older rules) keeps 1000px. */
+body div.wiki > div.content,
+body.tkt div.content,
+body[class*="rpage-"] div.content {
+  max-width: 1280px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box;
+}
+

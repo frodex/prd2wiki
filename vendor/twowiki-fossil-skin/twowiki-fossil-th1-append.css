@@ -108,7 +108,7 @@ body[class*="setup_"] .hbdrop {
 
 /* Footer: visible escape hatch to Fossil skin editor (see footer.th1 TH1 block). */
 .twowiki-admin-strip {
-  max-width: 1000px;
+  max-width: 1280px;
   margin: 0 auto 0.65rem;
   padding: 0.45rem 0.85rem;
   font-size: 0.8rem;
