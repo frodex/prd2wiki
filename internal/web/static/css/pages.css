@@ -12,6 +12,54 @@
     font-size: 0.9rem;
 }
 
+.edit-url-hint {
+    margin-bottom: 1rem;
+}
+
+/* wiki vs project URL chips (page view + edit) */
+.page-url-aliases {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.75rem 1rem;
+    font-size: 0.8rem;
+    color: #555;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.url-alias {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem;
+    max-width: 100%;
+}
+
+.url-alias-label {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 3px;
+    padding: 0.1rem 0.35rem;
+    line-height: 1.2;
+}
+
+.url-alias-link {
+    color: #2563eb;
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.url-alias-link:hover {
+    text-decoration: underline;
+}
+
 /* Meta bar */
 .meta-bar {
     display: flex;
@@ -216,4 +264,49 @@
     font-size: 1.1rem;
     color: #666;
     margin-bottom: 1.5rem;
+}
+
+/* Admin stubs (Phase 3d) */
+.admin-intro {
+    color: #444;
+    margin-bottom: 1rem;
+    max-width: 42rem;
+}
+.admin-note {
+    font-size: 0.9rem;
+    color: #555;
+    margin-bottom: 1.25rem;
+}
+.admin-tool-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.admin-tool-list li {
+    margin: 0.5rem 0;
+}
+.admin-tool-list a {
+    font-weight: 600;
+    color: #2c5282;
+    text-decoration: none;
+}
+.admin-tool-list a:hover {
+    text-decoration: underline;
+}
+.admin-tool-desc {
+    color: #666;
+    font-size: 0.95rem;
+}
+.admin-stub-form {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fafafa;
+    max-width: 36rem;
+}
+.admin-stub-hint {
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 0.75rem;
 }

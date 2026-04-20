@@ -18,6 +18,7 @@ func (h *Handler) renderError(w http.ResponseWriter, code int, message string) {
 		Title:   fmt.Sprintf("%d", code),
 		Content: ErrorData{Code: code, Message: message},
 	}
+	h.preparePageData(&data)
 	t := h.templates["templates/error.html"]
 	if t != nil {
 		t.ExecuteTemplate(w, "layout", data)

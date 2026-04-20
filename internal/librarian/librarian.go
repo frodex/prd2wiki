@@ -4,14 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	wgit "github.com/frodex/prd2wiki/internal/git"
 	"github.com/frodex/prd2wiki/internal/index"
+	"github.com/frodex/prd2wiki/internal/libclient"
 	"github.com/frodex/prd2wiki/internal/schema"
-	"github.com/frodex/prd2wiki/internal/vectordb"
+	"github.com/frodex/prd2wiki/internal/tree"
 	"github.com/frodex/prd2wiki/internal/vocabulary"
+	"github.com/google/uuid"
 )
 
 // PagePathOptions controls how pagePath resolves the storage path.
@@ -35,32 +38,82 @@ type SubmitRequest struct {
 	Body        []byte
 	Intent      string
 	Author      string
+	// PageUUID and ProjectUUID are optional until tree migration; when empty,
+	// syncToLibrarian (future libclient) is a no-op.
+	PageUUID    string
+	ProjectUUID string
+	// UseFlatUUIDPath stores the page at pages/{uuid}.md (tree-backed pages). Ignores module/category layout.
+	UseFlatUUIDPath bool
 }
 
 // SubmitResult describes the outcome of a submission.
 type SubmitResult struct {
-	Saved    bool           `json:"saved"`
-	Path     string         `json:"path"`
-	Issues   []schema.Issue `json:"issues,omitempty"`
-	Warnings []string       `json:"warnings,omitempty"`
+	Saved      bool           `json:"saved"`
+	Path       string         `json:"path"`
+	Issues     []schema.Issue `json:"issues,omitempty"`
+	Warnings   []string       `json:"warnings,omitempty"`
+	CommitHash string         `json:"commit_hash,omitempty"`
+}
+
+// submitFlags selects behavior for the unified submit path.
+type submitFlags struct {
+	blockOnErrors bool
+	normalize     bool
+}
+
+func submitFlagsForIntent(intent string) (submitFlags, error) {
+	switch intent {
+	case IntentVerbatim:
+		return submitFlags{}, nil
+	case IntentConform:
+		return submitFlags{blockOnErrors: true, normalize: true}, nil
+	case IntentIntegrate:
+		return submitFlags{blockOnErrors: true, normalize: true}, nil
+	default:
+		return submitFlags{}, fmt.Errorf("unknown intent %q", intent)
+	}
 }
 
 // Librarian orchestrates page submission: validation, normalization, persistence, and indexing.
 type Librarian struct {
 	repo    *wgit.Repo
 	indexer *index.Indexer
-	vstore  *vectordb.Store
 	vocab   *vocabulary.Store
+
+	libClient   *libclient.Client
+	treeHolder  *tree.IndexHolder
+	projectUUID string // full project UUID for wiki:{uuid} namespace (pippi memory_search / memory_store)
+}
+
+// Option configures optional integrations (e.g. pippi-librarian sync).
+type Option func(*Librarian)
+
+// WithPippiLibrarian enables async push to pippi-librarian and .link line 2 updates when cli is non-nil.
+func WithPippiLibrarian(cli *libclient.Client, holder *tree.IndexHolder) Option {
+	return func(l *Librarian) {
+		l.libClient = cli
+		l.treeHolder = holder
+	}
+}
+
+// WithProjectUUID sets the canonical project UUID for librarian memory namespaces (wiki:{uuid}).
+func WithProjectUUID(uuid string) Option {
+	return func(l *Librarian) {
+		l.projectUUID = strings.TrimSpace(uuid)
+	}
 }
 
 // New creates a new Librarian.
-func New(repo *wgit.Repo, indexer *index.Indexer, vstore *vectordb.Store, vocab *vocabulary.Store) *Librarian {
-	return &Librarian{
+func New(repo *wgit.Repo, indexer *index.Indexer, vocab *vocabulary.Store, opts ...Option) *Librarian {
+	l := &Librarian{
 		repo:    repo,
 		indexer: indexer,
-		vstore:  vstore,
 		vocab:   vocab,
 	}
+	for _, o := range opts {
+		o(l)
+	}
+	return l
 }
 
 // generateID creates a content-addressed hash ID from the title and current time,
@@ -79,7 +132,11 @@ func generateID(title string) string {
 func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
 	// Auto-generate ID if empty
 	if req.Frontmatter.ID == "" {
-		req.Frontmatter.ID = generateID(req.Frontmatter.Title)
+		if req.UseFlatUUIDPath {
+			req.Frontmatter.ID = uuid.New().String()
+		} else {
+			req.Frontmatter.ID = generateID(req.Frontmatter.Title)
+		}
 	}
 
 	// Extract base64 images on ALL intents — binary data doesn't belong in markdown.
@@ -88,7 +145,7 @@ func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 		req.Body = []byte(cleaned)
 		// Store each extracted image as an attachment in git
 		for _, img := range extractedImages {
-			if err := l.repo.WritePage(req.Branch, img.Path, img.Data,
+			if _, err := l.repo.WritePage(req.Branch, img.Path, img.Data,
 				"extract inline image: "+img.Filename, req.Author); err != nil {
 				// Log but don't fail the whole submission
 				continue
@@ -96,92 +153,253 @@ func (l *Librarian) Submit(ctx context.Context, req SubmitRequest) (*SubmitResul
 		}
 	}
 
-	switch req.Intent {
-	case IntentVerbatim:
-		return l.submitVerbatim(ctx, req)
-	case IntentConform:
-		return l.submitConform(ctx, req)
-	case IntentIntegrate:
-		return l.submitIntegrate(ctx, req)
-	default:
-		return nil, fmt.Errorf("unknown intent %q", req.Intent)
+	return l.submit(ctx, req)
+}
+
+func projectGitShard(projectUUID string) string {
+	projectUUID = strings.TrimSpace(projectUUID)
+	if len(projectUUID) >= 8 {
+		return projectUUID[:8]
 	}
+	return projectUUID
+}
+
+// maybeSyncToLibrarian pushes the page to pippi-librarian (async) when configured.
+func (l *Librarian) maybeSyncToLibrarian(ctx context.Context, req SubmitRequest, res *SubmitResult) {
+	if l == nil || l.libClient == nil || l.treeHolder == nil || res == nil || !res.Saved {
+		return
+	}
+	pageUUID := strings.TrimSpace(req.PageUUID)
+	if pageUUID == "" && req.Frontmatter != nil {
+		pageUUID = strings.TrimSpace(req.Frontmatter.ID)
+	}
+	projectUUID := strings.TrimSpace(req.ProjectUUID)
+	if projectUUID == "" || pageUUID == "" {
+		return
+	}
+	_ = ctx
+	commitHash := res.CommitHash
+	reqCopy := req
+	go l.runSyncToLibrarian(reqCopy, pageUUID, projectUUID, commitHash)
+}
+
+func (l *Librarian) runSyncToLibrarian(req SubmitRequest, pageUUID, projectUUID, commitHash string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ext := map[string]any{
+		"source_repo":   "proj_" + projectGitShard(projectUUID) + ".git",
+		"source_branch": req.Branch,
+		"source_commit": commitHash,
+		"author":        req.Author,
+	}
+	if req.Frontmatter != nil {
+		ext["page_title"] = req.Frontmatter.Title
+		ext["page_type"] = req.Frontmatter.Type
+		ext["page_status"] = req.Frontmatter.Status
+		ext["page_tags"] = strings.Join(req.Frontmatter.Tags, ",")
+	}
+
+	ns := "wiki:" + projectUUID
+	headID, err := l.libClient.MemoryStore(ctx, ns, pageUUID, string(req.Body), ext)
+	if err != nil {
+		slog.Warn("librarian sync failed", "page", pageUUID, "err", err)
+		return
+	}
+	if err := l.treeHolder.UpdateLibrarianHeadInLink(pageUUID, headID); err != nil {
+		slog.Warn("librarian .link line 2 update failed", "page", pageUUID, "err", err)
+	}
+}
+
+func normalizeQueryWithVocab(vocab *vocabulary.Store, query string) string {
+	words := strings.Fields(query)
+	normalized := make([]string, len(words))
+	for i, w := range words {
+		normalized[i] = vocab.Normalize(w)
+	}
+	return strings.Join(normalized, " ")
+}
+
+func vectorHitIsHistory(versionStatus string) bool {
+	switch strings.ToLower(strings.TrimSpace(versionStatus)) {
+	case "", "current":
+		return false
+	default:
+		return true
+	}
+}
+
+func shortSourceCommit(full string) string {
+	full = strings.TrimSpace(full)
+	if len(full) > 12 {
+		return full[:12]
+	}
+	return full
+}
+
+// aggregateMemorySearchHits keeps the first (highest-scored) hit per page UUID.
+// With deep search, that hit may be a superseded version; MatchFromHistory and HistoryCommit describe it.
+func aggregateMemorySearchHits(hits []libclient.MemorySearchHit, limit int) []SearchResult {
+	seen := make(map[string]bool)
+	var out []SearchResult
+	for _, h := range hits {
+		id := strings.TrimSpace(h.PageUUID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, SearchResult{
+			PageID:           id,
+			Section:          "",
+			Similarity:       h.Score,
+			MatchFromHistory: vectorHitIsHistory(h.VersionStatus),
+			HistoryCommit:    shortSourceCommit(h.SourceCommit),
+			VectorSnippet:    strings.TrimSpace(h.Snippet),
+		})
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func filterOutPage(in []SearchResult, pageID string) []SearchResult {
+	if pageID == "" {
+		return in
+	}
+	var out []SearchResult
+	for _, r := range in {
+		if r.PageID == pageID {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+func trimRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes])
+}
+
+// readPageBodyAcrossBranches loads raw markdown body for pageID from the first branch that has the page.
+func (l *Librarian) readPageBodyAcrossBranches(pageID string) ([]byte, error) {
+	if l == nil || l.repo == nil {
+		return nil, fmt.Errorf("no repo")
+	}
+	branches, err := l.repo.ListBranches()
+	if err != nil {
+		return nil, err
+	}
+	for _, br := range branches {
+		path := ResolvePagePath(l.repo, br, pageID)
+		if !l.repo.HasPage(br, path) {
+			continue
+		}
+		_, body, err := l.repo.ReadPageWithMeta(br, path)
+		if err == nil {
+			return body, nil
+		}
+	}
+	return nil, fmt.Errorf("page not found: %s", pageID)
 }
 
 // SearchResult holds a search result with page ID and relevance.
 type SearchResult struct {
-	PageID     string  `json:"page_id"`
-	Section    string  `json:"section,omitempty"`
-	Similarity float64 `json:"similarity"`
+	PageID           string  `json:"page_id"`
+	Section          string  `json:"section,omitempty"`
+	Similarity       float64 `json:"similarity"`
+	MatchFromHistory bool    `json:"match_from_history,omitempty"`
+	HistoryCommit    string  `json:"history_commit,omitempty"`
+	VectorSnippet    string  `json:"vector_snippet,omitempty"`
 }
 
-// Search queries the vector store for pages matching the query text.
-// The query is normalized through the vocabulary before searching.
+// Search calls pippi-librarian memory_search (wiki:{projectUUID} namespace).
+// Returns an error when the librarian is unavailable — callers (api/search.go, web/search.go)
+// handle FTS fallback at the HTTP layer.
+// The query is normalized through the vocabulary before sending.
 func (l *Librarian) Search(ctx context.Context, project, query string, limit int) ([]SearchResult, error) {
-	// Normalize query terms through vocabulary
-	words := strings.Fields(query)
-	normalized := make([]string, len(words))
-	for i, w := range words {
-		normalized[i] = l.vocab.Normalize(w)
-	}
-	normalizedQuery := strings.Join(normalized, " ")
+	normalizedQuery := normalizeQueryWithVocab(l.vocab, query)
 
-	results, err := l.vstore.Search(ctx, project, normalizedQuery, limit)
-	if err != nil {
-		return nil, err
+	if l.libClient != nil && l.projectUUID != "" {
+		ns := "wiki:" + l.projectUUID
+		fetch := limit * 4
+		if fetch < 40 {
+			fetch = 40
+		}
+		hits, err := l.libClient.MemorySearch(ctx, ns, normalizedQuery, fetch, true)
+		if err == nil {
+			return aggregateMemorySearchHits(hits, limit), nil
+		}
+		slog.Warn("librarian memory_search failed — search will use SQLite FTS only",
+			"project", project, "namespace", ns, "err", err)
 	}
 
-	var out []SearchResult
-	for _, r := range results {
-		out = append(out, SearchResult{
-			PageID:     r.PageID,
-			Section:    r.Section,
-			Similarity: r.Similarity,
-		})
-	}
-	return out, nil
+	return nil, fmt.Errorf("librarian search unavailable")
 }
 
-// FindSimilar finds pages similar to the given page via the vector store.
+// FindSimilar finds pages similar to the given page via pippi-librarian memory_search,
+// using the page body as query (metadata-enriched embeddings live in the librarian).
+// Returns nil, nil when the librarian is unavailable or no matches survive filtering.
 func (l *Librarian) FindSimilar(ctx context.Context, project, pageID string, limit int) ([]SearchResult, error) {
-	results, err := l.vstore.FindSimilar(ctx, project, pageID, limit)
-	if err != nil {
-		return nil, err
+	if l.libClient != nil && l.projectUUID != "" {
+		body, err := l.readPageBodyAcrossBranches(pageID)
+		if err == nil && strings.TrimSpace(string(body)) != "" {
+			q := normalizeQueryWithVocab(l.vocab, trimRunes(string(body), 8000))
+			ns := "wiki:" + l.projectUUID
+			hits, err := l.libClient.MemorySearch(ctx, ns, q, max(limit*3, 30), false)
+			if err == nil {
+				out := filterOutPage(aggregateMemorySearchHits(hits, limit*3), pageID)
+				if len(out) > limit {
+					out = out[:limit]
+				}
+				if len(out) > 0 {
+					return out, nil
+				}
+				slog.Debug("FindSimilar: librarian memory_search returned no hits after dedupe/filter",
+					"project", project, "page_id", pageID, "raw_match_rows", len(hits))
+			} else {
+				slog.Warn("librarian memory_search failed for FindSimilar",
+					"project", project, "page_id", pageID, "err", err)
+			}
+		}
 	}
 
-	var out []SearchResult
-	for _, r := range results {
-		out = append(out, SearchResult{
-			PageID:     r.PageID,
-			Section:    r.Section,
-			Similarity: r.Similarity,
-		})
-	}
-	return out, nil
+	return nil, nil // no similar pages found
 }
 
-// RebuildVectorIndex re-embeds all pages from a branch into the vector store.
-func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch string) (int, error) {
-	pages, err := l.repo.ListPages(branch)
-	if err != nil {
-		return 0, err
+// RemoveFromIndexes drops a page from SQLite index and notifies the librarian (async).
+// The librarian delete uses the mem_ record ID from tree .link line 2 (Option A per plan).
+func (l *Librarian) RemoveFromIndexes(pageID string) error {
+	if err := l.indexer.RemovePage(pageID); err != nil {
+		return err
 	}
-
-	count := 0
-	for _, path := range pages {
-		if !strings.HasSuffix(path, ".md") {
-			continue
+	// Async delete from librarian using mem_ ID from tree index.
+	if l.libClient != nil && l.treeHolder != nil {
+		if idx := l.treeHolder.Get(); idx != nil {
+			if ent, ok := idx.PageByUUID(pageID); ok {
+				memID := ent.Page.LibrarianID
+				if memID == "" {
+					slog.Warn("page has no librarian ID (.link line 2 empty), skipping librarian delete", "page_uuid", pageID)
+				} else {
+					go func() {
+						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+						defer cancel()
+						if err := l.libClient.MemoryDelete(ctx, memID); err != nil {
+							slog.Warn("librarian memory_delete failed", "page_uuid", pageID, "mem_id", memID, "err", err)
+						}
+					}()
+				}
+			}
 		}
-		fm, body, err := l.repo.ReadPageWithMeta(branch, path)
-		if err != nil || fm == nil {
-			continue
-		}
-		if err := l.indexInVectorStore(ctx, project, fm, body); err != nil {
-			continue
-		}
-		count++
 	}
-	return count, nil
+	return nil
 }
 
 // pagePath returns the canonical git path for a page.
@@ -194,6 +412,10 @@ func (l *Librarian) RebuildVectorIndex(ctx context.Context, project, branch stri
 //
 // All path segments are sanitized to prevent traversal and injection attacks.
 func pagePath(fm *schema.Frontmatter) string {
+	if schema.IsUUIDPageID(fm.ID) {
+		return fmt.Sprintf("pages/%s.md", strings.ToLower(strings.TrimSpace(fm.ID)))
+	}
+
 	id := schema.SanitizePathSegment(fm.ID)
 
 	// If module or category is set, use the module/category layout (unchanged).
@@ -222,7 +444,9 @@ func pagePath(fm *schema.Frontmatter) string {
 // It checks the hash-prefix directory first, then falls back to the flat layout.
 // The repo is checked to see which path actually has content.
 // If neither exists, returns the canonical path for the ID format.
-func ResolvePagePath(repo interface{ HasPage(branch, path string) bool }, branch, id string) string {
+func ResolvePagePath(repo interface {
+	HasPage(branch, path string) bool
+}, branch, id string) string {
 	sanitized := schema.SanitizePathSegment(id)
 
 	// Try hash-prefix path first (for hash IDs).
@@ -251,159 +475,74 @@ func commitMessage(intent, title string) string {
 	return fmt.Sprintf("submit (%s): %s", intent, title)
 }
 
-// indexInVectorStore indexes the page body into the vector store.
-func (l *Librarian) indexInVectorStore(ctx context.Context, project string, fm *schema.Frontmatter, body []byte) error {
-	chunks := ChunkByHeadings(string(body))
-	if len(chunks) == 0 {
-		// Fall back to a single chunk with the whole body.
-		chunks = []vectordb.TextChunk{
-			{Section: fm.Title, Text: string(body)},
-		}
-	}
-	tags := ""
-	if len(fm.Tags) > 0 {
-		for i, t := range fm.Tags {
-			if i > 0 {
-				tags += ","
-			}
-			tags += t
-		}
-	}
-	return l.vstore.IndexPage(ctx, project, fm.ID, fm.Type, tags, chunks)
-}
 
-// submitVerbatim handles verbatim submissions.
-func (l *Librarian) submitVerbatim(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
-	// Validate — flag issues but do not block.
+// submit persists a page for verbatim, conform, or integrate intents.
+func (l *Librarian) submit(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
+	flags, err := submitFlagsForIntent(req.Intent)
+	if err != nil {
+		return nil, err
+	}
+
 	issues := schema.Validate(req.Frontmatter)
-	if schema.HasErrors(issues) {
-		req.Frontmatter.Conformance = "pending"
+
+	if flags.blockOnErrors && schema.HasErrors(issues) {
+		return &SubmitResult{
+			Saved:  false,
+			Issues: issues,
+		}, nil
+	}
+
+	if !flags.blockOnErrors {
+		if schema.HasErrors(issues) {
+			req.Frontmatter.Conformance = "pending"
+		} else {
+			req.Frontmatter.Conformance = "valid"
+		}
 	} else {
+		normalizedTags := make([]string, len(req.Frontmatter.Tags))
+		for i, tag := range req.Frontmatter.Tags {
+			n := l.vocab.Normalize(tag)
+			normalizedTags[i] = n
+			_ = l.vocab.Add(n, "tag")
+		}
+		req.Frontmatter.Tags = normalizedTags
 		req.Frontmatter.Conformance = "valid"
 	}
 
-	path := pagePath(req.Frontmatter)
-	msg := commitMessage(IntentVerbatim, req.Frontmatter.Title)
-
-	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, req.Body, msg, req.Author); err != nil {
-		return nil, fmt.Errorf("write page: %w", err)
+	bodyToWrite := req.Body
+	if flags.normalize {
+		bodyToWrite = []byte(NormalizeMarkdown(string(req.Body)))
 	}
 
-	if err := l.indexer.IndexPage(req.Project, req.Branch, path, req.Frontmatter, req.Body); err != nil {
-		return nil, fmt.Errorf("index page: %w", err)
-	}
-
-	if err := l.indexInVectorStore(ctx, req.Project, req.Frontmatter, req.Body); err != nil {
-		// Non-fatal: log but continue.
-		_ = err
-	}
-
-	return &SubmitResult{
-		Saved:  true,
-		Path:   path,
-		Issues: issues,
-	}, nil
-}
-
-// submitConform handles conform submissions.
-func (l *Librarian) submitConform(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
-	// Validate — block on errors.
-	issues := schema.Validate(req.Frontmatter)
-	if schema.HasErrors(issues) {
-		return &SubmitResult{
-			Saved:  false,
-			Issues: issues,
-		}, nil
-	}
-
-	// Normalize tags.
-	normalized := make([]string, len(req.Frontmatter.Tags))
-	for i, tag := range req.Frontmatter.Tags {
-		n := l.vocab.Normalize(tag)
-		normalized[i] = n
-		_ = l.vocab.Add(n, "tag")
-	}
-	req.Frontmatter.Tags = normalized
-
-	// Normalize body.
-	normalizedBody := NormalizeMarkdown(string(req.Body))
-	req.Frontmatter.Conformance = "valid"
-
-	path := pagePath(req.Frontmatter)
-	msg := commitMessage(IntentConform, req.Frontmatter.Title)
-
-	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, []byte(normalizedBody), msg, req.Author); err != nil {
-		return nil, fmt.Errorf("write page: %w", err)
-	}
-
-	if err := l.indexer.IndexPage(req.Project, req.Branch, path, req.Frontmatter, []byte(normalizedBody)); err != nil {
-		return nil, fmt.Errorf("index page: %w", err)
-	}
-
-	if err := l.indexInVectorStore(ctx, req.Project, req.Frontmatter, []byte(normalizedBody)); err != nil {
-		_ = err
-	}
-
-	return &SubmitResult{
-		Saved:  true,
-		Path:   path,
-		Issues: issues,
-	}, nil
-}
-
-// submitIntegrate handles integrate submissions (conform + dedup check).
-func (l *Librarian) submitIntegrate(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
-	// Validate — block on errors.
-	issues := schema.Validate(req.Frontmatter)
-	if schema.HasErrors(issues) {
-		return &SubmitResult{
-			Saved:  false,
-			Issues: issues,
-		}, nil
-	}
-
-	// Normalize tags.
-	normalized := make([]string, len(req.Frontmatter.Tags))
-	for i, tag := range req.Frontmatter.Tags {
-		n := l.vocab.Normalize(tag)
-		normalized[i] = n
-		_ = l.vocab.Add(n, "tag")
-	}
-	req.Frontmatter.Tags = normalized
-
-	// Normalize body.
-	normalizedBody := NormalizeMarkdown(string(req.Body))
-	req.Frontmatter.Conformance = "valid"
-
-	path := pagePath(req.Frontmatter)
-	msg := commitMessage(IntentIntegrate, req.Frontmatter.Title)
-
-	if err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, []byte(normalizedBody), msg, req.Author); err != nil {
-		return nil, fmt.Errorf("write page: %w", err)
-	}
-
-	if err := l.indexer.IndexPage(req.Project, req.Branch, path, req.Frontmatter, []byte(normalizedBody)); err != nil {
-		return nil, fmt.Errorf("index page: %w", err)
-	}
-
-	if err := l.indexInVectorStore(ctx, req.Project, req.Frontmatter, []byte(normalizedBody)); err != nil {
-		_ = err
-	}
-
-	// Dedup check.
-	detector := NewDedupDetector(l.vstore)
-	dedupResult, err := detector.Check(ctx, req.Project, req.Frontmatter.ID, normalizedBody)
-	var warnings []string
-	if err == nil && dedupResult != nil {
-		for _, c := range dedupResult.Candidates {
-			warnings = append(warnings, fmt.Sprintf("potential duplicate: %s (similarity: %.2f)", c.PageID, c.Similarity))
+	var path string
+	if req.UseFlatUUIDPath {
+		if !schema.IsUUIDPageID(req.Frontmatter.ID) {
+			return nil, fmt.Errorf("UseFlatUUIDPath requires a UUID page id")
 		}
+		path = fmt.Sprintf("pages/%s.md", strings.ToLower(strings.TrimSpace(req.Frontmatter.ID)))
+	} else {
+		path = pagePath(req.Frontmatter)
+	}
+	msg := commitMessage(req.Intent, req.Frontmatter.Title)
+
+	commitHash, err := l.repo.WritePageWithMeta(req.Branch, path, req.Frontmatter, bodyToWrite, msg, req.Author)
+	if err != nil {
+		return nil, fmt.Errorf("write page: %w", err)
 	}
 
-	return &SubmitResult{
-		Saved:    true,
-		Path:     path,
-		Issues:   issues,
-		Warnings: warnings,
-	}, nil
+	if err := l.indexer.IndexPage(req.Project, req.Branch, path, req.Frontmatter, bodyToWrite); err != nil {
+		return nil, fmt.Errorf("index page: %w", err)
+	}
+
+	var warnings []string
+
+	res := &SubmitResult{
+		Saved:      true,
+		Path:       path,
+		Issues:     issues,
+		Warnings:   warnings,
+		CommitHash: commitHash,
+	}
+	l.maybeSyncToLibrarian(ctx, req, res)
+	return res, nil
 }

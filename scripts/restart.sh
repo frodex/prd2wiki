@@ -1,5 +1,6 @@
 #!/bin/bash
-# Restart prd2wiki server
+# Restart prd2wiki server (runs `make build` — slower).
+# For minimal downtime: run ./scripts/stage-prd2wiki-build.sh ahead of time, then ./scripts/restart-prd2wiki-quick.sh
 cd /srv/prd2wiki
 make build 2>&1
 

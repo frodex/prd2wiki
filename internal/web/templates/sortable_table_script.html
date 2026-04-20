@@ -1,0 +1,70 @@
+{{define "sortableTableScript"}}
+<script>
+(function() {
+    const tables = document.querySelectorAll('.page-table.sortable');
+    tables.forEach(function(table) {
+        const headers = table.querySelectorAll('th.sortable-th');
+        let currentCol = -1;
+        let ascending = true;
+
+        headers.forEach((th, colIdx) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                const sortType = th.dataset.sort;
+                if (currentCol === colIdx) {
+                    ascending = !ascending;
+                } else {
+                    currentCol = colIdx;
+                    // data-sort-default="desc" = first click matches typical "best first" order
+                    // (e.g. newest updated, highest relevance). Omit or "asc" for A-Z / low-to-high.
+                    const def = (th.dataset.sortDefault || 'asc').toLowerCase();
+                    ascending = def !== 'desc';
+                }
+                headers.forEach(h => {
+                    const ar = h.querySelector('.sort-arrow');
+                    if (ar) ar.textContent = '';
+                });
+                const arrow = th.querySelector('.sort-arrow');
+                if (arrow) arrow.textContent = ascending ? ' \u25B2' : ' \u25BC';
+
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+
+                const parseSortMs = (s) => {
+                    if (s === undefined || s === null) return null;
+                    const t = Date.parse(String(s).trim());
+                    return Number.isNaN(t) ? null : t;
+                };
+
+                rows.sort((a, b) => {
+                    const aEl = a.cells[colIdx];
+                    const bEl = b.cells[colIdx];
+                    const aCell = aEl?.dataset.sortValue || aEl?.textContent.trim() || '';
+                    const bCell = bEl?.dataset.sortValue || bEl?.textContent.trim() || '';
+                    let cmp = 0;
+                    if (sortType === 'num') {
+                        cmp = parseFloat(aCell.replace(/[^\d.-]/g, '') || '0') - parseFloat(bCell.replace(/[^\d.-]/g, '') || '0');
+                    } else if (sortType === 'date') {
+                        const ta = parseSortMs(aCell);
+                        const tb = parseSortMs(bCell);
+                        if (ta !== null && tb !== null) {
+                            cmp = ta - tb;
+                        } else if (ta !== null) {
+                            cmp = -1;
+                        } else if (tb !== null) {
+                            cmp = 1;
+                        } else {
+                            cmp = 0;
+                        }
+                    } else {
+                        cmp = aCell.localeCompare(bCell, undefined, { sensitivity: 'base' });
+                    }
+                    return ascending ? cmp : -cmp;
+                });
+                rows.forEach(r => tbody.appendChild(r));
+            });
+        });
+    });
+})();
+</script>
+{{end}}

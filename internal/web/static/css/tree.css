@@ -73,3 +73,35 @@
         margin-bottom: 1rem;
     }
 }
+
+/* Tree project directory (GET /{projectTreePath}) */
+.tree-dir-intro {
+    color: #555;
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+}
+.tree-dir-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.tree-dir-list li {
+    padding: 0.35rem 0;
+    border-bottom: 1px solid #eee;
+}
+.tree-dir-list a {
+    font-weight: 500;
+    color: #2c5282;
+    text-decoration: none;
+}
+.tree-dir-list a:hover {
+    text-decoration: underline;
+}
+.tree-dir-slug {
+    font-size: 0.8rem;
+    color: #888;
+    margin-left: 0.35rem;
+}
+.tree-dir-empty {
+    color: #666;
+}

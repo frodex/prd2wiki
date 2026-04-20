@@ -1,0 +1,637 @@
+/* ============================================================
+   TwoWiki Enhanced Fossil Skin v3 — Standalone
+   Paste into Fossil Admin > Skins > Edit > CSS
+   ============================================================ */
+
+/* ---------- Reset & Base ---------- */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f8f9fa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #2d3436;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Header ---------- */
+header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background: #1a1a2e;
+}
+.logo-area {
+  flex-shrink: 0;
+  margin-right: 1rem;
+}
+.header-logo {
+  height: 36px;
+  width: 36px;
+}
+div.title {
+  flex: 1;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #e8e8e8;
+  letter-spacing: 0.02em;
+}
+div.status {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+.status-user {
+  padding: 0.25em 0.75em;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+/* ---------- Main Menu ---------- */
+nav.mainmenu {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: #16213e;
+  color: #cbd5e1;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  position: sticky;
+  top: 0;
+  z-index: 21;
+}
+nav.mainmenu #hbbtn {
+  display: none;
+  background: none;
+  border: none;
+  color: #cbd5e1;
+  padding: 0.75rem 0.75rem 0.75rem 0.25rem;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  text-decoration: none;
+}
+nav.mainmenu #hbbtn:hover { color: #fff; }
+nav.mainmenu a {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.7rem 1rem;
+  color: #94a3b8;
+  text-decoration: none;
+  transition: color 0.15s, background-color 0.15s;
+  border-bottom: 2px solid transparent;
+}
+nav.mainmenu a:hover {
+  color: #fff;
+  background-color: rgba(255,255,255,0.05);
+}
+nav.mainmenu a.active {
+  color: #60a5fa;
+  border-bottom-color: #60a5fa;
+}
+
+/* ---------- Submenu ---------- */
+div.submenu {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 1rem;
+  font-size: 0.8rem;
+  background: #1e293b;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+div.submenu a {
+  padding: 0.5rem 1rem;
+  color: #94a3b8;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s, background 0.15s;
+}
+div.submenu a:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.05);
+}
+
+/* ---------- Hamburger Dropdown ---------- */
+.hbdrop {
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 0 0 0.5rem 0.5rem;
+  position: absolute;
+  z-index: 20;
+  width: calc(100% - 2rem);
+  margin: 0 1rem;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+}
+.hbdrop ul {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0;
+}
+.hbdrop li a {
+  display: block;
+  padding: 0.6rem 1.25rem;
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: background 0.12s;
+}
+.hbdrop li a:hover {
+  background: rgba(96,165,250,0.1);
+  color: #60a5fa;
+}
+
+/* ---------- Content ---------- */
+div.content {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 3rem;
+  flex: 1;
+  width: 100%;
+}
+div.content a {
+  color: #2563eb;
+  text-decoration: none;
+  transition: color 0.12s;
+}
+div.content a:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+/* ---------- Search Form ---------- */
+.searchForm {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0 1.5rem;
+  max-width: 500px;
+}
+.searchForm input[type="text"] {
+  flex: 1;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  background: #fff;
+}
+.searchForm input[type="text"]:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96,165,250,0.15);
+}
+.searchForm input[type="submit"] {
+  padding: 0.55rem 1.25rem;
+  background: #16213e;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.searchForm input[type="submit"]:hover {
+  background: #1e3a5f;
+}
+
+/* ============================
+   TICKET REPORT TABLE
+   ============================ */
+table.report {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: none;
+  margin: 1rem 0;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+}
+table.report thead tr {
+  background: #16213e;
+}
+table.report thead th {
+  padding: 0.65rem 0.85rem;
+  color: #e2e8f0;
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  border-bottom: 2px solid #60a5fa;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+table.report thead th:hover {
+  background: rgba(255,255,255,0.06);
+}
+table.report tbody tr {
+  transition: background 0.12s;
+}
+table.report tbody tr:hover {
+  background-color: #eff6ff !important;
+}
+table.report tbody td {
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: top;
+}
+table.report tbody tr:last-child td {
+  border-bottom: none;
+}
+table.report tbody td a {
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6366f1;
+  background: #eef2ff;
+  padding: 0.15em 0.45em;
+  border-radius: 3px;
+  text-decoration: none;
+}
+table.report tbody td a:hover {
+  background: #c7d2fe;
+  text-decoration: none;
+}
+
+/* Report color key row */
+table.report:first-child {
+  box-shadow: none;
+  border-radius: 6px;
+  overflow: hidden;
+}
+table.report:first-child td {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-align: center;
+  border-bottom: none;
+  border-right: 1px solid rgba(0,0,0,0.06);
+}
+table.report:first-child td:last-child {
+  border-right: none;
+}
+
+/* ============================
+   TICKET DETAIL VIEW
+   ============================ */
+.twowiki-tkt-shell {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+  overflow: hidden;
+}
+
+.twowiki-tkt-meta {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: #e2e8f0;
+  padding: 2rem 2.5rem 1.5rem;
+}
+
+.twowiki-tkt-id {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.twowiki-tkt-id .tktDspLabel {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  font-size: 0.72rem;
+}
+.twowiki-tkt-id code,
+.twowiki-tkt-id #hash-tk {
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  color: #93c5fd;
+  background: rgba(96,165,250,0.12);
+  padding: 0.2em 0.5em;
+  border-radius: 4px;
+}
+
+/* Copy button inside ticket id */
+.twowiki-tkt-id .copy-button {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0.15em 0.35em;
+  font-size: 0.7rem;
+  transition: background 0.15s, color 0.15s;
+}
+.twowiki-tkt-id .copy-button:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+}
+
+.twowiki-tkt-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  margin: 0 0 0.75rem;
+  color: #fff;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.twowiki-tkt-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.tw-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25em 0.75em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 100px;
+}
+.tw-badge.tw-type {
+  background: rgba(99,102,241,0.2);
+  color: #a5b4fc;
+  border: 1px solid rgba(99,102,241,0.3);
+}
+.tw-badge.tw-status {
+  background: rgba(251,191,36,0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251,191,36,0.3);
+}
+.tw-badge.tw-tags {
+  background: rgba(52,211,153,0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(52,211,153,0.25);
+  font-weight: 500;
+  text-transform: none;
+  font-size: 0.7rem;
+}
+.tw-badge.tw-path {
+  background: rgba(148,163,184,0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148,163,184,0.2);
+  font-weight: 500;
+  text-transform: none;
+  font-size: 0.7rem;
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+}
+
+.twowiki-footer-link {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+.twowiki-footer-link a {
+  color: #93c5fd !important;
+  text-decoration: none !important;
+}
+.twowiki-footer-link a:hover {
+  text-decoration: underline !important;
+}
+
+/* ---------- Ticket Document Body ---------- */
+.twowiki-doc {
+  padding: 2rem 2.5rem;
+}
+.twowiki-doc .markdown {
+  line-height: 1.75;
+  color: #334155;
+}
+.twowiki-doc h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 2rem 0 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid #e5e7eb;
+}
+.twowiki-doc h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 1.5rem 0 0.5rem;
+}
+.twowiki-doc p {
+  margin: 0 0 1rem;
+}
+.twowiki-doc ol,
+.twowiki-doc ul {
+  margin: 0 0 1rem;
+  padding-left: 1.5rem;
+}
+.twowiki-doc li {
+  margin-bottom: 0.35rem;
+}
+.twowiki-doc li input[type="checkbox"] {
+  margin-right: 0.45em;
+  accent-color: #6366f1;
+}
+.twowiki-doc code {
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: #f1f5f9;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: #6366f1;
+}
+.twowiki-doc pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 1.25rem 1.5rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1rem 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.twowiki-doc pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Mermaid diagrams inside tickets */
+.twowiki-doc pre:has(code.language-mermaid) {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  text-align: center;
+}
+.twowiki-doc .mermaid {
+  margin: 1rem 0;
+}
+
+/* Tables inside ticket docs */
+.twowiki-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.85rem;
+}
+.twowiki-doc table thead th {
+  background: #f8fafc;
+  padding: 0.55rem 0.85rem;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 2px solid #e2e8f0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.twowiki-doc table tbody td {
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+}
+.twowiki-doc table tbody tr:hover {
+  background: #f8fafc;
+}
+/* Sortable table header indicator */
+.twowiki-doc table th[data-sort="asc"]::after { content: " ▲"; font-size: 0.65em; }
+.twowiki-doc table th[data-sort="desc"]::after { content: " ▼"; font-size: 0.65em; }
+
+/* ---------- Comments Section ---------- */
+hr.twowiki-tkt-comments-hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 0;
+}
+
+h2.twowiki-section-h {
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #1e293b;
+  margin: 0;
+  padding: 1rem 2.5rem 0.5rem;
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+}
+
+.twowiki-tkt-comment {
+  border-top: 1px solid #f1f5f9;
+  padding: 0;
+}
+.twowiki-tkt-comment-meta {
+  padding: 1rem 2.5rem 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 600;
+  margin: 0;
+}
+.twowiki-tkt-comment-body {
+  padding: 0 2.5rem 1.5rem;
+}
+.twowiki-tkt-comment-body .markdown {
+  line-height: 1.75;
+  color: #334155;
+}
+
+/* ---------- Label-Value table (change history) ---------- */
+table.label-value {
+  width: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+}
+table.label-value th {
+  text-align: right;
+  padding: 0.5rem 1rem 0.5rem 2.5rem;
+  color: #64748b;
+  font-weight: 600;
+  white-space: nowrap;
+  width: 140px;
+  vertical-align: top;
+}
+table.label-value td {
+  padding: 0.5rem 2.5rem 0.5rem 0.5rem;
+  color: #334155;
+}
+
+/* ---------- Timeline enhancements ---------- */
+.timelineModernCell,
+.timelineColumnarCell,
+.timelineDetailCell {
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.timelineModernCell:hover,
+.timelineColumnarCell:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border-color: #cbd5e1;
+}
+tr.timelineCurrent .timelineModernCell,
+tr.timelineCurrent .timelineColumnarCell {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+span.tagDsp {
+  font-size: 0.72rem;
+  padding: 0.15em 0.5em;
+  border-radius: 100px;
+  background: rgba(99,102,241,0.08);
+  color: #6366f1;
+  font-weight: 600;
+}
+
+/* ---------- Footer ---------- */
+footer, div.footer {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 1rem 2rem;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  text-align: right;
+  border-top: 1px solid #e5e7eb;
+  width: 100%;
+}
+
+/* ---------- Responsive ---------- */
+@media screen and (max-width: 600px) {
+  .desktoponly { display: none; }
+  nav.mainmenu #hbbtn { display: inline-flex; }
+}
+@media screen and (max-width: 1200px) {
+  .wideonly { display: none; }
+}
+@media screen and (max-width: 640px) {
+  div.content { padding: 1rem; }
+  header { padding: 0.5rem 1rem; }
+  nav.mainmenu { padding: 0 0.5rem; }
+  nav.mainmenu a { padding: 0.6rem 0.6rem; font-size: 0.78rem; }
+  .twowiki-tkt-meta { padding: 1.5rem 1.25rem 1rem; }
+  .twowiki-doc { padding: 1.25rem; }
+  .twowiki-tkt-title { font-size: 1.35rem; }
+  h2.twowiki-section-h { padding-left: 1.25rem; padding-right: 1.25rem; }
+  table.label-value th { padding-left: 1.25rem; }
+  table.label-value td { padding-right: 1.25rem; }
+  .twowiki-tkt-comment-meta { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .twowiki-tkt-comment-body { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .twowiki-tkt-badges { flex-wrap: wrap; }
+}

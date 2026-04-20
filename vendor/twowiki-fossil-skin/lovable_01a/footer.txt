@@ -1,0 +1,3 @@
+<footer>
+Fossil $manifest_version $manifest_date
+</footer>

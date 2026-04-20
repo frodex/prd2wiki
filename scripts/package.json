@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "name": "prd2wiki-scripts",
+  "description": "Optional deps for maintenance scripts (e.g. Fossil skin browser verify).",
+  "dependencies": {
+    "puppeteer": "^22.0.0"
+  }
+}

@@ -1,0 +1,13 @@
+{{define "content"}}
+{{$d := .Content}}
+<h1>Admin</h1>
+<p class="admin-intro">Management tools (Phase 3d). These pages are stubs until the export/import/verify CLIs are wired.</p>
+<ul class="admin-tool-list">
+    {{range $d.Links}}
+    <li>
+        <a href="{{.Href}}">{{.Label}}</a>
+        <span class="admin-tool-desc">— {{.Description}}</span>
+    </li>
+    {{end}}
+</ul>
+{{end}}

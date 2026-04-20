@@ -37,6 +37,20 @@ func RateLimiter(rps float64, burst int) func(http.Handler) http.Handler {
 	}
 }
 
+// logMutation emits a structured log line for write operations.
+// routeFamily is "project" or "tree"; handler is the handler name (e.g. "createPage").
+func logMutation(r *http.Request, routeFamily, handler, project string) {
+	hasAuth := apiKeyFromRequest(r) != ""
+	slog.Info("mutation",
+		"route_family", routeFamily,
+		"handler", handler,
+		"method", r.Method,
+		"project", project,
+		"path", r.URL.Path,
+		"has_auth", hasAuth,
+	)
+}
+
 type statusWriter struct {
 	http.ResponseWriter
 	status int

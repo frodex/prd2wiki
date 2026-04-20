@@ -1,3 +1,12 @@
 bin/
 data/
 frontend/node_modules/
+scripts/node_modules/
+/prd2wiki-chain
+*.png
+*.jpg
+*.jpeg
+backup/
+.worktrees/
+data.phase-b-backup-*/
+prd2wiki-backfill-librarian

@@ -1,0 +1,11 @@
+TwoWiki Fossil Skin v7 — wider 1280px content container,
+unified report card (status key + search + table flush-stacked),
+admin / edit-mode action bars with per-row edit links,
+plus all v6 features (single-line dark header, slim breadcrumb,
+all-caps muted-color status pills, accentuated search,
+status-striped ticket rows, tag variants).
+
+Install:
+  fossil config import twowiki-fossil-skin-v7.zip
+
+Or upload header.txt / footer.txt / css.txt via Admin → Skins.

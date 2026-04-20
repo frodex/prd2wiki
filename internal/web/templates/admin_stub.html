@@ -1,0 +1,10 @@
+{{define "content"}}
+{{$d := .Content}}
+<h1>Admin — {{$d.Title}}</h1>
+<p class="admin-intro">{{$d.Intro}}</p>
+<p class="admin-note">{{$d.Note}}</p>
+<form class="admin-stub-form" method="post" action="{{$d.FormAction}}">
+    <p class="admin-stub-hint">The button is disabled; when implemented, POST will require an API key with the <code>admin</code> scope.</p>
+    <button type="submit" class="btn btn-primary" disabled>{{$d.ButtonLabel}}</button>
+</form>
+{{end}}

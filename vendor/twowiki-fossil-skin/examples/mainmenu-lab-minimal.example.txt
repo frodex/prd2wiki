@@ -1,0 +1,5 @@
+Pages /rptview/1 {r} {}
+Search /search {*} {}
+Admin /setup {a s} desktoponly
+Logout /logout {L} wideonly
+Login /login {!L} wideonly

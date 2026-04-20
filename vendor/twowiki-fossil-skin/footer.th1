@@ -1,0 +1,220 @@
+<th1>
+if {[capexpr {s a}]} {
+  html "<div class=\"twowiki-admin-strip\" role=\"navigation\" aria-label=\"Skin and setup\">"
+  html "<span class=\"twowiki-admin-strip-label\">Setup</span> "
+  html "<a href=\"$home/setup_skinedit\">Edit skin (CSS / header / footer)</a>"
+  html "<span class=\"twowiki-admin-sep\">·</span>"
+  html "<a href=\"$home/setup_skin\">Skins overview</a>"
+  html "<span class=\"twowiki-admin-sep\">·</span>"
+  html "<a href=\"$home/setup_config\">Configuration</a>"
+  html "</div>\n"
+}
+</th1>
+<div class="twowiki-footer-link">
+  Reader UI: <a href="http://192.168.22.56:8082/projects/default/pages">prd2wiki</a>
+  · <a href="/ticket">All tickets</a>
+  · <a href="/skins?skin=custom" title="Clears built-in skin cookie; use this repo’s CONFIG skin">Site skin</a>
+</div>
+<script type="module" nonce="$nonce">
+/* Site-wide Mermaid 11 + ELK on non-ticket pages. /tktview uses ticket-viewpage.th1 (static imports) — same as before site-wide merge; do not run both. */
+/* Use layout-elk *.esm.min.mjs (not *.core.mjs): core chunks use bare "d3" imports that fail in browsers without an import map. */
+const MERMAID = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+const ELK = 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs';
+
+(async function(){
+  if(document.body && document.body.classList.contains('rpage-tktview')) return;
+  var mermaidMod;
+  try {
+    mermaidMod = await import(MERMAID);
+  } catch (e) {
+    console.error('twoWiki: Mermaid 11 failed to load.', e);
+    return;
+  }
+  var mermaid = mermaidMod.default;
+  var elkOk = false;
+  try {
+    var elkMod = await import(ELK);
+    var loaders = elkMod.default;
+    if (loaders) {
+      mermaid.registerLayoutLoaders(loaders);
+      elkOk = true;
+    }
+  } catch (e) {
+    console.warn('twoWiki: ELK not available; using dagre.', e);
+  }
+  /* Mermaid 11: global `layout` alone does not drive flowcharts; set flowchart.defaultRenderer to elk when ELK is registered. */
+  var initOpts = {
+    startOnLoad: false,
+    theme: 'neutral',
+    securityLevel: 'loose'
+  };
+  if (elkOk) {
+    initOpts.layout = 'elk';
+    initOpts.flowchart = { defaultRenderer: 'elk' };
+    initOpts.state = { defaultRenderer: 'elk' };
+    initOpts.class = { defaultRenderer: 'elk' };
+  }
+  document.querySelectorAll('pre code.language-mermaid').forEach(function(code){
+    var pre = code.parentElement;
+    if(!pre || pre.tagName !== 'PRE') return;
+    var div = document.createElement('pre');
+    div.className = 'mermaid';
+    div.textContent = code.textContent || '';
+    pre.replaceWith(div);
+  });
+  mermaid.initialize(initOpts);
+  /* startOnLoad hooks DOMContentLoaded; this module awaits CDN imports, so that event often fires before initialize() — diagrams never ran or used wrong path. */
+  try {
+    await mermaid.run({ querySelector: '.mermaid' });
+  } catch (e) {
+    console.error('twoWiki: mermaid.run failed.', e);
+  }
+})();
+</script>
+<script nonce="$nonce">
+/* Report view UX: make Title cell link to the same tktview target as the '#' UUID link.
+   Keep '#' column present in SQL so Fossil still emits built-in tktview/edit links. */
+(function(){
+  if(!document.body || !document.body.classList.contains('rpage-rptview')) return;
+  var tables = document.querySelectorAll('table.report');
+  if(!tables || !tables.length) return;
+
+  function slugifyStatus(s){
+    var slug = (s || '').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+    return slug || 'unknown';
+  }
+
+  /* Left stripe colors (must match 02a/css.txt .status-* border tones). Inline — Fossil table/border cascade often drops td box-shadow from CONFIG css. */
+  var STRIPE_HEX = {
+    active: '#a33333', open: '#a33333', review: '#2a5bbf', fixed: '#2d7a45', verified: '#2d7a45',
+    tested: '#b08e1f', deferred: '#a85f24', closed: '#1f2937', draft: '#6b7280', submitted: '#2a5bbf',
+    approved: '#2d7a45', completed: '#2d7a45', rejected: '#a33333', implemented: '#6d28d9',
+    superseded: '#b08e1f', retired: '#1f2937'
+  };
+  function paintRowStripe(tr){
+    var slug = tr.getAttribute('data-tw-status');
+    if(!slug || !tr.cells || !tr.cells.length) return;
+    var hx = STRIPE_HEX[slug];
+    if(!hx) return;
+    tr.cells[0].style.setProperty('box-shadow', 'inset 5px 0 0 ' + hx, 'important');
+  }
+
+  /* First table with no thead + single body row = status KEY legend (Fossil HTML, not .status-key div). */
+  var keyTbl = tables[0];
+  if(keyTbl && !keyTbl.querySelector('thead')){
+    var kRows = keyTbl.querySelectorAll('tbody tr');
+    if(kRows.length === 1){
+      var kCells = kRows[0].querySelectorAll('td');
+      if(kCells.length >= 3){
+        keyTbl.classList.add('twowiki-status-key');
+        for(var ci = 0; ci < kCells.length; ci++){
+          var ktd = kCells[ci];
+          if(ktd.querySelector('.status-pill')) continue;
+          var kt = (ktd.textContent || '').trim();
+          if(!kt) continue;
+          var kp = document.createElement('span');
+          kp.className = 'status-pill status-' + slugifyStatus(kt);
+          kp.textContent = kt;
+          ktd.textContent = '';
+          ktd.appendChild(kp);
+        }
+      }
+    }
+  }
+
+  tables.forEach(function(tbl){
+    var heads = tbl.querySelectorAll('thead th');
+    if(!heads || !heads.length) return;
+    var iTitle = -1;
+    var iHash = -1;
+    var iTags = -1;
+    var iStatus = -1;
+    for(var i=0; i<heads.length; i++){
+      var t = (heads[i].textContent || '').trim().toUpperCase();
+      if(iTitle < 0 && t === 'TITLE') iTitle = i;
+      if(iHash < 0 && t.indexOf('#') === 0) iHash = i;
+      if(iTags < 0 && t === 'TAGS') iTags = i;
+      if(iStatus < 0 && t === 'STATUS') iStatus = i;
+    }
+    tbl.querySelectorAll('tbody tr').forEach(function(tr){
+      var tds = tr.querySelectorAll('td');
+      if(!tds) return;
+
+      if(iTitle >= 0 && iHash >= 0 && tds.length > iHash && tds.length > iTitle){
+        var titleCell = tds[iTitle];
+        var hashCell = tds[iHash];
+        if(titleCell && !titleCell.querySelector('a')){
+          var hashLink = hashCell.querySelector('a[href*=\"/tktview/\"]');
+          if(hashLink && hashLink.getAttribute('href')){
+            var titleText = (titleCell.textContent || '').trim();
+            if(titleText){
+              var a = document.createElement('a');
+              a.href = hashLink.getAttribute('href');
+              a.textContent = titleText;
+              titleCell.textContent = '';
+              titleCell.appendChild(a);
+            }
+          }
+        }
+      }
+
+      if(iTags >= 0 && tds.length > iTags){
+        var tagsCell = tds[iTags];
+        if(tagsCell && !tagsCell.querySelector('.twowiki-tag-chip')){
+          var raw = (tagsCell.textContent || '').trim();
+          if(raw){
+            var tags = raw.split(/[,;\n]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+            /* Always chip-wrap so .twowiki-tag-chip CSS applies (single-tag rows were skipped before). */
+            if(tags.length >= 1){
+              var wrap = document.createElement('div');
+              wrap.className = 'twowiki-tag-wrap';
+              tags.forEach(function(tag){
+                var chip = document.createElement('span');
+                chip.className = 'twowiki-tag-chip';
+                chip.textContent = tag;
+                wrap.appendChild(chip);
+              });
+              tagsCell.textContent = '';
+              tagsCell.appendChild(wrap);
+              tagsCell.classList.add('twowiki-tag-cell');
+            }
+          }
+        }
+      }
+
+      /* Plain-text STATUS cells → .status-pill + .status-<slug> so design CSS applies (same as keyed HTML in demos). */
+      if(iStatus >= 0 && tds.length > iStatus){
+        var stCell = tds[iStatus];
+        if(stCell){
+          var existing = stCell.querySelector('.status-pill');
+          if(existing){
+            var cls = existing.className.split(/\s+/).filter(function(c){
+              return c.indexOf('status-') === 0 && c !== 'status-pill';
+            });
+            if(cls.length){ tr.setAttribute('data-tw-status', cls[0].replace(/^status-/, '')); }
+          } else {
+            var stRaw = (stCell.textContent || '').trim();
+            if(stRaw){
+              var slug = slugifyStatus(stRaw);
+              var pill = document.createElement('span');
+              pill.className = 'status-pill status-' + slug;
+              pill.textContent = stRaw;
+              stCell.textContent = '';
+              stCell.appendChild(pill);
+              tr.setAttribute('data-tw-status', slug);
+            }
+          }
+        }
+      }
+      paintRowStripe(tr);
+    });
+  });
+})();
+</script>
+<script nonce="$nonce">
+/* Fossil routes /ticket/HASH to the report picker, not the ticket reader — send readers to tktview */
+(function(){
+  var m = location.pathname.match(/^\/ticket\/([a-f0-9]{40})$/i);
+  if(m){ location.replace('/tktview/' + m[1].toLowerCase()); }
+})();
+</script>

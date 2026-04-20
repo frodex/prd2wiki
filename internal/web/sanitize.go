@@ -27,6 +27,7 @@ var allowedAttrs = map[string][]string{
 	"a":     {"href", "title"},
 	"img":   {"src", "alt", "title"},
 	"input": {"type", "checked", "disabled"},
+	"code":  {"class"},
 	"td":    {"align"},
 	"th":    {"align"},
 }

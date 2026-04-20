@@ -1,0 +1,14 @@
+{{define "content"}}
+{{$d := .Content}}
+<h1>{{$d.ProjectName}}</h1>
+<p class="tree-dir-intro">Pages in this wiki tree. <a href="/projects/{{$.Project}}/pages">Open project page list</a> for admin tools.</p>
+{{if $d.Pages}}
+<ul class="tree-dir-list">
+    {{range $d.Pages}}
+    <li><a href="{{.Href}}">{{.Title}}</a> <span class="tree-dir-slug">{{.Slug}}</span></li>
+    {{end}}
+</ul>
+{{else}}
+<p class="tree-dir-empty">No pages linked in this tree yet.</p>
+{{end}}
+{{end}}

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html/template"
 	"net/http"
 	"sort"
 	"strings"
@@ -10,17 +11,23 @@ import (
 
 // PageListItem represents one row in the page listing table.
 type PageListItem struct {
-	ID           string
-	Title        string
-	Type         string
-	Status       string
-	TrustLevel   int
-	Path         string
-	Module       string
-	Category     string
-	LastEditBy   string
-	LastEditDate string
-	Score        string // similarity score for search results
+	ID             string
+	Title          string
+	Type           string
+	Status         string
+	TrustLevel     int
+	Path           string
+	Module         string
+	Category       string
+	LastEditBy     string
+	LastEditDate   string
+	UpdatedAtSort  string // RFC3339 for client-side date sort
+	UpdatedDisplay string // shown in "Updated" column
+	HitCount       int    // number of times search term appears in page
+	Score          string // similarity score for search results
+	ScoreSort      string // numeric string for sorting relevance column
+	Excerpt        template.HTML // search snippet (trusted HTML: escaped text + <mark> from searchsnippet)
+	TreeHref       string // canonical wiki tree URL when indexed (e.g. /prd2wiki/foo)
 }
 
 // ModuleGroup groups page list items under a module heading.
@@ -63,7 +70,7 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo := h.repos[project]
+	cache := h.edits[project]
 
 	allItems := make([]PageListItem, len(results))
 	for i, pr := range results {
@@ -77,11 +84,10 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 			Module:     pr.Module,
 			Category:   pr.Category,
 		}
-		if repo != nil {
-			commits, _ := repo.PageHistoryAllBranches(pr.Path, 1)
-			if len(commits) > 0 {
-				allItems[i].LastEditBy = commits[0].Author
-				allItems[i].LastEditDate = commits[0].Date.Format("2006-01-02 15:04")
+		FillPageTimestamps(&allItems[i], pr, cache)
+		if h.treeHolder != nil && h.treeHolder.Get() != nil {
+			if ent, ok := h.treeHolder.Get().PageByUUID(pr.ID); ok {
+				allItems[i].TreeHref = "/" + ent.URLPath()
 			}
 		}
 	}
@@ -103,7 +109,15 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].LastEditDate > filtered[j].LastEditDate
+		ki := filtered[i].UpdatedAtSort
+		kj := filtered[j].UpdatedAtSort
+		if ki == "" {
+			ki = "0000-01-01T00:00:00Z"
+		}
+		if kj == "" {
+			kj = "0000-01-01T00:00:00Z"
+		}
+		return ki > kj
 	})
 
 	// Group filtered items by module.
@@ -131,11 +145,16 @@ func (h *Handler) listPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PageData{
-		Project:  project,
-		Title:    project + " — Pages",
-		Content:  pld,
-		Projects: h.projects(),
+		Project: project,
+		Title:   project + " — Pages",
+		Content: pld,
+		Breadcrumbs: []Breadcrumb{
+			{Label: "Home", Href: "/"},
+			{Label: project, Href: "/projects/" + project + "/pages"},
+			{Label: "Pages", Href: ""},
+		},
 	}
+	h.preparePageData(&data)
 
 	t := h.templates["templates/page_list.html"]
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {

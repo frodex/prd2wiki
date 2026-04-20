@@ -55,6 +55,9 @@
     font-size: 0.75rem;
     color: #999;
 }
+.last-edit-muted {
+    color: #bbb;
+}
 
 .list-action-link {
     font-size: 0.75rem;
@@ -109,6 +112,24 @@
 .search-results h2 {
     font-size: 1.1rem;
     margin-bottom: 0.5rem;
+}
+
+.search-excerpt {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.85rem;
+    color: #444;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    max-width: 48rem;
+}
+
+.search-excerpt mark.search-hit {
+    background: #fff59d;
+    color: #222;
+    padding: 0 0.12em;
+    border-radius: 2px;
+    font-weight: 500;
 }
 
 .search-empty {

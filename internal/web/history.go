@@ -55,7 +55,7 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 
 	path := h.resolvePagePath(project, id)
 
-	commits, err := repo.PageHistoryAllBranches(path, 50)
+	commits, err := repo.PageHistoryAllBranches(path, 50, h.aliasPathsFor(path)...)
 	if err != nil || len(commits) == 0 {
 		h.renderError(w, http.StatusNotFound, "No history found for this page.")
 		return
@@ -63,7 +63,7 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 
 	// Determine page title from the latest version.
 	title := id
-	fm, _, _, fmErr := readPageNewest(repo, path)
+	fm, _, _, fmErr := readPageNewest(repo, path, h.aliasPathsFor(path)...)
 	if fmErr == nil && fm.Title != "" {
 		title = fm.Title
 	}
@@ -90,11 +90,12 @@ func (h *Handler) pageHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PageData{
-		Project:  project,
-		Title:    "History: " + title,
-		Content:  phd,
-		Projects: h.projects(),
+		Project:     project,
+		Title:       "History: " + title,
+		Content:     phd,
+		Breadcrumbs: projectSectionBreadcrumbs(project, "History"),
 	}
+	h.preparePageData(&data)
 
 	t := h.templates["templates/page_history.html"]
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
@@ -115,7 +116,9 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := h.resolvePagePath(project, id)
-	data, err := repo.ReadPageAtCommit(hash, path)
+	paths := []string{path}
+	paths = append(paths, h.aliasPathsFor(path)...)
+	data, _, err := repo.ReadPageAtCommitFirst(hash, paths)
 	if err != nil {
 		h.renderError(w, http.StatusNotFound, "Page version not found.")
 		return
@@ -155,6 +158,7 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 		BodyHTML:   template.HTML(sanitizeHTML(htmlBuf.String())),
 		Sources:    fm.Provenance.Sources,
 	}
+	h.setPageViewURLs(&pvd, r)
 	if !fm.DCCreated.IsZero() {
 		pvd.Created = fm.DCCreated.Format("2006-01-02")
 	}
@@ -163,11 +167,12 @@ func (h *Handler) pageAtCommitView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pageData := PageData{
-		Project:  project,
-		Title:    pvd.Title + " — " + project,
-		Content:  pvd,
-		Projects: h.projects(),
+		Project:     project,
+		Title:       pvd.Title + " — " + project,
+		Content:     pvd,
+		Breadcrumbs: h.breadcrumbsForGitPage(project, fm.ID, pvd.Title),
 	}
+	h.preparePageData(&pageData)
 
 	t := h.templates["templates/page_view.html"]
 	if err := t.ExecuteTemplate(w, "layout", pageData); err != nil {
@@ -194,9 +199,11 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := h.resolvePagePath(project, id)
+	paths := []string{path}
+	paths = append(paths, h.aliasPathsFor(path)...)
 
-	fromData, _ := repo.ReadPageAtCommit(from, path) // empty if file didn't exist yet
-	toData, _ := repo.ReadPageAtCommit(to, path)     // empty if file was deleted
+	fromData, _, _ := repo.ReadPageAtCommitFirst(from, paths)
+	toData, _, _ := repo.ReadPageAtCommitFirst(to, paths)
 
 	diffChanges := diff.ComputeLineDiff(string(fromData), string(toData))
 
@@ -207,7 +214,7 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := id
-	fm, _, _, fmErr := readPageNewest(repo, path)
+	fm, _, _, fmErr := readPageNewest(repo, path, h.aliasPathsFor(path)...)
 	if fmErr == nil && fm.Title != "" {
 		title = fm.Title
 	}
@@ -231,11 +238,12 @@ func (h *Handler) pageDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pageData := PageData{
-		Project:  project,
-		Title:    "Diff: " + title,
-		Content:  pdd,
-		Projects: h.projects(),
+		Project:     project,
+		Title:       "Diff: " + title,
+		Content:     pdd,
+		Breadcrumbs: projectSectionBreadcrumbs(project, "Diff"),
 	}
+	h.preparePageData(&pageData)
 
 	t := h.templates["templates/page_diff.html"]
 	if err := t.ExecuteTemplate(w, "layout", pageData); err != nil {

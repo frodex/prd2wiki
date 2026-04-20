@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -41,6 +42,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer application.Close()
+
+	if addr := cfg.Server.DebugAddr; addr != "" {
+		go func() {
+			slog.Info("pprof debug server listening", "addr", addr)
+			if err := http.ListenAndServe(addr, nil); err != nil {
+				slog.Error("debug server", "error", err)
+			}
+		}()
+	}
 
 	srv := &http.Server{
 		Addr:         cfg.Server.Addr,

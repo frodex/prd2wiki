@@ -8,15 +8,25 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+
+	"github.com/frodex/prd2wiki/internal/tree"
 )
+
+// ServerConfig configures an MCPServer instance.
+type ServerConfig struct {
+	Client *WikiClient
+	// TreeHolder is optional; when set, wiki_* tools can resolve tree paths and run tree operations.
+	TreeHolder *tree.IndexHolder
+}
 
 // MCPServer implements a minimal Model Context Protocol server over JSON-RPC 2.0
 // on stdio. It dispatches tool calls and resource reads to registered handlers.
 type MCPServer struct {
-	client    *WikiClient
-	tools     map[string]registeredTool
-	resources map[string]ResourceHandler
-	prompts   map[string]registeredPrompt
+	client     *WikiClient
+	treeHolder *tree.IndexHolder
+	tools      map[string]registeredTool
+	resources  map[string]ResourceHandler
+	prompts    map[string]registeredPrompt
 }
 
 // registeredTool pairs a tool definition with its handler function.
@@ -68,12 +78,13 @@ type ResourceDef struct {
 	MimeType    string `json:"mimeType,omitempty"`
 }
 
-// NewServer creates an MCPServer backed by the given WikiClient.
-func NewServer(client *WikiClient) *MCPServer {
+// NewServer creates an MCPServer from the given configuration.
+func NewServer(cfg ServerConfig) *MCPServer {
 	s := &MCPServer{
-		client:    client,
-		tools:     make(map[string]registeredTool),
-		resources: make(map[string]ResourceHandler),
+		client:     cfg.Client,
+		treeHolder: cfg.TreeHolder,
+		tools:      make(map[string]registeredTool),
+		resources:  make(map[string]ResourceHandler),
 	}
 	s.registerTools()
 	s.registerResources()

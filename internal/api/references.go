@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -20,8 +19,7 @@ type RefNode struct {
 
 func (s *Server) getReferences(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	if _, ok := s.repos[project]; !ok {
-		http.Error(w, fmt.Sprintf("project %q not found", project), http.StatusNotFound)
+	if _, ok := s.projectRepo(w, project); !ok {
 		return
 	}
 
@@ -55,8 +53,7 @@ func (s *Server) getReferences(w http.ResponseWriter, r *http.Request) {
 		Children: children,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(root)
+	writeJSON(w, http.StatusOK, root)
 }
 
 // buildRefTree recursively queries provenance_edges for a page and builds the

@@ -35,34 +35,34 @@
                     <th data-sort="text" class="sortable-th">Type <span class="sort-arrow"></span></th>
                     <th data-sort="text" class="sortable-th">Status <span class="sort-arrow"></span></th>
                     <th data-sort="num" class="sortable-th">Trust <span class="sort-arrow"></span></th>
-                    <th data-sort="date" class="sortable-th">Last Edit <span class="sort-arrow"></span></th>
+                    <th data-sort="date" data-sort-default="desc" class="sortable-th">Updated <span class="sort-arrow"></span></th>
                 </tr>
             </thead>
             <tbody>
                 {{range .Items}}
                 <tr>
-                    <td>
-                        <a href="/projects/{{$.Project}}/pages/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
+                    <td data-sort-value="{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}">
+                        <a href="{{if .TreeHref}}{{.TreeHref}}{{else}}/projects/{{$.Project}}/pages/{{.ID}}{{end}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>
                         <span class="page-id-annotation">{{.ID}}</span>
                         {{if .Module}}<span class="badge badge-module">{{.Module}}</span>{{end}}
                         <a href="/projects/{{$.Project}}/pages/{{.ID}}/history" class="list-action-link">history</a>
                     </td>
-                    <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
-                    <td>
+                    <td data-sort-value="{{.Type}}"><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
+                    <td data-sort-value="{{.Status}}">
                         <select class="status-select" data-project="{{$.Project}}" data-id="{{.ID}}" onchange="changeStatus(this)">
                             <option value="draft" {{if eq .Status "draft"}}selected{{end}}>draft</option>
-                            <option value="review" {{if eq .Status "review"}}selected{{end}}>review</option>
+                            <option value="submitted" {{if eq .Status "submitted"}}selected{{end}}>submitted</option>
                             <option value="approved" {{if eq .Status "approved"}}selected{{end}}>approved</option>
                             <option value="rejected" {{if eq .Status "rejected"}}selected{{end}}>rejected</option>
-                            <option value="active" {{if eq .Status "active"}}selected{{end}}>active</option>
-                            <option value="contested" {{if eq .Status "contested"}}selected{{end}}>contested</option>
-                            <option value="deprecated" {{if eq .Status "deprecated"}}selected{{end}}>deprecated</option>
+                            <option value="implemented" {{if eq .Status "implemented"}}selected{{end}}>implemented</option>
+                            <option value="completed" {{if eq .Status "completed"}}selected{{end}}>completed</option>
+                            <option value="superseded" {{if eq .Status "superseded"}}selected{{end}}>superseded</option>
+                            <option value="retired" {{if eq .Status "retired"}}selected{{end}}>retired</option>
                         </select>
                     </td>
-                    <td>L{{.TrustLevel}}</td>
-                    <td class="last-edit-cell" data-sort-value="{{.LastEditDate}}">
-                        {{if .LastEditBy}}<span class="last-edit-by">{{.LastEditBy}}</span>{{end}}
-                        {{if .LastEditDate}}<span class="last-edit-date">{{.LastEditDate}}</span>{{end}}
+                    <td data-sort-value="{{.TrustLevel}}">L{{.TrustLevel}}</td>
+                    <td class="last-edit-cell" data-sort-value="{{if .UpdatedAtSort}}{{.UpdatedAtSort}}{{else}}9999-12-31T23:59:59Z{{end}}">
+                        {{if .UpdatedDisplay}}{{.UpdatedDisplay}}{{else}}<span class="last-edit-muted">—</span>{{end}}
                     </td>
                 </tr>
                 {{end}}
@@ -88,48 +88,5 @@ async function changeStatus(select) {
     }
 }
 
-(function() {
-    const tables = document.querySelectorAll('.page-table.sortable');
-    tables.forEach(function(table) {
-        const headers = table.querySelectorAll('th.sortable-th');
-        let currentCol = -1;
-        let ascending = true;
-
-        headers.forEach((th, colIdx) => {
-            th.style.cursor = 'pointer';
-            th.addEventListener('click', () => {
-                if (currentCol === colIdx) {
-                    ascending = !ascending;
-                } else {
-                    currentCol = colIdx;
-                    ascending = true;
-                }
-                headers.forEach(h => h.querySelector('.sort-arrow').textContent = '');
-                th.querySelector('.sort-arrow').textContent = ascending ? ' \u25B2' : ' \u25BC';
-
-                const tbody = table.querySelector('tbody');
-                const rows = Array.from(tbody.querySelectorAll('tr'));
-                const sortType = th.dataset.sort;
-
-                rows.sort((a, b) => {
-                    const aEl = a.cells[colIdx];
-                    const bEl = b.cells[colIdx];
-                    const aCell = aEl?.dataset.sortValue || aEl?.textContent.trim() || '';
-                    const bCell = bEl?.dataset.sortValue || bEl?.textContent.trim() || '';
-                    let cmp = 0;
-                    if (sortType === 'num') {
-                        cmp = parseFloat(aCell.replace(/[^\d.-]/g, '') || '0') - parseFloat(bCell.replace(/[^\d.-]/g, '') || '0');
-                    } else if (sortType === 'date') {
-                        cmp = (aCell || '0').localeCompare(bCell || '0');
-                    } else {
-                        cmp = aCell.localeCompare(bCell, undefined, { sensitivity: 'base' });
-                    }
-                    return ascending ? cmp : -cmp;
-                });
-                rows.forEach(r => tbody.appendChild(r));
-            });
-        });
-    });
-})();
-</script>
+{{template "sortableTableScript" .}}
 {{end}}

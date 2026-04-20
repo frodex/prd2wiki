@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# twoWiki Fossil JSON helper: login, list, get, history, save (Track C).
+# Loads repo-root `.env.twowiki` if present (same as twowiki-fossil-auth-smoke.sh).
+# Writes use Referer + POST body {"authToken","payload"} per Fossil JSON conventions.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ENVF="$ROOT/.env.twowiki"
+if [[ -f "$ENVF" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENVF"
+  set +a
+fi
+
+FOSSIL="${TWOWIKI_FOSSIL_URL:-http://192.168.20.155:8083}"
+REF="${FOSSIL}/"
+USER="${TWOWIKI_FOSSIL_USER:-root}"
+PW="${TWOWIKI_FOSSIL_PASSWORD:-}"
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  twowiki-json login              Verify json/login (needs TWOWIKI_FOSSIL_PASSWORD)
+  twowiki-json login --emit-token Print authToken to stdout (sensitive; for piping)
+  twowiki-json list               GET /json/ticket/list (anonymous OK on lab)
+  twowiki-json get <uuid>         GET /json/ticket/get?uuid=...
+  twowiki-json history <uuid>    GET /json/ticket/history?uuid=... (needs server with json_ticket_history)
+  twowiki-json save <file|-      POST /json/ticket/save; JSON file is payload object only
+                                  Example: {"uuid":"...","+icomment":"note"}
+                                  Use "-" to read payload JSON from stdin.
+
+Environment: TWOWIKI_FOSSIL_URL, TWOWIKI_FOSSIL_USER, TWOWIKI_FOSSIL_PASSWORD
+EOF
+}
+
+need_pw() {
+  if [[ -z "$PW" ]]; then
+    echo "twowiki-json: TWOWIKI_FOSSIL_PASSWORD not set (see docs/twowiki-lab.env.example)" >&2
+    exit 77
+  fi
+}
+
+login_json() {
+  local tmp
+  tmp="$(mktemp)"
+  curl -sS -G \
+    -H "Referer: ${REF}" \
+    --data-urlencode "name=${USER}" \
+    --data-urlencode "p=${PW}" \
+    "${FOSSIL}/json/login" >"$tmp"
+  python3 -c 'import json,sys
+path=sys.argv[1]
+with open(path,encoding="utf-8") as f:
+    d=json.load(f)
+code=d.get("resultCode")
+if code and code!="OK":
+    sys.stderr.write("LOGIN_FAIL %s %s\n"%(code,d.get("resultText","")))
+    sys.exit(1)
+t=(d.get("payload") or {}).get("authToken")
+if not t:
+    sys.stderr.write("LOGIN_FAIL no payload.authToken\n")
+    sys.exit(1)
+print(t)' "$tmp"
+  rm -f "$tmp"
+}
+
+cmd_login() {
+  need_pw
+  local token
+  token="$(login_json)"
+  if [[ "${1:-}" == "--emit-token" ]]; then
+    printf '%s\n' "$token"
+  else
+    echo "twowiki-json login: OK (authToken length ${#token})" >&2
+  fi
+}
+
+cmd_list() {
+  curl -sS -H "Referer: ${REF}" "${FOSSIL}/json/ticket/list"
+}
+
+cmd_get() {
+  local u="${1:-}"
+  if [[ -z "$u" ]]; then
+    usage
+    exit 2
+  fi
+  curl -sS -G -H "Referer: ${REF}" \
+    --data-urlencode "uuid=$u" \
+    "${FOSSIL}/json/ticket/get"
+}
+
+cmd_history() {
+  local u="${1:-}"
+  if [[ -z "$u" ]]; then
+    usage
+    exit 2
+  fi
+  curl -sS -G -H "Referer: ${REF}" \
+    --data-urlencode "uuid=$u" \
+    "${FOSSIL}/json/ticket/history"
+}
+
+cmd_save() {
+  need_pw
+  local src="${1:-}"
+  if [[ -z "$src" ]]; then
+    usage
+    exit 2
+  fi
+  local token merged
+  token="$(login_json)"
+  merged="$(mktemp)"
+  if [[ "$src" == "-" ]]; then
+    python3 -c 'import json,sys
+token=sys.argv[1]
+payload=json.load(sys.stdin)
+json.dump({"authToken":token,"payload":payload}, sys.stdout)' "$token" >"$merged"
+  else
+    [[ -f "$src" ]] || { echo "twowiki-json save: not a file: $src" >&2; exit 2; }
+    python3 -c 'import json,sys
+token=sys.argv[1]
+with open(sys.argv[2],encoding="utf-8") as f:
+    payload=json.load(f)
+json.dump({"authToken":token,"payload":payload}, sys.stdout)' "$token" "$src" >"$merged"
+  fi
+  curl -sS -X POST \
+    -H "Referer: ${REF}" \
+    -H "Content-Type: application/json; charset=utf-8" \
+    --data-binary @"$merged" \
+    "${FOSSIL}/json/ticket/save"
+  rm -f "$merged"
+}
+
+pretty() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), indent=2, ensure_ascii=False))'
+  else
+    cat
+  fi
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  case "$cmd" in
+    login) cmd_login "$@" ;;
+    list) cmd_list | pretty ;;
+    get) cmd_get "$@" | pretty ;;
+    history) cmd_history "$@" | pretty ;;
+    save) cmd_save "$@" | pretty ;;
+    ""|-h|--help|help) usage; exit 0 ;;
+    *) echo "twowiki-json: unknown command: $cmd" >&2; usage; exit 2 ;;
+  esac
+}
+
+main "$@"

@@ -3,12 +3,20 @@
     <a href="/projects/{{.Project}}/pages/{{.ID}}/edit" class="btn-action">Edit</a>
     <a href="/projects/{{.Project}}/pages/{{.ID}}/history" class="btn-action">History</a>
     {{if or (eq .Status "draft") (eq .Status "review")}}
-    <button class="btn-action btn-action-approve" onclick="if(confirm('Approve this page?')){fetch('/api/projects/{{.Project}}/pages/{{.ID}}/approve',{method:'POST'}).then(()=>location.reload())}">Approve</button>
+    <button class="btn-action btn-action-approve" onclick="if(confirm('Approve this page?')){wikiMutate('/api/projects/{{.Project}}/pages/{{.ID}}/approve')}">Approve</button>
     {{end}}
     {{if ne .Status "deprecated"}}
-    <button class="btn-action btn-action-deprecate" onclick="if(confirm('Deprecate this page?')){fetch('/api/projects/{{.Project}}/pages/{{.ID}}/deprecate',{method:'POST'}).then(()=>location.reload())}">Deprecate</button>
+    <button class="btn-action btn-action-deprecate" onclick="if(confirm('Deprecate this page?')){wikiMutate('/api/projects/{{.Project}}/pages/{{.ID}}/deprecate')}">Deprecate</button>
     {{else}}
-    <button class="btn-action btn-action-restore" onclick="if(confirm('Restore this page?')){fetch('/api/projects/{{.Project}}/pages/{{.ID}}/restore',{method:'POST'}).then(()=>location.reload())}">Restore</button>
+    <button class="btn-action btn-action-restore" onclick="if(confirm('Restore this page?')){wikiMutate('/api/projects/{{.Project}}/pages/{{.ID}}/restore')}">Restore</button>
     {{end}}
 </div>
+<script>
+function wikiMutate(url) {
+    var h = {};
+    var meta = document.querySelector('meta[name="write-token"]');
+    if (meta && meta.getAttribute('content')) h['Authorization'] = 'Bearer ' + meta.getAttribute('content');
+    fetch(url, {method: 'POST', headers: h}).then(function() { location.reload(); });
+}
+</script>
 {{end}}

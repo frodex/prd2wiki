@@ -1,0 +1,266 @@
+<div class="twowiki-tkt-shell">
+<div class="twowiki-tkt-meta">
+<th1>
+if {[info exists tkt_uuid]} {
+  html "<p class='twowiki-tkt-id'><span class='tktDspLabel'>Ticket</span>"
+  copybtn hash-tk 0 $tkt_uuid 2
+  html "</p>\n"
+}
+</th1>
+<h1 class="twowiki-tkt-title">$<title></h1>
+<div class="twowiki-tkt-badges">
+<span class="tw-badge tw-type">$<type></span>
+<span class="tw-badge tw-status">$<status></span>
+<th1>
+if {[info exists tags] && $tags ne ""} {
+  html "<span class='tw-badge tw-tags'>"
+  html $tags
+  html "</span>\n"
+}
+if {[info exists page_path] && $page_path ne ""} {
+  html "<span class='tw-badge tw-path'>"
+  html $page_path
+  html "</span>\n"
+}
+</th1>
+</div>
+<div class="twowiki-tkt-repo-links">
+  <a class="twowiki-repo-link" href="/dir?ci=tip">Browse files</a>
+  <span class="twowiki-repo-sep">·</span>
+  <a class="twowiki-repo-link" href="/tree?ci=tip">File tree</a>
+  <span class="twowiki-repo-sep">·</span>
+  <a class="twowiki-repo-link" href="/timeline">Timeline</a>
+</div>
+<div class="twowiki-footer-link">
+  Reader UI: <a href="http://192.168.22.56:8082/projects/default/pages">prd2wiki</a>
+  · <a href="/ticket">All tickets</a>
+  · <a href="/skins?skin=custom" title="Use this repository CONFIG skin">Site skin</a>
+</div>
+</div>
+<th1>
+if {[lsearch [info commands] twowiki_md_hardbreaks_plain] < 0} {
+proc twowiki_md_hardbreaks_plain {txt} {
+  set out ""
+  set n [string length $txt]
+  for {set i 0} {$i < $n} {set i [expr {$i+1}]} {
+    set c [string index $txt $i]
+    if {$c eq "\n"} {
+      set out "${out}  \n"
+    } else {
+      set out "${out}$c"
+    }
+  }
+  return $out
+}
+}
+if {[lsearch [info commands] twowiki_md_hardbreaks] < 0} {
+proc twowiki_md_hardbreaks {txt} {
+  set res ""
+  for {} {[string length $txt] > 0} {} {
+    set p [string first "```" $txt]
+    if {$p < 0} {
+      set res "${res}[twowiki_md_hardbreaks_plain $txt]"
+      break
+    }
+    if {$p > 0} {
+      set head [string range $txt 0 [expr {$p-1}]]
+      set res "${res}[twowiki_md_hardbreaks_plain $head]"
+    }
+    set rest [string range $txt $p end]
+    set after [string range $rest 3 end]
+    set qrel [string first "```" $after]
+    if {$qrel < 0} {
+      set res "${res}$rest"
+      break
+    }
+    set abs [expr {3+$qrel}]
+    set res "${res}[string range $rest 0 [expr {$abs+2}]]"
+    set txt [string range $rest [expr {$abs+3}] end]
+  }
+  return $res
+}
+}
+# Fossil markdown omits a leading # ... line from the HTML body and returns it as
+# list element 0 (see fossil doc markdown.md "Special Features For Fossil"). Wiki skins
+# show that title in the page chrome; ticket-viewpage only used [lindex $mdout 1], so
+# in-body H1 text disappeared. Emit element 0 as h2 under the ticket title (page h1).
+if {[lsearch [info commands] twowiki_emit_markdown_fragment] < 0} {
+proc twowiki_emit_markdown_fragment {raw} {
+  set mdout [markdown [twowiki_md_hardbreaks $raw]]
+  set lead [lindex $mdout 0]
+  if {$lead ne ""} {
+    html {<h2 class="twowiki-md-from-atx-h1">}
+    html $lead
+    html {</h2>}
+  }
+  html [untaint [lindex $mdout 1]]
+}
+}
+if {[info exists body] && $body ne ""} {
+  html {<div class='twowiki-doc markdown'>}
+  twowiki_emit_markdown_fragment $body
+  html {</div>}
+}
+if {[info exists section_overview] && $section_overview ne ""} {
+  html {<hr><h2 class='twowiki-section-h'>Overview</h2><div class='twowiki-doc markdown'>}
+  twowiki_emit_markdown_fragment $section_overview
+  html {</div>}
+}
+if {[info exists section_api] && $section_api ne ""} {
+  html {<hr><h2 class='twowiki-section-h'>API</h2><div class='twowiki-doc markdown'>}
+  twowiki_emit_markdown_fragment $section_api
+  html {</div>}
+}
+if {[info exists section_storage] && $section_storage ne ""} {
+  html {<hr><h2 class='twowiki-section-h'>Storage</h2><div class='twowiki-doc markdown'>}
+  twowiki_emit_markdown_fragment $section_storage
+  html {</div>}
+}
+if {[info exists section_auth] && $section_auth ne ""} {
+  html {<hr><h2 class='twowiki-section-h'>Auth</h2><div class='twowiki-doc markdown'>}
+  twowiki_emit_markdown_fragment $section_auth
+  html {</div>}
+}
+set twowiki_icmt_hdr 0
+query {SELECT icomment, login, datetime(tkt_mtime) AS cmt_time FROM ticketchng WHERE tkt_id=(SELECT tkt_id FROM ticket WHERE tkt_uuid=$tkt_uuid) AND icomment IS NOT NULL AND trim(icomment)!='' ORDER BY tkt_mtime} {
+  if {$twowiki_icmt_hdr==0} {
+    html {<hr class="twowiki-tkt-comments-hr"><h2 class='twowiki-section-h'>Comments</h2>}
+    set twowiki_icmt_hdr 1
+  }
+  html {<div class="twowiki-tkt-comment">}
+  html {<p class="twowiki-tkt-comment-meta">}
+  puts $login
+  html { · }
+  puts $cmt_time
+  html {</p>}
+  html {<div class='twowiki-doc markdown twowiki-tkt-comment-body'>}
+  twowiki_emit_markdown_fragment $icomment
+  html {</div></div>}
+}
+</th1>
+<script nonce="$nonce">
+/* Task lists + sortable tables run outside the Mermaid module so they still work if CDN ESM import fails (CSP, network, ad-block). */
+(function(){
+function enableTaskListCheckboxes(){
+  document.querySelectorAll('.twowiki-doc li').forEach(function(li){
+    if(li.querySelector('input[type="checkbox"]')) return;
+    var m = li.textContent && li.textContent.match(/^\s*\[( |x|X)\]\s+/);
+    if(!m) return;
+    var checked = m[1].toLowerCase() === 'x';
+    var text = li.textContent.replace(/^\s*\[( |x|X)\]\s+/, '');
+    li.textContent = '';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.disabled = true;
+    cb.checked = checked;
+    cb.style.marginRight = '0.45em';
+    li.appendChild(cb);
+    li.appendChild(document.createTextNode(text));
+  });
+}
+function enableSortableTables(){
+  function isSeparatorRow(tr){
+    var cells = tr.cells;
+    if(!cells || cells.length === 0) return false;
+    for(var i = 0; i < cells.length; i++){
+      var t = (cells[i].textContent || '').replace(/\s+/g, '');
+      if(t === '') return false;
+      if(!/^[\-—:=.|]+$/.test(t)) return false;
+    }
+    return true;
+  }
+  document.querySelectorAll('.twowiki-doc table').forEach(function(table){
+    var tbody = table.tBodies && table.tBodies[0];
+    if(!tbody || tbody.rows.length < 1) return;
+    var thead = table.querySelector('thead');
+    var headerCells;
+    var dataRowSlice;
+    if(thead && thead.rows[0]){
+      headerCells = thead.rows[0].cells;
+      dataRowSlice = function(){ return Array.from(tbody.rows); };
+    } else if(tbody.rows.length >= 2){
+      headerCells = tbody.rows[0].cells;
+      dataRowSlice = function(){ return Array.from(tbody.rows).slice(1); };
+    } else {
+      return;
+    }
+    if(!headerCells || headerCells.length === 0) return;
+    var optIn = table.classList.contains('twowiki-table-sort');
+    function partitionDataRows(){
+      var raw = dataRowSlice();
+      var seps = [];
+      var data = [];
+      for(var i = 0; i < raw.length; i++){
+        if(isSeparatorRow(raw[i])) seps.push(raw[i]);
+        else data.push(raw[i]);
+      }
+      return {separators: seps, data: data};
+    }
+    var part0 = partitionDataRows();
+    /* Fossil markdown emits class md-table. Qualifying tests use many 1-row md-tables — keep sort on those.
+       Raw HTML tables (no md-table) stay conservative: need 2+ data rows unless twowiki-table-sort. */
+    var isMdTable = table.classList.contains('md-table');
+    if(optIn){
+      if(part0.data.length < 1) return;
+    } else if(isMdTable){
+      if(part0.data.length < 1) return;
+    } else {
+      if(part0.data.length < 2) return;
+    }
+    table.classList.add('twowiki-sortable');
+    for(var idx = 0; idx < headerCells.length; idx++){
+      (function(colIdx){
+        var th = headerCells[colIdx];
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', function(){
+          var asc = th.getAttribute('data-sort') !== 'asc';
+          for(var j = 0; j < headerCells.length; j++){ headerCells[j].removeAttribute('data-sort'); }
+          th.setAttribute('data-sort', asc ? 'asc' : 'desc');
+          var part = partitionDataRows();
+          var rows = part.data.slice();
+          rows.sort(function(a,b){
+            var av = (a.cells[colIdx] ? a.cells[colIdx].textContent : '').trim();
+            var bv = (b.cells[colIdx] ? b.cells[colIdx].textContent : '').trim();
+            var an = Number(av), bn = Number(bv);
+            var bothNum = !Number.isNaN(an) && !Number.isNaN(bn) && av !== '' && bv !== '';
+            var cmp = bothNum ? (an - bn) : av.localeCompare(bv);
+            return asc ? cmp : -cmp;
+          });
+          part.separators.forEach(function(r){ tbody.appendChild(r); });
+          rows.forEach(function(r){ tbody.appendChild(r); });
+        });
+      })(idx);
+    }
+  });
+}
+enableTaskListCheckboxes();
+enableSortableTables();
+})();
+</script>
+<script type="module" nonce="$nonce">
+/* Mermaid 11 + ELK on ticket view only (static imports — matches pre–site-wide-footer behavior; avoids bare "d3" in layout-elk.core.mjs). */
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs';
+
+mermaid.registerLayoutLoaders(elkLayouts);
+
+document.querySelectorAll('pre code.language-mermaid').forEach(function(code){
+  var pre = code.parentElement;
+  if(!pre || pre.tagName !== 'PRE') return;
+  var div = document.createElement('pre');
+  div.className = 'mermaid';
+  div.textContent = code.textContent || '';
+  pre.replaceWith(div);
+});
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'neutral',
+  layout: 'elk',
+  securityLevel: 'loose',
+  flowchart: { defaultRenderer: 'elk' },
+  state: { defaultRenderer: 'elk' },
+  class: { defaultRenderer: 'elk' }
+});
+await mermaid.run({ querySelector: '.mermaid' });
+</script>
+</div>

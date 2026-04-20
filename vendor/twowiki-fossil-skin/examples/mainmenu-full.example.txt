@@ -1,0 +1,10 @@
+Home / {r} {}
+Timeline /timeline {r} {}
+Files /dir?ci=tip {r} desktoponly
+Branches /brlist {r} wideonly
+Tags /taglist {r} wideonly
+Tickets /ticket {r} wideonly
+Wiki /wiki {r} wideonly
+Admin /setup {a s} desktoponly
+Logout /logout {L} wideonly
+Login /login {!L} wideonly
