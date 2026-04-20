@@ -23,23 +23,22 @@ func FillPageTimestamps(item *PageListItem, pr index.PageResult, cache *EditCach
 }
 
 // PageUpdatedSortKey returns an RFC3339 UTC timestamp for stable chronological sorting (newest last lexicographically when ascending — client uses same string compare).
+// Precedence: git last commit (edit cache) > Dublin Core dc_modified > SQLite updated_at.
+// We do not take max(git, sqlite): after a full reindex, updated_at is "indexer touch" time and would
+// incorrectly swamp real edit times for sorting.
 func PageUpdatedSortKey(pr index.PageResult, edit EditInfo, hasEdit bool) string {
-	var best time.Time
-	var have bool
 	if hasEdit && strings.TrimSpace(edit.Date) != "" {
 		if t, ok := parseEditCacheDate(edit.Date); ok {
-			best, have = t, true
+			return t.UTC().Format(time.RFC3339)
 		}
+	}
+	if t, ok := parseDCModifiedDate(pr.DCModified); ok {
+		return t.UTC().Format(time.RFC3339)
 	}
 	if t, ok := parseSQLiteUpdatedAt(pr.UpdatedAt); ok {
-		if !have || t.After(best) {
-			best, have = t, true
-		}
+		return t.UTC().Format(time.RFC3339)
 	}
-	if !have {
-		return ""
-	}
-	return best.UTC().Format(time.RFC3339)
+	return ""
 }
 
 // PageUpdatedDisplay is a short human line for the "updated" column.
@@ -50,10 +49,25 @@ func PageUpdatedDisplay(pr index.PageResult, edit EditInfo, hasEdit bool) string
 		}
 		return edit.Date
 	}
+	if t, ok := parseDCModifiedDate(pr.DCModified); ok {
+		return t.UTC().Format("2006-01-02")
+	}
 	if t, ok := parseSQLiteUpdatedAt(pr.UpdatedAt); ok {
 		return t.UTC().Format("2006-01-02 15:04")
 	}
 	return ""
+}
+
+func parseDCModifiedDate(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.ParseInLocation("2006-01-02", s, time.UTC)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
 }
 
 func parseEditCacheDate(s string) (time.Time, bool) {

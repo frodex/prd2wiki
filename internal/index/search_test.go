@@ -183,6 +183,19 @@ func TestFullTextAllQueryTermsInTitleBeforeBodyOnly(t *testing.T) {
 	}
 }
 
+func TestSanitizeFTSQuery(t *testing.T) {
+	// Apostrophe triggers FTS5 syntax error if passed raw to MATCH.
+	if g, want := sanitizeFTSQuery("Anthropic's str_replace_editor"), "anthropic str replace editor"; g != want {
+		t.Fatalf("sanitize apostrophe/underscore: got %q want %q", g, want)
+	}
+	if g := sanitizeFTSQuery("pippi-readme"); g != "pippi readme" {
+		t.Fatalf("hyphen: got %q", g)
+	}
+	if sanitizeFTSQuery("a b") != "" {
+		t.Fatalf("single-letter tokens dropped: got %q", sanitizeFTSQuery("a b"))
+	}
+}
+
 func TestDependentsOf(t *testing.T) {
 	s, ix := setupSearchDB(t)
 

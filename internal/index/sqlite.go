@@ -133,6 +133,8 @@ func migrate(db *sql.DB) error {
 	alterStmts := []string{
 		`ALTER TABLE pages ADD COLUMN module TEXT`,
 		`ALTER TABLE pages ADD COLUMN category TEXT`,
+		`ALTER TABLE pages ADD COLUMN inlink_count INTEGER DEFAULT 0`,
+		`ALTER TABLE pages ADD COLUMN outlink_count INTEGER DEFAULT 0`,
 	}
 	for _, stmt := range alterStmts {
 		if _, err := db.Exec(stmt); err != nil {

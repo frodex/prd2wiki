@@ -5,6 +5,29 @@ import (
 	"unicode"
 )
 
+// TitleMatchBonus scores how closely the page title matches a navigation-style query.
+// Higher is better (used as a secondary rank within the same MatchTier). Exact and
+// prefix matches surface the page users typed the name of.
+func TitleMatchBonus(title, query string) float64 {
+	tit := normalizeForTitleMatch(title)
+	q := normalizeForTitleMatch(query)
+	if tit == "" || q == "" {
+		return 0
+	}
+	if tit == q {
+		return 600
+	}
+	// Title begins with the query (navigational “I typed the start of the page name”).
+	if strings.HasPrefix(tit, q+" ") {
+		return 450
+	}
+	// Query phrase appears in title but not at the start (e.g. “Research: … Composable Pages …”).
+	if strings.Contains(tit, q) {
+		return 180
+	}
+	return 0
+}
+
 // MatchTier classifies metadata match strength for title+tags vs query.
 // Lower sorts first: 0 = phrase in blob; 1 = every query token in title; 2 = every token in title+tags but not all in title alone; 3 = weaker.
 func MatchTier(title, tags, query string) int {

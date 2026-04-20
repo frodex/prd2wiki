@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -12,6 +13,14 @@ import (
 	"github.com/frodex/prd2wiki/internal/librarian"
 	"github.com/frodex/prd2wiki/internal/searchmerge"
 	"github.com/frodex/prd2wiki/internal/searchsnippet"
+)
+
+// Tunables: promote pages many others link to; demote pages that mostly outbound-link elsewhere.
+const (
+	searchLinkBoostPerInlink    = 8.0
+	searchLinkBoostMax          = 40.0
+	searchLinkPenaltyPerOutlink = 2.0
+	searchLinkPenaltyMax        = 25.0
 )
 
 // SearchData holds data for the search results template.
@@ -117,6 +126,19 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 			}
 			mergedPRs = index.RerankSearchResults(mergedPRs, query)
 
+			var linkStatsByID map[string]index.LinkStats
+			if len(mergedPRs) > 0 {
+				linkIDs := make([]string, 0, len(mergedPRs))
+				for _, pr := range mergedPRs {
+					linkIDs = append(linkIDs, pr.ID)
+				}
+				if m, err := h.search.LinkStatsForIDs(project, linkIDs); err == nil {
+					linkStatsByID = m
+				} else {
+					slog.Warn("web search: link stats failed", "project", project, "error", err)
+				}
+			}
+
 			var ftsSnips map[string]string
 			var hitCounts map[string]int
 			if ftsErr == nil && query != "" {
@@ -179,11 +201,9 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 					Status: pr.Status, TrustLevel: pr.TrustLevel, Path: pr.Path,
 					HitCount: hits, Score: score, Excerpt: excerpt,
 				}
-				// Scoring: MatchTier (title/tag/body) as major factor,
-				// exponential hit count as secondary factor within tier
+				// Scoring: MatchTier, then title-query bonus, then damped body hit count, then vector sim.
 				hitScore := index.HitScore(hits)
-				tier := index.MatchTier(pr.Title, pr.Tags, query) // 0=title, 1=tag, 2=body
-				// tierBonus: title match=1000, tag match=100, body only=0
+				tier := index.MatchTier(pr.Title, pr.Tags, query)
 				var tierBonus float64
 				switch tier {
 				case 0:
@@ -193,14 +213,33 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 				default:
 					tierBonus = 0
 				}
+				titleBon := index.TitleMatchBonus(pr.Title, query)
+				// Cap body-hit contribution for everyone so tier-3 “keyword spam” cannot outrank
+				// strong title matches (tier 0/1). Tier 2/3 get a tighter cap.
+				effectiveHit := hitScore
+				switch {
+				case tier <= 1:
+					effectiveHit = math.Min(hitScore, 45)
+				case tier == 2:
+					effectiveHit = math.Min(hitScore, 22)
+				default:
+					effectiveHit = math.Min(hitScore, 12)
+				}
 				var scoreSort float64
 				switch {
 				case inFts && inVec:
-					scoreSort = tierBonus + hitScore + vr.Similarity + 1e-3
+					scoreSort = tierBonus + titleBon + effectiveHit + vr.Similarity + 1e-3
 				case inFts:
-					scoreSort = tierBonus + hitScore + 0.3
+					scoreSort = tierBonus + titleBon + effectiveHit + 0.3
 				default:
-					scoreSort = vr.Similarity
+					scoreSort = tierBonus + titleBon + vr.Similarity
+				}
+				if linkStatsByID != nil {
+					if st, ok := linkStatsByID[pr.ID]; ok {
+						boost := math.Min(searchLinkBoostMax, float64(st.In)*searchLinkBoostPerInlink)
+						pen := math.Min(searchLinkPenaltyMax, float64(st.Out)*searchLinkPenaltyPerOutlink)
+						scoreSort += boost - pen
+					}
 				}
 				item.ScoreSort = strconv.FormatFloat(scoreSort, 'f', 8, 64)
 				FillPageTimestamps(&item, pr, editCache)
@@ -211,7 +250,7 @@ func (h *Handler) searchPages(w http.ResponseWriter, r *http.Request) {
 				}
 				items = append(items, item)
 			}
-			// Re-sort by scoreSort (which includes exponential hit bonus) descending
+			// Re-sort by scoreSort (tier + title bonus + capped hit score + vector) descending
 			sort.SliceStable(items, func(i, j int) bool {
 				si, _ := strconv.ParseFloat(items[i].ScoreSort, 64)
 				sj, _ := strconv.ParseFloat(items[j].ScoreSort, 64)

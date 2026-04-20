@@ -27,3 +27,21 @@ func TestMatchTier(t *testing.T) {
 		t.Fatalf("tags-only match: got %d want 2", g)
 	}
 }
+
+func TestTitleMatchBonus(t *testing.T) {
+	if g := TitleMatchBonus("Agent Rules Bootstrap", "agent rules bootstrap"); g < 500 {
+		t.Fatalf("exact title: got %g want >= 500", g)
+	}
+	if g := TitleMatchBonus("Agent Rules Bootstrap — notes", "agent rules bootstrap"); g < 400 {
+		t.Fatalf("prefix title: got %g want >= 400", g)
+	}
+	if TitleMatchBonus("Other", "agent rules bootstrap") != 0 {
+		t.Fatal("unrelated title should be 0")
+	}
+	// “Research: …” contains phrase but should score lower than a title that *starts* with the query.
+	prefix := TitleMatchBonus("Composable Pages — Live Edits", "composable pages")
+	mid := TitleMatchBonus("Research: Composable Pages Design", "composable pages")
+	if prefix <= mid {
+		t.Fatalf("prefix title should beat mid-title phrase: prefix=%g mid=%g", prefix, mid)
+	}
+}

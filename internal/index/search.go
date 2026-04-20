@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // FTS BM25 column weights (title/tags boosted vs body). Tuned for wiki-style queries.
@@ -26,7 +27,9 @@ type PageResult struct {
 	Tags       string `json:"tags"`
 	Module     string `json:"module"`
 	Category   string `json:"category"`
-	// UpdatedAt is from SQLite pages.updated_at (typically "2006-01-02 15:04:05" UTC).
+	// DCModified is Dublin Core date from frontmatter (YYYY-MM-DD), if set.
+	DCModified string `json:"dc_modified,omitempty"`
+	// UpdatedAt is SQLite pages.updated_at — last indexer touch, not necessarily author edit time.
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
@@ -51,7 +54,7 @@ func (s *Searcher) query(sqlStr string, args ...interface{}) ([]PageResult, erro
 	var results []PageResult
 	for rows.Next() {
 		var r PageResult
-		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category, &r.DCModified, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
 		results = append(results, r)
@@ -62,7 +65,7 @@ func (s *Searcher) query(sqlStr string, args ...interface{}) ([]PageResult, erro
 	return results, nil
 }
 
-const selectPagesCols = `pages.id, pages.title, pages.type, pages.status, pages.path, pages.project, pages.trust_level, COALESCE(pages.tags, ''), COALESCE(pages.module, ''), COALESCE(pages.category, ''), IFNULL(pages.updated_at, '')`
+const selectPagesCols = `pages.id, pages.title, pages.type, pages.status, pages.path, pages.project, pages.trust_level, COALESCE(pages.tags, ''), COALESCE(pages.module, ''), COALESCE(pages.category, ''), IFNULL(pages.dc_modified, ''), IFNULL(pages.updated_at, '')`
 
 const selectPages = `SELECT ` + selectPagesCols + ` FROM pages`
 
@@ -97,21 +100,34 @@ func (s *Searcher) ByTag(project, tag string) ([]PageResult, error) {
 }
 
 // sanitizeFTSQuery prepares a user query for FTS5 MATCH.
-// - Replaces hyphens with spaces (FTS5 unicode61 tokenizer splits on hyphens)
-// - Strips FTS5 operators that could cause syntax errors
-// - Trims whitespace
+// It removes characters that break FTS5 (notably apostrophes: "foo's" → fts syntax error),
+// maps hyphens/underscores/punctuation to token boundaries, keeps only letters/digits,
+// and drops 1-rune tokens so short noise does not constrain AND matching.
 func sanitizeFTSQuery(q string) string {
 	q = strings.TrimSpace(q)
 	if q == "" {
-		return q
+		return ""
 	}
-	// Replace hyphens with spaces so "go-git" matches pages containing "go" and "git"
-	q = strings.ReplaceAll(q, "-", " ")
-	// Collapse multiple spaces
-	for strings.Contains(q, "  ") {
-		q = strings.ReplaceAll(q, "  ", " ")
+	var b strings.Builder
+	b.Grow(len(q))
+	for _, r := range q {
+		switch {
+		case unicode.IsLetter(r):
+			b.WriteRune(unicode.ToLower(r))
+		case unicode.IsNumber(r):
+			b.WriteRune(r)
+		default:
+			b.WriteByte(' ')
+		}
 	}
-	return strings.TrimSpace(q)
+	fields := strings.Fields(b.String())
+	var out []string
+	for _, f := range fields {
+		if len([]rune(f)) >= 2 {
+			out = append(out, f)
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 // looksLikePageID returns true if the query looks like a page ID (hex hash or UUID).
@@ -137,7 +153,8 @@ func looksLikePageID(q string) bool {
 }
 
 // FullText searches the FTS5 index for pages matching the query within a project.
-// Rows are ordered by title-token relevance (all query terms in title first), then BM25, then shorter title.
+// Rows are ordered by MatchTier, then TitleMatchBonus (navigational: query-as-title-prefix wins
+// over phrase buried mid-title), then BM25, then shorter title.
 // If the query looks like a page ID, a direct ID lookup is prepended to the results.
 func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 	var idResult []PageResult
@@ -172,7 +189,7 @@ func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 	var buf []scored
 	for rows.Next() {
 		var r scored
-		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category, &r.UpdatedAt, &r.bm25); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Type, &r.Status, &r.Path, &r.Project, &r.TrustLevel, &r.Tags, &r.Module, &r.Category, &r.DCModified, &r.UpdatedAt, &r.bm25); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
 		buf = append(buf, r)
@@ -186,6 +203,11 @@ func (s *Searcher) FullText(project, q string) ([]PageResult, error) {
 		tj := MatchTier(buf[j].Title, buf[j].Tags, q)
 		if ti != tj {
 			return ti < tj
+		}
+		bi := TitleMatchBonus(buf[i].Title, q)
+		bj := TitleMatchBonus(buf[j].Title, q)
+		if bi != bj {
+			return bi > bj
 		}
 		if buf[i].bm25 != buf[j].bm25 {
 			return buf[i].bm25 < buf[j].bm25
@@ -323,24 +345,34 @@ func (s *Searcher) FTSSnippetsBody(project string, pageIDs []string, matchQuery 
 	return out, nil
 }
 
-// RerankSearchResults stable-sorts by MatchTier (title+tags vs query), then original order.
-// Use after hybrid RRF so vector-heavy ordering does not bury pages that match all query terms in metadata.
+// RerankSearchResults stable-sorts by MatchTier (title+tags vs query), then title-query
+// closeness, then original merge order. Use after hybrid RRF so vector-heavy ordering does
+// not bury pages that match all query terms in metadata.
 func RerankSearchResults(results []PageResult, query string) []PageResult {
 	if len(results) < 2 {
 		return results
 	}
 	type slot struct {
-		pr   PageResult
-		ord  int
-		tier int
+		pr     PageResult
+		ord    int
+		tier   int
+		titBon float64
 	}
 	xs := make([]slot, len(results))
 	for i, pr := range results {
-		xs[i] = slot{pr: pr, ord: i, tier: MatchTier(pr.Title, pr.Tags, query)}
+		xs[i] = slot{
+			pr:     pr,
+			ord:    i,
+			tier:   MatchTier(pr.Title, pr.Tags, query),
+			titBon: TitleMatchBonus(pr.Title, query),
+		}
 	}
 	sort.SliceStable(xs, func(i, j int) bool {
 		if xs[i].tier != xs[j].tier {
 			return xs[i].tier < xs[j].tier
+		}
+		if xs[i].titBon != xs[j].titBon {
+			return xs[i].titBon > xs[j].titBon
 		}
 		return xs[i].ord < xs[j].ord
 	})

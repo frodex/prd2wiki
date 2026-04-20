@@ -28,7 +28,8 @@
     </nav>
     <div class="wiki-shell{{if .TreeNav}} wiki-shell-with-sidebar{{end}}">
         {{if .TreeNav}}
-        <aside class="wiki-sidebar" aria-label="Wiki tree">
+        <div class="wiki-sidebar-outer">
+        <aside class="wiki-sidebar" id="wiki-sidebar" aria-label="Wiki tree">
             {{range .TreeNav.Projects}}
             <div class="wiki-sidebar-project">
                 <a class="wiki-sidebar-project-title" href="/{{.Path}}">{{.Name}}</a>
@@ -42,6 +43,8 @@
             </div>
             {{end}}
         </aside>
+        <button type="button" class="wiki-sidebar-toggle" id="wiki-sidebar-toggle" aria-expanded="true" aria-controls="wiki-sidebar" title="Collapse sidebar">⟨</button>
+        </div>
         {{end}}
         <main class="wiki-main">
             {{if .Breadcrumbs}}
@@ -58,25 +61,242 @@
             {{template "content" .}}
         </main>
     </div>
+    {{if .TreeNav}}
+    <script>
+    (function () {
+        var shell = document.querySelector('.wiki-shell-with-sidebar');
+        var btn = document.getElementById('wiki-sidebar-toggle');
+        if (!shell || !btn) return;
+        var KEY = 'prd2wiki.sidebarCollapsed';
+        function syncButton(collapsed) {
+            btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            btn.setAttribute('aria-label', collapsed ? 'Expand wiki sidebar' : 'Collapse wiki sidebar');
+            btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+            btn.textContent = collapsed ? '\u27e9' : '\u27e8';
+        }
+        function apply(collapsed) {
+            if (collapsed) shell.classList.add('wiki-sidebar-collapsed');
+            else shell.classList.remove('wiki-sidebar-collapsed');
+            syncButton(collapsed);
+        }
+        try {
+            if (localStorage.getItem(KEY) === '1') apply(true);
+            else apply(false);
+        } catch (e) {
+            apply(false);
+        }
+        btn.addEventListener('click', function () {
+            var collapsed = !shell.classList.contains('wiki-sidebar-collapsed');
+            apply(collapsed);
+            try {
+                localStorage.setItem(KEY, collapsed ? '1' : '0');
+            } catch (err) {}
+        });
+    })();
+    </script>
+    {{end}}
+    <!-- Fullscreen diagram viewer (pan/zoom); inspired by AsyncFuncAI/deepwiki-open Mermaid.tsx (MIT) -->
+    <div id="mermaid-modal" class="mermaid-modal" hidden role="dialog" aria-modal="true" aria-label="Diagram (fullscreen)">
+        <div class="mermaid-modal-backdrop" data-close-mermaid-modal></div>
+        <div class="mermaid-modal-panel">
+            <button type="button" class="mermaid-modal-close-fab" data-close-mermaid-modal aria-label="Close fullscreen">&times;</button>
+            <div class="mermaid-modal-body"></div>
+        </div>
+    </div>
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
         import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs';
         mermaid.registerLayoutLoaders(elkLayouts);
-        // Goldmark renders ```mermaid as <pre><code class="language-mermaid">
-        // Mermaid.js expects <pre class="mermaid"> or <div class="mermaid">
-        // Convert before mermaid.initialize runs.
-        document.querySelectorAll('code.language-mermaid').forEach(code => {
-            const pre = code.parentElement;
-            const div = document.createElement('pre');
-            div.className = 'mermaid';
-            div.textContent = code.textContent;
-            pre.replaceWith(div);
-        });
-        mermaid.initialize({
-            startOnLoad: true,
-            theme: 'neutral',
-            layout: 'elk'
-        });
+
+        const blocks = Array.from(document.querySelectorAll('code.language-mermaid'));
+        if (blocks.length === 0) {
+            /* no mermaid blocks — skip */
+        } else {
+            void (async () => {
+            // Programmatic render (per deepwiki-open Mermaid.tsx): isolate failures, attach pan-zoom, fullscreen.
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'neutral',
+                layout: 'elk',
+                securityLevel: 'strict',
+                suppressErrorRendering: true,
+                logLevel: 'error',
+                maxTextSize: 100000,
+                htmlLabels: true,
+                flowchart: {
+                    htmlLabels: true,
+                    curve: 'basis',
+                    nodeSpacing: 50,
+                    rankSpacing: 50,
+                    padding: 16
+                }
+            });
+
+            let svgPanZoomFactory = null;
+            try {
+                const mod = await import('https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/+esm');
+                svgPanZoomFactory = mod.default || mod;
+            } catch (e) {
+                console.warn('svg-pan-zoom load failed; diagrams remain scroll-only', e);
+            }
+
+            const modal = document.getElementById('mermaid-modal');
+            const modalBody = modal.querySelector('.mermaid-modal-body');
+            let modalPanZoom = null;
+
+            function closeMermaidModal() {
+                if (modalPanZoom) {
+                    try { modalPanZoom.destroy(); } catch (_) {}
+                    modalPanZoom = null;
+                }
+                if (modal._mermaidOnResize) {
+                    window.removeEventListener('resize', modal._mermaidOnResize);
+                    modal._mermaidOnResize = null;
+                }
+                modalBody.innerHTML = '';
+                modal.hidden = true;
+                document.body.style.overflow = '';
+            }
+
+            modal.querySelectorAll('[data-close-mermaid-modal]').forEach(el => {
+                el.addEventListener('click', closeMermaidModal);
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !modal.hidden) closeMermaidModal();
+            });
+
+            /** Mermaid emits fixed width/height; strip so viewBox + CSS can size (inline column or fullscreen) */
+            function stripMermaidSvgSizing(svgEl, mode) {
+                if (!svgEl) return;
+                svgEl.removeAttribute('width');
+                svgEl.removeAttribute('height');
+                svgEl.style.removeProperty('width');
+                svgEl.style.removeProperty('height');
+                svgEl.style.removeProperty('max-width');
+                svgEl.style.removeProperty('max-height');
+                if (!svgEl.getAttribute('preserveAspectRatio')) {
+                    svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+                }
+                if (mode === 'inline') {
+                    svgEl.style.maxWidth = '100%';
+                    svgEl.style.height = 'auto';
+                } else if (mode === 'fullscreen') {
+                    /* Root SVG fills the modal layer; svg-pan-zoom resize() reads this box for fit/zoom. */
+                    svgEl.style.width = '100%';
+                    svgEl.style.height = '100%';
+                }
+            }
+
+            /** Fullscreen: diagram fitted inside full-size SVG (contain), wheel zoom, drag to pan — svg-pan-zoom */
+            function attachFullscreenPanZoom(svgEl) {
+                if (!svgPanZoomFactory || !svgEl) return null;
+                svgEl.style.display = 'block';
+                const instance = svgPanZoomFactory(svgEl, {
+                    panEnabled: true,
+                    controlIconsEnabled: false,
+                    zoomEnabled: true,
+                    dblClickZoomEnabled: false,
+                    mouseWheelZoomEnabled: true,
+                    preventMouseEventsDefault: true,
+                    zoomScaleSensitivity: 0.3, /* ~1.5× default (0.2) — faster wheel zoom */
+                    minZoom: 0.05,
+                    maxZoom: 40,
+                    fit: true,
+                    contain: false,
+                    center: true
+                });
+                const refit = () => {
+                    try {
+                        /* Recompute content bounds (Mermaid uses nested groups); then fit to the full SVG rect. */
+                        instance.resize();
+                        instance.updateBBox();
+                        instance.fit();
+                        instance.center();
+                    } catch (_) {}
+                };
+                requestAnimationFrame(() => requestAnimationFrame(refit));
+                setTimeout(refit, 50);
+                setTimeout(refit, 200);
+                const onWinResize = () => {
+                    if (!modal.hidden) refit();
+                };
+                window.addEventListener('resize', onWinResize);
+                modal._mermaidOnResize = onWinResize;
+                return instance;
+            }
+
+            function openMermaidModal(svgMarkup, bindFunctions) {
+                closeMermaidModal();
+                modalBody.innerHTML =
+                    '<div class="mermaid-modal-stage">' +
+                    '<div class="mermaid-modal-svg-wrap"></div>' +
+                    '</div>';
+                const wrap = modalBody.querySelector('.mermaid-modal-svg-wrap');
+                wrap.innerHTML = svgMarkup;
+                const modalSvg = wrap.querySelector('svg');
+                stripMermaidSvgSizing(modalSvg, 'fullscreen');
+                if (typeof bindFunctions === 'function') {
+                    try { bindFunctions(wrap); } catch (_) {}
+                }
+                modal.hidden = false;
+                document.body.style.overflow = 'hidden';
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        modalPanZoom = attachFullscreenPanZoom(modalSvg);
+                    });
+                });
+            }
+
+            let renderIdx = 0;
+            for (const code of blocks) {
+                const pre = code.parentElement;
+                const chart = code.textContent || '';
+                const id = 'mmd-' + (renderIdx++) + '-' + Math.random().toString(36).slice(2, 9);
+
+                const figure = document.createElement('figure');
+                figure.className = 'mermaid-figure';
+
+                const inlineWrap = document.createElement('div');
+                inlineWrap.className = 'mermaid-inline';
+                inlineWrap.setAttribute('role', 'button');
+                inlineWrap.setAttribute('tabindex', '0');
+                inlineWrap.title = 'Click or Enter to open fullscreen (pan and zoom)';
+
+                const errBox = document.createElement('div');
+                errBox.className = 'mermaid-error';
+                errBox.hidden = true;
+
+                figure.appendChild(inlineWrap);
+                figure.appendChild(errBox);
+                pre.replaceWith(figure);
+
+                try {
+                    const { svg, bindFunctions } = await mermaid.render(id, chart);
+                    inlineWrap.innerHTML = svg;
+                    const svgEl = inlineWrap.querySelector('svg');
+                    stripMermaidSvgSizing(svgEl, 'inline');
+                    if (typeof bindFunctions === 'function') {
+                        try { bindFunctions(inlineWrap); } catch (_) {}
+                    }
+
+                    const open = (e) => {
+                        if (e) {
+                            if (e.target.closest && e.target.closest('a[href]')) return;
+                            if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+                            if (e.type === 'keydown') e.preventDefault();
+                        }
+                        openMermaidModal(svg, bindFunctions);
+                    };
+
+                    inlineWrap.addEventListener('click', open);
+                    inlineWrap.addEventListener('keydown', open);
+                } catch (err) {
+                    errBox.hidden = false;
+                    errBox.textContent = 'Mermaid: ' + (err && err.message ? err.message : String(err));
+                }
+            }
+            })();
+        }
     </script>
 </body>
 </html>

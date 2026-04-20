@@ -62,6 +62,15 @@ body {
     padding: 0 1rem;
 }
 
+/* Sidebar column + narrow collapse control (⟨ / ⟩) */
+.wiki-sidebar-outer {
+    display: flex;
+    flex-direction: row;
+    flex-shrink: 0;
+    align-items: stretch;
+    min-height: 0;
+}
+
 .wiki-sidebar {
     flex: 0 0 220px;
     position: sticky;
@@ -70,9 +79,47 @@ body {
     max-height: calc(100vh - 2rem);
     overflow: auto;
     padding: 1rem 0.75rem 1rem 0;
-    border-right: 1px solid #e0e0e8;
+    border-right: 1px solid #e8e8ee;
     background: #fafafa;
     font-size: 0.88rem;
+}
+
+.wiki-sidebar-toggle {
+    flex: 0 0 1.375rem;
+    width: 1.375rem;
+    min-height: 120px;
+    align-self: stretch;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-right: 1px solid #e0e0e8;
+    background: #ececf2;
+    color: #444;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 0;
+}
+
+.wiki-sidebar-toggle:hover {
+    background: #e0e0ea;
+    color: #1a1a2e;
+}
+
+.wiki-shell-with-sidebar.wiki-sidebar-collapsed .wiki-sidebar {
+    display: none;
+}
+
+/* Collapsed: only ⟨/⟩ strip; sticky so it stays reachable while scrolling */
+.wiki-shell-with-sidebar.wiki-sidebar-collapsed .wiki-sidebar-outer {
+    align-self: flex-start;
+}
+
+.wiki-shell-with-sidebar.wiki-sidebar-collapsed .wiki-sidebar-toggle {
+    min-height: 2.5rem;
+    align-self: flex-start;
+    position: sticky;
+    top: 0.5rem;
 }
 
 .wiki-sidebar-project {

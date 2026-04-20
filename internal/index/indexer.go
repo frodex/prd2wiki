@@ -74,9 +74,11 @@ func (ix *Indexer) IndexPage(project, branch, path string, fm *schema.Frontmatte
 	}
 
 	// Update FTS index — delete old entry, insert new one.
+	// Body text strips link URLs so BM25 is not dominated by repeated /pages/<id> paths.
 	_, _ = ix.db.Exec("DELETE FROM pages_fts WHERE id = ?", fm.ID)
+	ftsBody := StripMarkdownForFTS(string(body))
 	_, _ = ix.db.Exec(`INSERT INTO pages_fts (id, title, body, tags) VALUES (?, ?, ?, ?)`,
-		fm.ID, fm.Title, string(body), tags)
+		fm.ID, fm.Title, ftsBody, tags)
 
 	// Delete existing provenance edges for this page, then re-insert.
 	if _, err := ix.db.Exec("DELETE FROM provenance_edges WHERE source_page = ?", fm.ID); err != nil {
@@ -153,6 +155,10 @@ func (ix *Indexer) RebuildFromRepo(project string, repo *wgit.Repo, branch strin
 			log.Printf("warning: RebuildFromRepo: failed to index %q: %v (skipping)", path, err)
 			continue
 		}
+	}
+
+	if err := ix.RecomputeLinkStats(project, branch, repo); err != nil {
+		return fmt.Errorf("recompute link stats: %w", err)
 	}
 
 	return nil
