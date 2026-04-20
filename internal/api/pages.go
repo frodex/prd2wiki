@@ -54,13 +54,17 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 		return
 	}
 
-	// Apply defaults.
-	if req.Status == "" {
-		req.Status = "draft"
-	}
+	// Apply defaults for non-frontmatter request fields (branch / author / intent).
+	// Frontmatter defaults (status, type, dc.created) are applied below only on
+	// the create path — the update path preserves existing frontmatter for any
+	// field the request omits. See R13-6 / T0-NEW-A.
 	if req.Branch == "" {
 		req.Branch = "draft/incoming"
 	}
+	// Capture request-provided author BEFORE defaulting for git commit author.
+	// The merge path needs to distinguish "caller explicitly set dc.creator"
+	// from "handler defaulted the commit author."
+	fmAuthor := req.Author
 	if req.Author == "" {
 		req.Author = "anonymous@prd2wiki"
 	}
@@ -70,15 +74,57 @@ func (s *Server) upsertPage(w http.ResponseWriter, r *http.Request, isCreate boo
 		intent = librarian.IntentVerbatim
 	}
 
-	// Build frontmatter.
-	fm := &schema.Frontmatter{
-		ID:        req.ID,
-		Title:     req.Title,
-		Type:      req.Type,
-		Status:    req.Status,
-		Tags:      req.Tags,
-		DCCreator: req.Author,
-		DCCreated: schema.Date{Time: time.Now().UTC()},
+	now := time.Now().UTC()
+	var fm *schema.Frontmatter
+
+	// Update path: read-modify-write merge. A nil/absent request field
+	// preserves the existing value; a non-nil non-empty request field
+	// overrides. An explicit empty slice clears (tags only; null JSON is
+	// indistinguishable from absent via encoding/json and preserves).
+	// A PUT against a non-existent id falls through to the create path.
+	if !isCreate && req.ID != "" {
+		existing := s.loadExistingFrontmatter(project, req.Branch, req.ID)
+		if existing != nil {
+			fm = existing
+			if req.Title != "" {
+				fm.Title = req.Title
+			}
+			if req.Type != "" {
+				fm.Type = req.Type
+			}
+			if req.Status != "" {
+				fm.Status = req.Status
+			}
+			if req.Tags != nil {
+				fm.Tags = req.Tags
+			}
+			if fmAuthor != "" {
+				fm.DCCreator = fmAuthor
+			}
+			// Backfill dc.created for pre-fix pages that lacked it; otherwise preserve.
+			if fm.DCCreated.Time.IsZero() {
+				fm.DCCreated = schema.Date{Time: now}
+			}
+			fm.DCModified = schema.Date{Time: now}
+		}
+	}
+
+	// Create path (isCreate=true, OR update with missing req.ID, OR update
+	// against a non-existent id). Defaults apply here only.
+	if fm == nil {
+		if req.Status == "" {
+			req.Status = "draft"
+		}
+		fm = &schema.Frontmatter{
+			ID:         req.ID,
+			Title:      req.Title,
+			Type:       req.Type,
+			Status:     req.Status,
+			Tags:       req.Tags,
+			DCCreator:  req.Author,
+			DCCreated:  schema.Date{Time: now},
+			DCModified: schema.Date{Time: now},
+		}
 	}
 
 	useFlat := schema.IsUUIDPageID(req.ID)
@@ -289,4 +335,30 @@ func (s *Server) listPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, results)
+}
+
+// loadExistingFrontmatter reads the frontmatter of an existing page on the
+// given branch and returns it. Returns nil (without error) when the page is
+// absent, the project is unknown, or the read fails — callers interpret nil
+// as "no existing page; treat as create." Supports both hash-prefix and flat
+// path layouts via alternatePagePath (mirrors getPage). Used by upsertPage
+// to implement read-modify-write merge on partial PUT (R13-6 / T0-NEW-A).
+func (s *Server) loadExistingFrontmatter(project, branch, id string) *schema.Frontmatter {
+	repo, ok := s.repos[project]
+	if !ok {
+		return nil
+	}
+	path := s.resolvePagePath(project, id)
+	fm, _, err := repo.ReadPageWithMeta(branch, path)
+	if err != nil {
+		altPath := s.alternatePagePath(id, path)
+		if altPath == "" {
+			return nil
+		}
+		fm, _, err = repo.ReadPageWithMeta(branch, altPath)
+		if err != nil {
+			return nil
+		}
+	}
+	return fm
 }

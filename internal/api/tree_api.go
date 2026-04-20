@@ -150,6 +150,27 @@ func (s *Server) treeGetEntry(w http.ResponseWriter, r *http.Request, rest strin
 	http.NotFound(w, r)
 }
 
+// loadExistingFrontmatterByTreeEntry reads the frontmatter of an existing
+// tree-resolved page on the given branch. Returns nil (without error) when
+// the page is absent on that branch, the repo is missing, or the read fails.
+// Used by treeUpdatePage to implement read-modify-write merge on partial PUT
+// (R13-6 / T0-NEW-A).
+func (s *Server) loadExistingFrontmatterByTreeEntry(ent *tree.PageEntry, branch string) *schema.Frontmatter {
+	repo, ok := s.repos[ent.Project.RepoKey]
+	if !ok {
+		return nil
+	}
+	gitPath := "pages/" + strings.TrimSpace(ent.Page.UUID) + ".md"
+	if branch == "" {
+		branch = "draft/incoming"
+	}
+	fm, _, err := repo.ReadPageWithMeta(branch, gitPath)
+	if err != nil {
+		return nil
+	}
+	return fm
+}
+
 func (s *Server) writeTreePageJSON(w http.ResponseWriter, ent *tree.PageEntry) {
 	repo, ok := s.repos[ent.Project.RepoKey]
 	if !ok {
@@ -291,6 +312,10 @@ func (s *Server) treeUpdatePage(w http.ResponseWriter, r *http.Request, rest str
 	if req.Branch == "" {
 		req.Branch = "draft/incoming"
 	}
+	// Capture request-provided author BEFORE defaulting for git commit author.
+	// The merge path needs to distinguish "caller explicitly set dc.creator"
+	// from "handler defaulted the commit author."
+	fmAuthor := req.Author
 	if req.Author == "" {
 		req.Author = "api@prd2wiki"
 	}
@@ -305,22 +330,52 @@ func (s *Server) treeUpdatePage(w http.ResponseWriter, r *http.Request, rest str
 		return
 	}
 
-	fm := &schema.Frontmatter{
-		ID:        ent.Page.UUID,
-		Title:     req.Title,
-		Type:      req.Type,
-		Status:    req.Status,
-		Tags:      req.Tags,
-		DCCreator: req.Author,
+	// Read-modify-write merge: load existing frontmatter, overlay non-empty
+	// request fields, preserve the rest. See R13-6 / T0-NEW-A.
+	now := time.Now().UTC()
+	existing := s.loadExistingFrontmatterByTreeEntry(ent, req.Branch)
+	fm := existing
+	if fm == nil {
+		fm = &schema.Frontmatter{
+			ID:        ent.Page.UUID,
+			Title:     ent.Page.Title,
+			DCCreated: schema.Date{Time: now},
+		}
 	}
-	if strings.TrimSpace(req.Title) == "" {
-		fm.Title = ent.Page.Title
+	if strings.TrimSpace(req.Title) != "" {
+		fm.Title = req.Title
 	}
-	if fm.Type == "" {
-		fm.Type = "concept"
+	if req.Type != "" {
+		fm.Type = req.Type
 	}
-	if fm.Status == "" {
-		fm.Status = "draft"
+	if req.Status != "" {
+		fm.Status = req.Status
+	}
+	if req.Tags != nil {
+		fm.Tags = req.Tags
+	}
+	if fmAuthor != "" {
+		fm.DCCreator = fmAuthor
+	}
+	// Defensive: force to tree-index UUID (preserves pre-fix L309 invariant
+	// against any drift between existing.ID and the tree entry) — iter-2
+	// verdict item 1.
+	fm.ID = ent.Page.UUID
+	// Backfill dc.created for pre-fix pages that lacked it; otherwise preserve.
+	if fm.DCCreated.Time.IsZero() {
+		fm.DCCreated = schema.Date{Time: now}
+	}
+	fm.DCModified = schema.Date{Time: now}
+	// Apply create-path defaults ONLY when there was no existing page (gated
+	// per iter-2 verdict item 2; mirrors pages.go's explicit `if fm == nil
+	// { ... }` create-path pattern).
+	if existing == nil {
+		if fm.Type == "" {
+			fm.Type = "concept"
+		}
+		if fm.Status == "" {
+			fm.Status = "draft"
+		}
 	}
 
 	res, err := lib.Submit(r.Context(), librarian.SubmitRequest{

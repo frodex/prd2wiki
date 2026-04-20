@@ -33,6 +33,10 @@ Ticket UI for the **twoWiki** Fossil lab is customized via repository **`config`
 
 Repo **`vendor/twowiki-fossil-skin/README.md`** is only a **file map + apply commands**; it points at that wiki page for institutional detail.
 
+**Deploy + pitfalls (checkout required):** **`docs/twowiki-fossil-skin-agent-runbook.md`** — pipe `apply_twowiki_skin.py` into `fossil sql`, verify `config('css')`, anti-patterns (git-only “fixes”, stale DB, `52rem`, HTTP vs stored CSS length).
+
+**Taxonomy / ticket fields (twoWiki ↔ prd2wiki):** **`docs/twowiki/twoWiki-prd2wiki-taxonomy-compliance.md`** — checklist to replace legacy Fossil ticket TYPE/STATUS with [document taxonomy](http://192.168.22.56:8082/prd2wiki/document-taxonomy) + `internal/schema/validate.go`; links **Track D** plan (`plan-twowiki-track-d-hardening-taxonomy-fts.link`).
+
 **MANDATORY — twoWiki vs prd2wiki (do not forget):** **twoWiki** work is **only** the Fossil bench: files under **`vendor/twowiki-fossil-skin/`**, SQL into the **`.fossil` `config`** table, and ticket/repo ops on the **Fossil host** (dashboard, `fossil sql`, `fossil ticket`, JSON ticket API when enabled). The **`vendor/`** path is the cue: packaged skin overlay for Fossil, **not** the prd2wiki Go app. **Do not** change **`internal/web/`** (prd2wiki’s own wiki UI) for twoWiki chrome, colors, nav, or breadcrumbs unless the user **explicitly** asks to modify **prd2wiki** — that would be like changing twoWiki’s background by editing SQLite because Fossil uses it. This skin process has been applied before; stay on the **same** Fossil apply path unless told otherwise.
 
 **twoWiki bench — editing tickets (agents have multiple paths):** On the LAN lab host, tickets in `/opt/twowiki/repo.fossil` can be updated by **(1)** SSH + `fossil ticket change|set UUID … --quote … -R /opt/twowiki/repo.fossil` (what we used for the sortable-matrix fix), **(2)** the **JSON API** when the server is built with `--json` — `POST /json/ticket/save` (see `vendor/fossil-json-ticket/README.md`; auth + Referer rules apply), or **(3)** the normal **human web UI** (`/tktedit/…`) in a browser. Prefer (1) or (2) for scripted, verifiable edits; use (3) when validating UX or when API/SSH is unavailable.
@@ -62,7 +66,11 @@ Applies alongside the wiki plan. In practice:
 - **No shallow “no concerns”** — Walk fragile surfaces against the plan; silence on a known risk is a red flag.
 - **PRD discipline** — Unilateral specs are proposals; co-sign where multiple parties are involved. Tag inherited facts `[UNVERIFIED — …]` until verified in this codebase.
 - **Complete vs clean** — Handoff docs, constraint updates, and provenance matter as much as passing tests.
-- **Review via wiki** — When finishing implementer work tied to a wiki plan, record the handoff **on the wiki** (e.g. `{plan title} IMPLEMENTER-NOTES` or the plan page): commits, scope, verification commands, and explicit “for review” asks — not only in the chat session. Use `PUT /api/projects/{project}/pages/{id}` (see `internal/api/pages.go`) with the wiki base URL above; issue a Bearer key with `go run ./cmd/prd2wiki-keygen -db ./data/index.db` if writes are restricted.
+- **Review via wiki** — When finishing implementer work tied to a wiki plan, record the handoff **on the wiki** (e.g. `{plan title} IMPLEMENTER-NOTES` or the plan page): commits, scope, verification commands, and explicit “for review” asks — not only in the chat session. Prefer **Tree API** `PUT /api/tree/{slug}` (see `internal/api/tree_api.go`) when the page has a `tree_path`. Only fall back to legacy **project API** `PUT /api/projects/{project}/pages/{id}` when the page has no tree path — and in that case **you MUST echo `"id": "<same-as-URL>"` in the JSON body**; a PUT without body `id` silently creates a new page at HTTP 200 OK with a different id (tracked as T1-A in the active footguns plan, Phase 1 will 400 on this). Issue a Bearer key with `go run -mod=mod ./cmd/prd2wiki-keygen -db ./data/index.db` (add `-out /run/prd2wiki/agent.key` when Phase 1.3 ships). Build JSON with a real encoder and post with `curl --data-binary @payload.json` — never inline unknown body text in shell-quoted JSON.
+
+## API contract — partial-PUT frontmatter merge (R13-6 / T0-NEW-A)
+
+**PUT** on `/api/projects/{p}/pages/{id}` and `/api/tree/{path}` now **merges** the request body with existing frontmatter: absent or `null` fields **preserve** the stored value; non-empty fields **override**; an explicit empty slice (e.g., `"tags": []`) **clears**. `dc.created` is preserved on update (backfilled to now when missing); `dc.modified` is populated on every write (create and update). A PUT against a non-existent `id` falls through to the create path. Before this fix, partial PUT silently defaulted absent fields (`status="draft"`, `type="concept"`, `tags=nil`, `dc.created=now`), clobbering the stored page — the tag-revert symptom.
 
 ## MCP sidecar environment variables
 
@@ -70,10 +78,10 @@ When running `prd2wiki-mcp` (the MCP stdio sidecar), these environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `PRDWIKI_API_URL` | optional | Base URL for the wiki HTTP API (default `http://localhost:8080`) |
-| `PRDWIKI_TREE_ROOT` | recommended | Path to tree directory; enables tree-path tools |
-| `PRDWIKI_DATA_DIR` | with tree | Path to data directory; required when `PRDWIKI_TREE_ROOT` is set |
-| `PRDWIKI_API_TOKEN` | optional | Bearer token for authenticated write operations; when set, MCP mutating requests (create, delete) include `Authorization: Bearer` header |
+| `PRDWIKI_API_URL` | optional | Base URL for the wiki HTTP API. Code default is `http://localhost:8080`. On this LAN lab the wiki serves on port 8082; set `http://127.0.0.1:8082` when the sidecar is colocated with the server (preferred), or `http://192.168.22.56:8082` from off-host. |
+| `PRDWIKI_TREE_ROOT` | **required for tree tools** | Path to tree directory (`/srv/prd2wiki/tree` on this host). Without it, MCP `wiki_read` / `wiki_propose` / `wiki_status` / `wiki_move` / `wiki_rename` error with `"tree index not configured"` on first call. |
+| `PRDWIKI_DATA_DIR` | with tree | Path to data directory (`/srv/prd2wiki/data` on this host); required when `PRDWIKI_TREE_ROOT` is set. |
+| `PRDWIKI_API_TOKEN` | **required for writes** | Bearer token. All write mutations require auth when the key store is configured (Phase-2 auth, enforced since 2026-04-15). MCP mutating requests (create, update, delete, move, rename) attach `Authorization: Bearer`. Reads are unaffected. |
 
 **`PRDWIKI_API_TOKEN`:** All write mutations now require authentication when the key store is configured. Set this to a write-scoped service key so the MCP sidecar can create and delete pages. Generate a key with:
 
